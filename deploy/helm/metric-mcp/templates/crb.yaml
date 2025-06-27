@@ -43,19 +43,22 @@ subjects:
     name: metric-analyzer
     namespace: {{ .Release.Namespace }}
 ---
+{{- $existing := lookup "rbac.authorization.k8s.io/v1" "ClusterRole" "" "grafana-prometheus-reader" }}
+{{- if not $existing }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: grafana-prometheus-reader
 rules:
-- apiGroups: ["*"]
-  resources:
-    - "prometheuses"
-    - "prometheuses/*"
-  verbs:
-    - "get"
-    - "list"
-    - "watch"
+  - apiGroups: ["*"]
+    resources:
+      - "prometheuses"
+      - "prometheuses/*"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
