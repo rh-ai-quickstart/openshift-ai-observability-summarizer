@@ -65,9 +65,16 @@ Monitor GPU health across your entire OpenShift cluster:
 ### **Core backend components**
 - **llm-service**: LLM inference services (Llama models)
 - **llama-stack**: LlamaStack backend API
+- **vLLM**: vLLM fronts the model and makes metrics available at the /metrics endpoint which Prometheus can coveniently scrape.
 
 ### **Monitoring Stack**
-- **Prometheus/Thanos**: Collects AI model and OpenShift metrics
+- **Prometheus**: Prometheus scrapes the /metrics endpoint offered by vLLM. It can store metrics itself in its own time-series database on a local disk which is
+                  highly optimized for fast queries on recent data. This is perfect for real-time monitoring and alerting but is not
+                  ideal for long term and multi-year storage. This is where Thanos Querier comes in.
+- **Thanos Querier**: Extends Prometheus by solving the problem of long-term retention. Thanos is capable of taking data blocks that Prometheus saves to
+                      its local disk and uploading them to inexpensive and durable object storage, like Amazon S3, Google Cloud Storage, or Azure Blob Storage.
+                      Querier gives you a cost-effective way of retaining years of metrics data available for historical analysis and trend reporting.
+                      Querier sidecars run alongside your Prometheus servers, providing access to real-time and recent metrics.                  
 - **DCGM**: GPU monitoring and telemetry
 - **Streamlit UI**: Multi-dashboard interface (vLLM, OpenShift, Chat)
 - **MCP (Metric Collection & Processing)**: Backend API for metric analysis
