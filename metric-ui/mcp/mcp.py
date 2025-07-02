@@ -51,77 +51,139 @@ else:
 CA_BUNDLE_PATH = "/etc/pki/ca-trust/extracted/pem/ca-bundle.crt"
 verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 
-# --- Metric Queries ---
-ALL_METRICS = {
-    "Prompt Tokens Created": "vllm:request_prompt_tokens_created",
-    "P95 Latency (s)": "vllm:e2e_request_latency_seconds_count",
-    "Requests Running": "vllm:num_requests_running",
-    "GPU Usage (%)": "vllm:gpu_cache_usage_perc",
-    "Output Tokens Created": "vllm:request_generation_tokens_created",
-    "Inference Time (s)": "vllm:request_inference_time_seconds_count",
-    "Total Requests": "vllm:num_total_requests",
-    "Finished Requests": "vllm:num_finished_requests",
-    "Aborted Requests": "vllm:num_aborted_requests",
-    "Batched Tokens": "vllm:num_batched_tokens",
-    "GPU Cache Usage (Bytes)": "vllm:gpu_cache_usage_bytes",
-    "Scheduler Running Queue Size": "vllm:scheduler_running_queue_size",
-    "Scheduler Waiting Queue Size": "vllm:scheduler_waiting_queue_size",
-    "Scheduler Swapped Queue Size": "vllm:scheduler_swapped_queue_size",
-    "Cache Config Info": "vllm:cache_config_info",
-    "E2E Latency Seconds Bucket": "vllm:e2e_request_latency_seconds_bucket",
-    "E2E Latency Seconds Created": "vllm:e2e_request_latency_seconds_created",
-    "E2E Latency Seconds Sum": "vllm:e2e_request_latency_seconds_sum",
-    "Generation Tokens Created": "vllm:generation_tokens_created",
-    "Generation Tokens Total": "vllm:generation_tokens_total",
-    "GPU Prefix Cache Hits Created": "vllm:gpu_prefix_cache_hits_created",
-    "GPU Prefix Cache Hits Total": "vllm:gpu_prefix_cache_hits_total",
-    "GPU Prefix Cache Queries Created": "vllm:gpu_prefix_cache_queries_created",
-    "GPU Prefix Cache Queries Total": "vllm:gpu_prefix_cache_queries_total",
-    "Iteration Tokens Total Bucket": "vllm:iteration_tokens_total_bucket",
-    "Iteration Tokens Total Count": "vllm:iteration_tokens_total_count",
-    "Iteration Tokens Total Created": "vllm:iteration_tokens_total_created",
-    "Iteration Tokens Total Sum": "vllm:iteration_tokens_total_sum",
-    "Num Preemptions Created": "vllm:num_preemptions_created",
-    "Num Preemptions Total": "vllm:num_preemptions_total",
-    "Num Requests Waiting": "vllm:num_requests_waiting",
-    "Prompt Tokens Total": "vllm:prompt_tokens_total",
-    "Request Decode Time Seconds Bucket": "vllm:request_decode_time_seconds_bucket",
-    "Request Decode Time Seconds Count": "vllm:request_decode_time_seconds_count",
-    "Request Decode Time Seconds Created": "vllm:request_decode_time_seconds_created",
-    "Request Decode Time Seconds Sum": "vllm:request_decode_time_seconds_sum",
-    "Request Generation Tokens Bucket": "vllm:request_generation_tokens_bucket",
-    "Request Generation Tokens Count": "vllm:request_generation_tokens_count",
-    "Request Generation Tokens Sum": "vllm:request_generation_tokens_sum",
-    "Request Inference Time Seconds Bucket": "vllm:request_inference_time_seconds_bucket",
-    "Request Inference Time Seconds Created": "vllm:request_inference_time_seconds_created",
-    "Request Inference Time Seconds Sum": "vllm:request_inference_time_seconds_sum",
-    "Request Max Num Generation Tokens Bucket": "vllm:request_max_num_generation_tokens_bucket",
-    "Request Max Num Generation Tokens Count": "vllm:request_max_num_generation_tokens_count",
-    "Request Max Num Generation Tokens Created": "vllm:request_max_num_generation_tokens_created",
-    "Request Max Num Generation Tokens Sum": "vllm:request_max_num_generation_tokens_sum",
-    "Request Params Max Tokens Bucket": "vllm:request_params_max_tokens_bucket",
-    "Request Params Max Tokens Count": "vllm:request_params_max_tokens_count",
-    "Request Params Max Tokens Created": "vllm:request_params_max_tokens_created",
-    "Request Params Max Tokens Sum": "vllm:request_params_max_tokens_sum",
-    "Request Params N Bucket": "vllm:request_params_n_bucket",
-    "Request Params N Count": "vllm:request_params_n_count",
-    "Request Params N Created": "vllm:request_params_n_created",
-    "Request Params N Sum": "vllm:request_params_n_sum",
-    "Request Prefill Time Seconds Bucket": "vllm:request_prefill_time_seconds_bucket",
-    "Request Prefill Time Seconds Count": "vllm:request_prefill_time_seconds_count",
-    "Request Prefill Time Seconds Created": "vllm:request_prefill_time_seconds_created",
-    "Request Prefill Time Seconds Sum": "vllm:request_prefill_time_seconds_sum",
-    "Request Prompt Tokens Bucket": "vllm:request_prompt_tokens_bucket",
-    "Request Prompt Tokens Count": "vllm:request_prompt_tokens_count",
-    "Request Prompt Tokens Sum": "vllm:request_prompt_tokens_sum",
-    "Request Queue Time Seconds Bucket": "vllm:request_queue_time_seconds_bucket",
-    "Request Queue Time Seconds Count": "vllm:request_queue_time_seconds_count",
-    "Request Queue Time Seconds Created": "vllm:request_queue_time_seconds_created",
-    "Request Queue Time Seconds Sum": "vllm:request_queue_time_seconds_sum",
-    "Request Success Created": "vllm:request_success_created",
-    "Request Success Total": "vllm:request_success_total",
-    "Spec Decode Num Accepted Tokens Created": "vllm:spec_decode_num_accepted_tokens_created",
-}
+# --- Dynamic Metric Discovery Functions ---
+
+def discover_vllm_metrics():
+    """Dynamically discover available vLLM metrics from Prometheus"""
+    try:
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        response = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/label/__name__/values",
+            headers=headers,
+            verify=verify,
+        )
+        response.raise_for_status()
+        all_metrics = response.json()["data"]
+        
+        # Filter for vLLM metrics
+        vllm_metrics = [metric for metric in all_metrics if metric.startswith("vllm:")]
+        
+        # Create friendly names for metrics
+        metric_mapping = {}
+        for metric in vllm_metrics:
+            # Convert metric name to friendly display name
+            friendly_name = metric.replace("vllm:", "").replace("_", " ").title()
+            
+            # Special handling for common metrics
+            if "token" in metric.lower() and "prompt" in metric.lower():
+                friendly_name = "Prompt Tokens Created"
+            elif "token" in metric.lower() and ("generation" in metric.lower() or "output" in metric.lower()):
+                friendly_name = "Output Tokens Created"
+            elif "latency" in metric.lower() and "e2e" in metric.lower():
+                friendly_name = "P95 Latency (s)"
+            elif "gpu" in metric.lower() and "usage" in metric.lower() and "perc" in metric.lower():
+                friendly_name = "GPU Usage (%)"
+            elif "request" in metric.lower() and "running" in metric.lower():
+                friendly_name = "Requests Running"
+            elif "inference" in metric.lower() and "time" in metric.lower():
+                friendly_name = "Inference Time (s)"
+            else:
+                # Keep original friendly conversion
+                friendly_name = metric.replace("vllm:", "").replace("_", " ").title()
+                
+            metric_mapping[friendly_name] = metric
+            
+        return metric_mapping
+    except Exception as e:
+        print(f"Error discovering vLLM metrics: {e}")
+        # Fallback to basic set
+        return {
+            "Prompt Tokens Created": "vllm:request_prompt_tokens_created",
+            "Output Tokens Created": "vllm:request_generation_tokens_created",
+            "GPU Usage (%)": "vllm:gpu_cache_usage_perc",
+            "Requests Running": "vllm:num_requests_running",
+            "P95 Latency (s)": "vllm:e2e_request_latency_seconds_count",
+            "Inference Time (s)": "vllm:request_inference_time_seconds_count",
+        }
+
+def discover_openshift_metrics():
+    """Return static, well-tested OpenShift/Kubernetes metrics organized by category"""
+    return {
+        "Fleet Overview": {
+            # 6 most important cluster-wide metrics
+            "Total Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
+            "Total Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
+            "Cluster CPU Usage (%)": "100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)",
+            "Cluster Memory Usage (%)": "100 - (sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes) * 100)",
+            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
+            "Nodes Ready": "sum(kube_node_status_condition{condition='Ready', status='true'})",
+        },
+        "Workloads & Pods": {
+            # 6 most important pod/container metrics
+            "Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
+            "Pods Pending": "sum(kube_pod_status_phase{phase='Pending'})",
+            "Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
+            "Pod Restarts (Rate)": "sum(rate(kube_pod_container_status_restarts_total[5m]))",
+            "Container CPU Usage": "sum(rate(container_cpu_usage_seconds_total[5m]))",
+            "Container Memory Usage": "sum(container_memory_usage_bytes)",
+        },
+
+        "GPU & Accelerators": {
+            # 6 GPU-specific metrics for AI workloads
+            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
+            "GPU Memory Used (%)": "avg(DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) * 100)",
+            "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
+            "GPU Power Usage (Watts)": "avg(DCGM_FI_DEV_POWER_USAGE)",
+            "GPU Total Energy (Joules)": "avg(DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION)",
+            "GPU Memory Clock (MHz)": "avg(DCGM_FI_DEV_MEM_CLOCK)",
+        },
+        "Storage & Networking": {
+            # 6 storage and network metrics
+            "PV Available Space": "sum(kube_persistentvolume_capacity_bytes)",
+            "PVC Bound": "sum(kube_persistentvolumeclaim_status_phase{phase='Bound'})",
+            "Storage I/O Rate": "sum(rate(container_fs_reads_total[5m]) + rate(container_fs_writes_total[5m]))",
+            "Network Receive Rate": "sum(rate(container_network_receive_bytes_total[5m]))",
+            "Network Transmit Rate": "sum(rate(container_network_transmit_bytes_total[5m]))",
+            "Network Errors": "sum(rate(container_network_receive_errors_total[5m]) + rate(container_network_transmit_errors_total[5m]))",
+        },
+        "Application Services": {
+            # 6 application-level metrics
+            "HTTP Request Rate": "sum(rate(http_requests_total[5m]))",
+            "HTTP Error Rate (%)": "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) * 100",
+            "HTTP P95 Latency": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+            "Services Available": "sum(up)",
+            "Ingress Request Rate": "sum(rate(nginx_ingress_controller_requests[5m]))",
+            "Load Balancer Backends": "sum(haproxy_server_up)",
+        },
+    }
+
+# Cache discovered metrics to avoid repeated API calls
+_vllm_metrics_cache = None
+_openshift_metrics_cache = None
+_cache_timestamp = None
+CACHE_TTL = 300  # 5 minutes
+
+def get_vllm_metrics():
+    """Get vLLM metrics with caching"""
+    global _vllm_metrics_cache, _cache_timestamp
+    
+    current_time = datetime.now().timestamp()
+    if _vllm_metrics_cache is None or _cache_timestamp is None or (current_time - _cache_timestamp) > CACHE_TTL:
+        _vllm_metrics_cache = discover_vllm_metrics()
+        _cache_timestamp = current_time
+    
+    return _vllm_metrics_cache
+
+def get_openshift_metrics():
+    """Get OpenShift metrics with caching"""
+    global _openshift_metrics_cache, _cache_timestamp
+    
+    current_time = datetime.now().timestamp()
+    if _openshift_metrics_cache is None or _cache_timestamp is None or (current_time - _cache_timestamp) > CACHE_TTL:
+        _openshift_metrics_cache = discover_openshift_metrics()
+        _cache_timestamp = current_time
+    
+    return _openshift_metrics_cache
 
 
 # --- Request Models ---
@@ -214,6 +276,11 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
         for val in series["values"]:
             ts = datetime.fromtimestamp(float(val[0]))
             value = float(val[1])
+            
+            # Handle NaN values that can't be JSON serialized
+            if pd.isna(value) or value != value:  # Check for NaN
+                value = 0.0  # Convert NaN to 0 for JSON compatibility
+            
             row = dict(series["metric"])
             row["timestamp"] = ts
             row["value"] = value
@@ -428,25 +495,55 @@ def health():
 def _get_models_helper():
     try:
         headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
-        response = requests.get(
-            f"{PROMETHEUS_URL}/api/v1/series",
-            headers=headers,
-            params={
-                "match[]": "vllm:request_prompt_tokens_created",
-                "start": int((datetime.now().timestamp()) - 3600),
-                "end": int(datetime.now().timestamp()),
-            },
-            verify=verify,
-        )
-        response.raise_for_status()
-        series = response.json()["data"]
-
+        
+        # Try multiple vLLM metrics with longer time windows
+        vllm_metrics_to_check = [
+            "vllm:request_prompt_tokens_created",
+            "vllm:request_prompt_tokens_total", 
+            "vllm:avg_generation_throughput_toks_per_s",
+            "vllm:num_requests_running",
+            "vllm:gpu_cache_usage_perc"
+        ]
+        
         model_set = set()
-        for entry in series:
-            model = entry.get("model_name", "").strip()
-            namespace = entry.get("namespace", "").strip()
-            if model and namespace:
-                model_set.add(f"{namespace} | {model}")
+        
+        # Try different time windows: 7 days, 24 hours, 1 hour
+        time_windows = [
+            7 * 24 * 3600,  # 7 days
+            24 * 3600,      # 24 hours  
+            3600            # 1 hour
+        ]
+        
+        for time_window in time_windows:
+            for metric_name in vllm_metrics_to_check:
+                try:
+                    response = requests.get(
+                        f"{PROMETHEUS_URL}/api/v1/series",
+                        headers=headers,
+                        params={
+                            "match[]": metric_name,
+                            "start": int((datetime.now().timestamp()) - time_window),
+                            "end": int(datetime.now().timestamp()),
+                        },
+                        verify=verify,
+                    )
+                    response.raise_for_status()
+                    series = response.json()["data"]
+
+                    for entry in series:
+                        model = entry.get("model_name", "").strip()
+                        namespace = entry.get("namespace", "").strip()
+                        if model and namespace:
+                            model_set.add(f"{namespace} | {model}")
+                    
+                    # If we found models, return them
+                    if model_set:
+                        return sorted(list(model_set))
+                        
+                except Exception as e:
+                    print(f"Error checking {metric_name} with {time_window}s window: {e}")
+                    continue
+        
         return sorted(list(model_set))
     except Exception as e:
         print("Error getting models:", e)
@@ -462,27 +559,55 @@ def list_models():
 def list_namespaces():
     try:
         headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
-        response = requests.get(
-            f"{PROMETHEUS_URL}/api/v1/series",
-            headers=headers,
-            params={
-                "match[]": "vllm:request_prompt_tokens_created",
-                "start": int(
-                    (datetime.now().timestamp()) - 86400
-                ),  # last 24 hours for better coverage
-                "end": int(datetime.now().timestamp()),
-            },
-            verify=verify,
-        )
-        response.raise_for_status()
-        series = response.json()["data"]
-
+        
+        # Try multiple vLLM metrics with longer time windows
+        vllm_metrics_to_check = [
+            "vllm:request_prompt_tokens_created",
+            "vllm:request_prompt_tokens_total", 
+            "vllm:avg_generation_throughput_toks_per_s",
+            "vllm:num_requests_running",
+            "vllm:gpu_cache_usage_perc"
+        ]
+        
         namespace_set = set()
-        for entry in series:
-            namespace = entry.get("namespace", "").strip()
-            model = entry.get("model_name", "").strip()
-            if namespace and model:
-                namespace_set.add(namespace)
+        
+        # Try different time windows: 7 days, 24 hours, 1 hour
+        time_windows = [
+            7 * 24 * 3600,  # 7 days
+            24 * 3600,      # 24 hours  
+            3600            # 1 hour
+        ]
+        
+        for time_window in time_windows:
+            for metric_name in vllm_metrics_to_check:
+                try:
+                    response = requests.get(
+                        f"{PROMETHEUS_URL}/api/v1/series",
+                        headers=headers,
+                        params={
+                            "match[]": metric_name,
+                            "start": int((datetime.now().timestamp()) - time_window),
+                            "end": int(datetime.now().timestamp()),
+                        },
+                        verify=verify,
+                    )
+                    response.raise_for_status()
+                    series = response.json()["data"]
+
+                    for entry in series:
+                        namespace = entry.get("namespace", "").strip()
+                        model = entry.get("model_name", "").strip()
+                        if namespace and model:
+                            namespace_set.add(namespace)
+                    
+                    # If we found namespaces, return them
+                    if namespace_set:
+                        return sorted(list(namespace_set))
+                        
+                except Exception as e:
+                    print(f"Error checking {metric_name} with {time_window}s window: {e}")
+                    continue
+        
         return sorted(list(namespace_set))
     except Exception as e:
         print("Error getting namespaces:", e)
@@ -503,9 +628,10 @@ def get_model_config():
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
     try:
+        vllm_metrics = get_vllm_metrics()
         metric_dfs = {
             label: fetch_metrics(query, req.model_name, req.start_ts, req.end_ts)
-            for label, query in ALL_METRICS.items()
+            for label, query in vllm_metrics.items()
         }
         prompt = build_prompt(metric_dfs, req.model_name)
 
@@ -561,8 +687,9 @@ def build_flexible_llm_prompt(
     generated_tokens_sum: float = None,
     selected_namespace: str = None,
 ) -> str:
+    vllm_metrics = get_vllm_metrics()
     metrics_list = "\n".join(
-        [f'- "{label}" (PromQL: {query})' for label, query in ALL_METRICS.items()]
+        [f'- "{label}" (PromQL: {query})' for label, query in vllm_metrics.items()]
     )
 
     summary_tokens_generated = ""
@@ -620,11 +747,12 @@ def chat_metrics(req: ChatMetricsRequest):
     metrics_data_summary = ""
     generated_tokens_sum_value = None
 
+    vllm_metrics = get_vllm_metrics()
     metric_dfs = {
         label: fetch_metrics(
             query, req.model_name, req.start_ts, req.end_ts, namespace=req.namespace
         )
-        for label, query in ALL_METRICS.items()
+        for label, query in vllm_metrics.items()
     }
 
     if is_tokens_generated_query:
@@ -898,3 +1026,372 @@ def calculate_metrics_endpoint(request: MetricsCalculationRequest):
         calculated_metrics[metric_name] = {"avg": avg_val, "max": max_val}
 
     return MetricsCalculationResponse(calculated_metrics=calculated_metrics)
+
+# --- OpenShift Helper Functions ---
+
+def fetch_openshift_metrics(query, start, end, namespace=None):
+    """Fetch OpenShift metrics with optional namespace filtering"""
+    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+    
+    # Add namespace filter to the query if specified and not aggregated
+    if namespace:
+        # Don't add namespace filters to aggregated queries (sum, avg, etc.) 
+        # for cluster-wide analysis, only for namespace-specific analysis
+        if not query.startswith(('sum(', 'avg(', 'count(', 'max(', 'min(')):
+            # Check if query already has labels
+            if "{" in query:
+                # Insert namespace into existing label set
+                query = query.replace("{", f'{{namespace="{namespace}",')
+            else:
+                # Add namespace label to query without existing labels
+                query = f'{query}{{namespace="{namespace}"}}'
+        else:
+            # For aggregated queries, add namespace filter inside the aggregation
+            # Example: sum(kube_pod_status_phase{phase="Running"}) -> sum(kube_pod_status_phase{phase="Running", namespace="ns"})
+            import re
+            # Find the first metric name inside parentheses
+            match = re.search(r'(\w+\([^{(]+)(\{[^}]*\})?', query)
+            if match:
+                base_part = match.group(1)
+                labels_part = match.group(2) if match.group(2) else "{}"
+                
+                if labels_part == "{}":
+                    # No existing labels
+                    new_labels = f'{{namespace="{namespace}"}}'
+                else:
+                    # Has existing labels, add namespace
+                    new_labels = labels_part.replace("{", f'{{namespace="{namespace}",')
+                
+                # Replace the original pattern with the namespace-filtered version
+                query = query.replace(match.group(0), base_part + new_labels)
+    
+    response = requests.get(
+        f"{PROMETHEUS_URL}/api/v1/query_range",
+        headers=headers,
+        params={"query": query, "start": start, "end": end, "step": "30s"},
+        verify=verify,
+    )
+    response.raise_for_status()
+    result = response.json()["data"]["result"]
+
+    rows = []
+    for series in result:
+        for val in series["values"]:
+            ts = datetime.fromtimestamp(float(val[0]))
+            value = float(val[1])
+            
+            # Handle NaN values that can't be JSON serialized
+            if pd.isna(value) or value != value:  # Check for NaN
+                value = 0.0  # Convert NaN to 0 for JSON compatibility
+            
+            row = dict(series["metric"])
+            row["timestamp"] = ts
+            row["value"] = value
+            rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def build_openshift_prompt(metric_dfs, metric_category, namespace=None, scope_description=None):
+    """Build prompt for OpenShift metrics analysis"""
+    if scope_description:
+        scope = scope_description
+    else:
+        scope = f"namespace **{namespace}**" if namespace else "cluster-wide"
+    
+    header = f"You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n📊 **Metrics**:\n"
+    analysis_focus = f"{metric_category.lower()} performance and health"
+    
+    lines = []
+    for label, df in metric_dfs.items():
+        if df.empty:
+            lines.append(f"- {label}: No data")
+            continue
+        avg = df["value"].mean()
+        latest = df["value"].iloc[-1] if not df.empty else 0
+        trend = describe_trend(df)
+        anomaly = detect_anomalies(df, label)
+        lines.append(
+            f"- {label}: Avg={avg:.2f}, Latest={latest:.2f}, Trend={trend}, {anomaly}"
+        )
+    
+    analysis_questions = f"""🔍 Please analyze:
+1. What's the current state of {analysis_focus}?
+2. Are there any performance or reliability concerns?
+3. What actions should be taken?
+4. Any optimization recommendations?"""
+    
+    return f"""{header}
+{chr(10).join(lines)}
+
+{analysis_questions}
+""".strip()
+
+
+# --- OpenShift Request Models ---
+class OpenShiftAnalyzeRequest(BaseModel):
+    metric_category: str  # Specific category
+    scope: str  # "cluster_wide" or "namespace_specific"
+    namespace: Optional[str] = None  # Required if scope is "namespace_specific"
+    start_ts: int
+    end_ts: int
+    summarize_model_id: str
+    api_key: Optional[str] = None
+
+
+class OpenShiftChatRequest(BaseModel):
+    metric_category: str  # Specific category
+    scope: str  # "cluster_wide" or "namespace_specific"
+    question: str
+    namespace: Optional[str] = None  # Required if scope is "namespace_specific"
+    start_ts: int
+    end_ts: int
+    summarize_model_id: str
+    api_key: Optional[str] = None
+
+
+def get_namespace_specific_metrics(category):
+    """Get metrics that actually have namespace labels for namespace-specific analysis"""
+    
+    namespace_aware_metrics = {
+        "Fleet Overview": {
+            # Metrics that work with namespace filtering
+            "Namespace Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
+            "Namespace Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
+            "Container CPU Usage": "sum(rate(container_cpu_usage_seconds_total[5m]))",
+            "Container Memory Usage": "sum(container_memory_usage_bytes)",
+            "Pod Restart Rate": "sum(rate(kube_pod_container_status_restarts_total[5m]))",
+            "Container Network I/O": "sum(rate(container_network_receive_bytes_total[5m]) + rate(container_network_transmit_bytes_total[5m]))",
+        },
+        "Workloads & Pods": {
+            # Pod and container metrics naturally have namespace labels
+            "Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
+            "Pods Pending": "sum(kube_pod_status_phase{phase='Pending'})",
+            "Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
+            "Pod Restarts (Rate)": "sum(rate(kube_pod_container_status_restarts_total[5m]))",
+            "Container CPU Usage": "sum(rate(container_cpu_usage_seconds_total[5m]))",
+            "Container Memory Usage": "sum(container_memory_usage_bytes)",
+        },
+        "GPU & Accelerators": {
+            # For namespace-specific, show compute-related metrics instead of node-level GPU
+            "High CPU Containers": "count(rate(container_cpu_usage_seconds_total[5m]) > 0.5)",
+            "Memory Intensive Pods": "count(container_memory_usage_bytes > 1000000000)",
+            "Container CPU Throttling": "sum(rate(container_cpu_cfs_throttled_seconds_total[5m]))",
+            "Container Memory Pressure": "sum(rate(container_memory_failcnt[5m]))",
+            "OOM Killed Containers": "sum(rate(container_oom_events_total[5m]))",
+            "High I/O Containers": "sum(rate(container_fs_reads_total[5m]) + rate(container_fs_writes_total[5m]))",
+        },
+        "Storage & Networking": {
+            # Storage and network metrics that have namespace context
+            "PV Claims Bound": "sum(kube_persistentvolumeclaim_status_phase{phase='Bound'})",
+            "PV Claims Pending": "sum(kube_persistentvolumeclaim_status_phase{phase='Pending'})",
+            "Container Network Receive": "sum(rate(container_network_receive_bytes_total[5m]))",
+            "Container Network Transmit": "sum(rate(container_network_transmit_bytes_total[5m]))",
+            "Network Errors": "sum(rate(container_network_receive_errors_total[5m]) + rate(container_network_transmit_errors_total[5m]))",
+            "Filesystem Usage": "sum(container_fs_usage_bytes)",
+        },
+        "Application Services": {
+            # Application metrics that work at namespace level
+            "HTTP Request Rate": "sum(rate(http_requests_total[5m]))",
+            "HTTP Error Rate (%)": "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) * 100",
+            "Service Endpoints": "sum(kube_endpoints_ready)",
+            "Container Processes": "sum(container_processes)",
+            "Container File Descriptors": "sum(container_file_descriptors)",
+            "Container Threads": "sum(container_threads)",
+        },
+    }
+    
+    return namespace_aware_metrics.get(category, {})
+
+
+# --- OpenShift Endpoints ---
+
+@app.get("/openshift-metric-groups")
+def list_openshift_metric_groups():
+    """Get available OpenShift metric groups"""
+    return list(get_openshift_metrics().keys())
+
+
+@app.get("/vllm-metrics")
+def list_vllm_metrics():
+    """Get available vLLM metrics dynamically"""
+    return get_vllm_metrics()
+
+
+@app.get("/openshift-namespaces")
+def list_openshift_namespaces():
+    """Get available OpenShift namespaces from kube-state-metrics"""
+    try:
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        response = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/series",
+            headers=headers,
+            params={
+                "match[]": "kube_pod_info",
+                "start": int((datetime.now().timestamp()) - 86400),  # last 24 hours
+                "end": int(datetime.now().timestamp()),
+            },
+            verify=verify,
+        )
+        response.raise_for_status()
+        series = response.json()["data"]
+
+        namespace_set = set()
+        for entry in series:
+            namespace = entry.get("namespace", "").strip()
+            if namespace and namespace not in ["kube-system", "openshift-system", "openshift-monitoring"]:
+                namespace_set.add(namespace)
+        return sorted(list(namespace_set))
+    except Exception as e:
+        print("Error getting OpenShift namespaces:", e)
+        return []
+
+
+@app.post("/analyze-openshift")
+def analyze_openshift(req: OpenShiftAnalyzeRequest):
+    """Analyze OpenShift metrics for a specific category"""
+    try:
+        openshift_metrics = get_openshift_metrics()
+        
+        # Fetch metrics from specific category
+        if req.metric_category not in openshift_metrics:
+            raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+        
+        # For namespace-specific analysis, use metrics that actually have namespace labels
+        if req.scope == "namespace_specific" and req.namespace:
+            metrics_to_fetch = get_namespace_specific_metrics(req.metric_category)
+        else:
+            metrics_to_fetch = openshift_metrics[req.metric_category]
+        
+        # Determine namespace for fetching based on scope
+        namespace_for_query = req.namespace if req.scope == "namespace_specific" else None
+        
+        metric_dfs = {}
+        for label, query in metrics_to_fetch.items():
+            try:
+                df = fetch_openshift_metrics(query, req.start_ts, req.end_ts, namespace_for_query)
+                metric_dfs[label] = df
+            except Exception as e:
+                print(f"Error fetching {label}: {e}")
+                metric_dfs[label] = pd.DataFrame()  # Empty DataFrame for failed queries
+        
+        # Build analysis prompt
+        scope_description = f"{req.scope.replace('_', ' ').title()}"
+        if req.scope == "namespace_specific" and req.namespace:
+            scope_description += f" ({req.namespace})"
+            
+        prompt = build_openshift_prompt(metric_dfs, req.metric_category, namespace_for_query, scope_description)
+        summary = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
+
+        # Serialize metrics for frontend
+        serialized_metrics = {}
+        for label, df in metric_dfs.items():
+            # Ensure required columns exist
+            for col in ["timestamp", "value"]:
+                if col not in df.columns:
+                    df[col] = pd.Series(
+                        dtype="datetime64[ns]" if col == "timestamp" else "float"
+                    )
+            
+            # Handle any remaining NaN values before serialization
+            if not df.empty and "value" in df.columns:
+                df["value"] = df["value"].fillna(0.0)  # Replace NaN with 0
+            
+            serialized_metrics[label] = df[["timestamp", "value"]].to_dict(
+                orient="records"
+            )
+
+        return {
+            "metric_category": req.metric_category,
+            "scope": req.scope,
+            "namespace": req.namespace,
+            "health_prompt": prompt,
+            "llm_summary": summary,
+            "metrics": serialized_metrics,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in analyze_openshift: {e}")
+        raise HTTPException(
+            status_code=500, detail="Please check your API Key or try again later."
+        )
+
+
+@app.post("/chat-openshift")
+def chat_openshift(req: OpenShiftChatRequest):
+    """Chat about OpenShift metrics for a specific category"""
+    try:
+        openshift_metrics = get_openshift_metrics()
+        
+        # Fetch metrics from specific category
+        if req.metric_category not in openshift_metrics:
+            raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+        metrics_to_fetch = openshift_metrics[req.metric_category]
+        
+        # Determine namespace for fetching based on scope
+        namespace_for_query = req.namespace if req.scope == "namespace_specific" else None
+        
+        metric_dfs = {}
+        # Fetch metrics for the specified category
+        for label, query in metrics_to_fetch.items():
+            try:
+                df = fetch_openshift_metrics(query, req.start_ts, req.end_ts, namespace_for_query)
+                metric_dfs[label] = df
+            except Exception as e:
+                print(f"Error fetching {label}: {e}")
+                metric_dfs[label] = pd.DataFrame()
+        
+        # Build scope description
+        scope_description = f"{req.scope.replace('_', ' ').title()}"
+        if req.scope == "namespace_specific" and req.namespace:
+            scope_description += f" ({req.namespace})"
+        
+        # Build metrics summary for the LLM
+        metrics_data_summary = build_openshift_prompt(metric_dfs, req.metric_category, namespace_for_query, scope_description)
+        
+        # Create a simple prompt for OpenShift chat
+        context_description = f"OpenShift {req.metric_category} metrics for **{scope_description}**"
+            
+        prompt = f"""You are a senior Site Reliability Engineer (SRE) analyzing {context_description}.
+
+Current Metrics:
+{metrics_data_summary}
+
+User Question: {req.question}
+
+Provide a concise technical response focusing on operational insights and recommendations. Respond with JSON format:
+{{"promql": "relevant_query_if_applicable", "summary": "your_analysis"}}"""
+
+        llm_response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
+
+        # Simple JSON parsing
+        try:
+            # Try to extract JSON from response
+            json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group(0))
+                promql = parsed.get("promql", "").strip()
+                summary = parsed.get("summary", llm_response).strip()
+                
+                # Add namespace filtering to PromQL if specified and not already present
+                if promql and req.namespace and "namespace=" not in promql:
+                    if "{" in promql:
+                        promql = promql.replace("{", f'{{namespace="{req.namespace}",')
+                    else:
+                        promql = f'{promql}{{namespace="{req.namespace}"}}'
+                
+                return {"promql": promql, "summary": summary}
+        except json.JSONDecodeError:
+            pass
+        
+        # Fallback
+        return {"promql": "", "summary": llm_response}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in chat_openshift: {e}")
+        raise HTTPException(
+            status_code=500, detail="Please check your API Key or try again later."
+        )
