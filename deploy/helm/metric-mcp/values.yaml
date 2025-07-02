@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: quay.io/rh-ee-lbitan/metric-mcp
-  tag: metric-mcp-1.0.0
+  tag: metric-mcp-3.0.1
 
 service:
   type: ClusterIP
@@ -24,5 +24,5 @@ llm:
 modelConfig: {}
 
 rbac:
-  createGrafanaRole: true  # User sets this to false if role already exists
+  createGrafanaRole: true # User sets this to false if role already exists
 

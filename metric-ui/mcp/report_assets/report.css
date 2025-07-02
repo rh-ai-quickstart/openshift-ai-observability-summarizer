@@ -1,0 +1,285 @@
+@font-face {
+  font-family: "Inter";
+  src: url("./fonts/Inter-Regular.ttf") format("truetype");
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("./fonts/Inter-Bold.ttf") format("truetype");
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: "Noto Color Emoji";
+  src: url("fonts/NotoColorEmoji.ttf") format("truetype");
+}
+
+.emoji {
+  font-family: "Noto Color Emoji", "Inter", sans-serif;
+}
+
+html,
+body,
+[class*="css"] {
+  font-family: "Inter", "Segoe UI", "Helvetica Neue", Helvetica, Arial,
+    sans-serif;
+}
+
+body {
+  margin: 40px;
+  font-size: 1em;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
+  color: #1c1c1e;
+  letter-spacing: -0.5px;
+}
+
+h1 {
+  page-break-inside: avoid;
+}
+
+h2 {
+  page-break-after: avoid;
+}
+
+.stMetric {
+  border-radius: 12px;
+  background-color: #f1f1f1;
+  padding: 1em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  color: #1c1c1e !important;
+}
+
+[data-testid="stMetricValue"],
+[data-testid="stMetricLabel"] {
+  color: #1c1c1e !important;
+  font-weight: 600;
+}
+
+.block-container {
+  padding-top: 2rem;
+}
+
+.stButton > button {
+  border-radius: 8px;
+  padding: 0.5em 1.2em;
+  font-size: 1em;
+}
+
+footer,
+header {
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+}
+
+.header {
+  background-color: #e7f3ff;
+  padding: 20px;
+  border-radius: 5px;
+  margin-bottom: 30px;
+  page-break-inside: avoid;
+}
+
+.section {
+  margin-bottom: 30px;
+}
+
+.summary {
+  background-color: #f1f1f1;
+  padding: 24px 28px;
+  border-radius: 7px;
+  font-size: 1em;
+  color: #1c1c1e;
+}
+
+.summary p {
+  margin: 0 0 8px 0;
+}
+
+.summary ul,
+.summary ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.summary li {
+  margin: 2px 0;
+}
+
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  margin: 20px 0;
+  page-break-inside: avoid;
+}
+
+.metric-card {
+  border-radius: 12px;
+  background-color: #f1f1f1;
+  padding: 1em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  color: #1c1c1e;
+  page-break-inside: avoid;
+  margin-bottom: 1em;
+}
+
+.metric-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1c1c1e;
+}
+
+.metric-label {
+  font-size: 14px;
+}
+
+.metric-delta {
+  font-size: 12px;
+  color: #28a745;
+}
+
+table {
+  width: 100%; /* Original width */
+  border-collapse: collapse;
+  margin: 20px 0; /* Original margin */
+  page-break-inside: avoid;
+}
+
+th,
+td {
+  border: 1px solid #ddd;
+  padding: 8px; /* Original padding */
+  text-align: left;
+}
+
+th {
+  background-color: #f1f1f1;
+}
+
+.chart-container {
+  margin: 20px 0; /* Original margin */
+  padding: 20px; /* Original padding */
+  background-color: #f1f1f1;
+  border-radius: 5px;
+  text-align: center;
+  page-break-inside: avoid;
+}
+
+.chart-container img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  page-break-inside: avoid;
+}
+
+p,
+div,
+span {
+  font-family: "Inter", "Segoe UI", "Helvetica Neue", Helvetica, Arial,
+    sans-serif;
+}
+
+.no-page-break {
+  page-break-inside: avoid;
+}
+
+@page {
+  size: A4; /* Sets the page size to A4 */
+  margin: 0.7in 0.4in 0.7in 0.4in;
+}
+
+@media print {
+  body {
+    font-size: 1em;
+  }
+
+  h1 {
+    font-size: 1.8em;
+  }
+
+  h2 {
+    font-size: 1.4em;
+  }
+
+  h3,
+  h4 {
+    font-size: 1.3em;
+  }
+
+  .stButton > button {
+    font-size: 0.85em;
+  }
+
+  .summary {
+    font-size: 0.8em;
+  }
+
+  .metric-value {
+    font-size: 20px;
+  }
+
+  .metric-label {
+    font-size: 12px;
+  }
+
+  .metric-delta {
+    font-size: 9px;
+  }
+
+  th,
+  td {
+    font-size: 0.8em;
+  }
+
+  .stMetric,
+  .metric-card {
+    padding: 0.9em;
+  }
+  .header {
+    padding: 18px;
+    margin-bottom: 25px;
+  }
+  .section,
+  .dashboard,
+  .chart-container {
+    margin-bottom: 25px;
+  }
+  .summary {
+    padding: 20px 24px;
+    margin-bottom: 8px;
+  }
+  .summary p {
+    margin: 0 0 6px 0;
+  }
+  .summary ul,
+  .summary ol {
+    margin: 3px 0;
+    padding-left: 18px;
+  }
+  .summary li {
+    margin: 1px 0;
+  }
+  .dashboard {
+    gap: 12px;
+    margin: 15px 0;
+  }
+  table {
+    margin: 15px 0;
+  }
+  .chart-container {
+    margin: 15px 0;
+    padding: 15px;
+  }
+  .block-container {
+    padding-top: 1.8rem;
+  }
+}

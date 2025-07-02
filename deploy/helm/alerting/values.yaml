@@ -1,6 +1,6 @@
 image:
-  repository: quay.io/rh-ee-pezhao/appeng/vllm-alert-receiver
-  tag: 0.1.4
+  repository: quay.io/ecosystem-appeng/vllm-alert-receiver
+  tag: 0.1.0
   pullPolicy: Always
 
 schedule: "*/1 * * * *" # cron job scheduled every minute

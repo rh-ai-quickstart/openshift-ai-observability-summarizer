@@ -27,7 +27,7 @@ client = LlamaStackClient(base_url=LLAMA_STACK_URL)
 llm = next(m for m in client.models.list() if m.model_type == "llm")
 
 # pull active alerts from Alertmanager
-def get_active_alerts() -> dict:
+def get_active_alerts():
     headers = {"Authorization": f"Bearer {AUTH_TOKEN}"}
     endpoint = f"{ALERTMANAGER_URL}/api/v2/alerts"
     verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
@@ -62,12 +62,12 @@ def send_slack_message(payload):
 def generate_description(labels):
     labels = json.dumps(labels)
     prompt = """
-    You are an AI assistant designed to generate concise, informative, and *technically detailed* Slack message descriptions for OpenShift vLLM alerts. Your task is to analyze the provided alert data, *especially the 'expr' field*, and create a clear, actionable description of the problem.
+    You are an AI assistant designed to generate concise, informative, and *technically detailed* Slack message descriptions for OpenShift vLLM alerts. Your task is to analyze the provided alert data, *especially the 'expr' and 'for' fields*, and create a clear, actionable description of the problem.
 
     Provide only the description text. Start the description with "This alert..." or "This alert indicates..." to briefly summarize the general nature of the alert. Then, use a Markdown bulleted list to detail the following points:
-    1.  Interpret the expression to explain what the issue is in understandable English. Do NOT mention "Prometheus Query Language" or include the raw expression string in your explanation. Instead, describe the metric and threshold being monitored.
+    1.  Interpret the expression and 'for' value to explain what the issue is in plain, understandable English. Do NOT mention "Prometheus Query Language" or include the raw expression string in your explanation. Instead, describe the metric and threshold being monitored and for how long.
     2.  **Affected components:** Mention the model_name, pod, namespace, and service to clearly identify what is impacted. This should be in a clear bulleted list.
-    3.  Provide initial troubleshooting suggestions or common solutions to resolve the issue in a single sentence.
+    3.  Provide initial troubleshooting steps or common solutions to resolve the issue in a single sentence.
 
     Do not add any prefixes like 'ALERT:' or 'Severity:' or a separate summary line. The output should be ready to be embedded directly into a Slack message.
 

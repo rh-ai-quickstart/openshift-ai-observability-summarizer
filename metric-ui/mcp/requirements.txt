@@ -4,3 +4,5 @@ requests
 scipy
 pandas
 uvicorn
+markdown
+weasyprint

@@ -1,5 +1,8 @@
 # AI Observability Metrics Summarizer
 
+<img src="docs/img/logo.png" alt="UI" style="width:500px; height:500px;"/>
+
+
 [Design Document](https://docs.google.com/document/d/1bXBCL4fbPlRqQxwhGX1p12CS_E6-9oOyFnYSpbQskyI/edit?usp=sharing)
 
 This application provides an interactive dashboard and chatbot interface to **analyze AI model performance metrics** collected from Prometheus and generate **human-like summaries using a Llama model** deployed on OpenShift AI.
@@ -14,14 +17,17 @@ It helps teams **understand what’s going well, what’s going wrong**, and rec
 - Generate summaries using a fine-tuned Llama model
 - Chat with an MLOps assistant based on real metrics
 - Fully configurable via environment variables and Helm-based deployment
+- Set up alerts for vLLM models and be notified when they triggered via Slack.
 
 ---
 
 ## Architecture
 
 - **Prometheus**: Collects and exposes AI model metrics
+- **Alertmanager**: Collects and exposes firing alerts
 - **Streamlit App**: Renders dashboard, handles summarization and chat
 - **LLM (Llama 3.x)**: Deployed on OpenShift AI and queried via `/v1/completions` API
+- **Alert Notifier Job**: Pulls firing alerts from Alertmanager and notifies via Slack
 
 ![Architecture](docs/img/arch-1.jpg)
 
@@ -32,6 +38,7 @@ It helps teams **understand what’s going well, what’s going wrong**, and rec
 - OpenShift cluster
 - `oc` CLI configured
 - Installed `yq`
+- [Slack Webhook URL](https://api.slack.com/messaging/webhooks)
 
 ---
 
@@ -59,10 +66,15 @@ If you want multiple model deployments -
 make install NAMESPACE=llama-stack-summarizer LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu" SAFETY=llama-guard-3-8b SAFETY_TOLERATION="nvidia.com/gpu"
 ```
 
-To run and install the full environment, including the extended multi-model support -Add commentMore actions
+To run and install the full environment, including the extended multi-model support -
 
 ```bash
 make install NAMESPACE=$NAMESPACE
+```
+
+To install with alerting configured, include the `ALERTS` flag:
+```bash
+make install NAMESPACE=$NAMESPACE ALERTS=TRUE
 ```
 
 This will:
@@ -72,6 +84,7 @@ This will:
 3. Extract their URLs
 4. Create a ConfigMap with available models
 5. Deploy the Streamlit dashboard connected to the LLM
+6. Configure the Alertmanager and deploy a Cron Job to process alerts
 
 Navigate to your **Openshift Cluster --> Networking --> Route** and you should be able to see the route for your application.
 

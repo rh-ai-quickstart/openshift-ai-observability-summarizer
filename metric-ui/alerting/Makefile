@@ -1,5 +1,5 @@
-VERSION ?= 0.1.4
-REGISTRY ?= quay.io/rh-ee-pezhao/appeng
+VERSION ?= 0.1.0
+REGISTRY ?= quay.io/ecosystem-appeng
 
 build_ui:
 	podman build --platform linux/amd64 -t vllm-alert-receiver:$(VERSION) .

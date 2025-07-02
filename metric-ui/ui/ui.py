@@ -4,6 +4,11 @@ import requests
 from datetime import datetime
 import pandas as pd
 import os
+import streamlit.components.v1 as components
+import base64
+import matplotlib.pyplot as plt
+import io
+import time
 
 # --- Config ---
 API_URL = os.getenv("MCP_API_URL", "http://localhost:8000")
@@ -118,9 +123,6 @@ def model_requires_api_key(model_id, model_config):
     model_info = model_config.get(model_id, {})
     return model_info.get("requiresApiKey", False)
 
-def model_costs(model_id, model_config):
-    model_info = model_config.get(model_id, {})
-    return model_info.get("cost", None)
 
 def clear_session_state():
     """Clear session state on errors"""
@@ -238,6 +240,182 @@ if page == "🔧 OpenShift Metrics":
     selected_namespace = None
     model_name = None
 
+def trigger_download(
+    file_content: bytes, filename: str, mime_type: str = "application/octet-stream"
+):
+
+    b64 = base64.b64encode(file_content).decode()
+
+    dl_link = f"""
+    <html>
+    <body>
+    <script>
+    const link = document.createElement('a');
+    link.href = "data:{mime_type};base64,{b64}";
+    link.download = "{filename}";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    </script>
+    </body>
+    </html>
+    """
+
+    components.html(dl_link, height=0, width=0)
+
+
+def get_metrics_data_and_list():
+    """Get metrics data and list to avoid code duplication"""
+    metric_data = st.session_state.get("metric_data", {})
+    metrics = [
+        "Prompt Tokens Created",
+        "P95 Latency (s)",
+        "Requests Running",
+        "GPU Usage (%)",
+        "Output Tokens Created",
+        "Inference Time (s)",
+    ]
+    return metric_data, metrics
+
+
+def get_calculated_metrics_from_mcp(metric_data):
+    """Get calculated metrics from MCP backend"""
+    try:
+        response = requests.post(
+            f"{API_URL}/calculate-metrics", json={"metrics_data": metric_data}
+        )
+        response.raise_for_status()
+        return response.json()["calculated_metrics"]
+    except Exception as e:
+        st.error(f"Error getting calculated metrics from MCP: {e}")
+        return {}
+
+
+def process_chart_data(metric_data, chart_metrics=None):
+    """Process metrics data for chart generation"""
+    if chart_metrics is None:
+        chart_metrics = ["GPU Usage (%)", "P95 Latency (s)"]
+
+    dfs = []
+    for label in chart_metrics:
+        raw_data = metric_data.get(label, [])
+        if raw_data:
+            try:
+                timestamps = [datetime.fromisoformat(p["timestamp"]) for p in raw_data]
+                values = [p["value"] for p in raw_data]
+                df = pd.DataFrame({label: values}, index=timestamps)
+                dfs.append(df)
+            except Exception:
+                pass
+    return dfs
+
+
+def create_trend_chart_image(metric_data, chart_metrics=None):
+    """Create trend chart image for reports"""
+    dfs = process_chart_data(metric_data, chart_metrics)
+    if not dfs:
+        return None
+
+    try:
+        chart_df = pd.concat(dfs, axis=1).fillna(0)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        chart_df.plot(ax=ax)
+        ax.set_title("Trend Over Time")
+        ax.set_xlabel("Timestamp")
+        ax.set_ylabel("Value")
+        plt.tight_layout()
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return base64.b64encode(buf.read()).decode("utf-8")
+    except Exception:
+        return None
+
+
+def generate_report_and_download(report_format: str):
+    try:
+        analysis_params = st.session_state["analysis_params"]
+
+        # Use the shared function to get metrics data
+        metric_data, metrics = get_metrics_data_and_list()
+
+        # Filter metrics_data to only include the metrics shown in dashboard
+        filtered_metrics_data = {}
+        for metric_name in metrics:
+            if metric_name in metric_data:
+                filtered_metrics_data[metric_name] = metric_data[metric_name]
+
+        trend_chart_image_b64 = create_trend_chart_image(filtered_metrics_data)
+
+        payload = {
+            "model_name": analysis_params["model_name"],
+            "start_ts": analysis_params["start_ts"],
+            "end_ts": analysis_params["end_ts"],
+            "summarize_model_id": analysis_params["summarize_model_id"],
+            "format": report_format,
+            "api_key": analysis_params["api_key"],
+            "health_prompt": st.session_state["prompt"],
+            "llm_summary": st.session_state["summary"],
+            "metrics_data": filtered_metrics_data,
+        }
+        if trend_chart_image_b64:
+            payload["trend_chart_image"] = trend_chart_image_b64
+        response = requests.post(
+            f"{API_URL}/generate_report",
+            json=payload,
+        )
+        response.raise_for_status()
+        report_id = response.json()["report_id"]
+        download_response = requests.get(f"{API_URL}/download_report/{report_id}")
+        download_response.raise_for_status()
+        mime_map = {
+            "HTML": "text/html",
+            "PDF": "application/pdf",
+            "Markdown": "text/markdown",
+        }
+        mime_type = mime_map.get(report_format, "application/octet-stream")
+        filename = f"ai_metrics_report.{report_format.lower()}"
+        trigger_download(download_response.content, filename, mime_type)
+    except requests.exceptions.HTTPError as http_err:
+        st.error(f"HTTP error during report generation: {http_err}")
+    except Exception as e:
+        st.error(f"❌ Error during report generation: {e}")
+
+
+model_list = get_models()
+namespaces = get_namespaces()
+
+# Add namespace selector in sidebar
+selected_namespace = st.sidebar.selectbox("Select Namespace", namespaces)
+
+# Filter models by selected namespace
+filtered_models = [
+    model for model in model_list if model.startswith(f"{selected_namespace} | ")
+]
+model_name = st.sidebar.selectbox("Select Model", filtered_models)
+
+st.sidebar.markdown("### Select Timestamp Range")
+if "selected_date" not in st.session_state:
+    st.session_state["selected_date"] = datetime.now().date()
+if "selected_time" not in st.session_state:
+    st.session_state["selected_time"] = datetime.now().time()
+selected_date = st.sidebar.date_input("Date", value=st.session_state["selected_date"])
+selected_time = st.sidebar.time_input("Time", value=st.session_state["selected_time"])
+selected_datetime = datetime.combine(selected_date, selected_time)
+now = datetime.now()
+if selected_datetime > now:
+    st.sidebar.warning("Please select a valid timestamp before current time.")
+    st.stop()
+selected_start = int(selected_datetime.timestamp())
+selected_end = int(now.timestamp())
+
+
+st.sidebar.markdown("---")
+
+# --- Select LLM ---
+st.sidebar.markdown("### Select LLM for summarization")
+
 else:
     # vLLM-specific sidebar controls (for pages 1 and 2)
     model_list = get_models()
@@ -278,6 +456,7 @@ else:
         "Select LLM for summarization", multi_model_list
     )
 
+
     # --- Define model key requirements ---
     model_config = get_model_config()
     current_model_requires_api_key = model_requires_api_key(multi_model_name, model_config)
@@ -292,6 +471,21 @@ else:
         disabled=not current_model_requires_api_key,
     )
 
+# --- Define model key requirements ---
+model_config = get_model_config()
+current_model_requires_api_key = model_requires_api_key(multi_model_name, model_config)
+
+
+# --- API Key Input ---
+api_key = st.sidebar.text_input(
+    label="🔑 API Key",
+    type="password",
+    value=st.session_state.get("api_key", ""),
+    help="Enter your API key if required by the selected model",
+    disabled=not current_model_requires_api_key,
+)
+
+
     # Caption to show key requirement status
     if current_model_requires_api_key:
         st.sidebar.caption("⚠️ This model requires an API key.")
@@ -302,9 +496,45 @@ else:
     if current_model_requires_api_key and not api_key:
         st.sidebar.warning("🚫 Please enter an API key to use this model.")
 
+
 # --- 📊 vLLM Metric Summarizer Page ---
 if page == "📊 vLLM Metric Summarizer":
     st.markdown("<h1>📊 vLLM Metric Summarizer</h1>", unsafe_allow_html=True)
+
+# --- Report Generation ---
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Download Report")
+
+analysis_performed = st.session_state.get("analysis_performed", False)
+
+if not analysis_performed:
+    st.sidebar.warning("⚠️ Please analyze metrics first to generate a report.")
+
+report_format = st.sidebar.selectbox(
+    "Select Report Format", ["HTML", "PDF", "Markdown"], disabled=not analysis_performed
+)
+
+if analysis_performed:
+    if "download_button_clicked" not in st.session_state:
+        st.session_state.download_button_clicked = False
+
+    if st.sidebar.button("📥 Download Report"):
+        st.session_state.download_button_clicked = True
+
+    # Move the spinner_placeholder definition AFTER the button
+    spinner_placeholder = st.sidebar.empty()
+
+    if st.session_state.download_button_clicked:
+        with spinner_placeholder.container():
+            with st.spinner("Downloading report..."):
+                time.sleep(2)  # This line adds a 2-second delay
+                generate_report_and_download(report_format)
+        st.session_state.download_button_clicked = False
+
+# --- 📊 Metric Summarizer Page ---
+if page == "📊 Metric Summarizer":
+    st.markdown("<h1>📊 AI Model Metric Summarizer</h1>", unsafe_allow_html=True)
+
 
     # --- Analyze Button ---
     if st.button("🔍 Analyze Metrics"):
@@ -328,7 +558,16 @@ if page == "📊 vLLM Metric Summarizer":
                 st.session_state["summary"] = result["llm_summary"]
                 st.session_state["model_name"] = params["model_name"]
                 st.session_state["metric_data"] = result.get("metrics", {})
-                st.success("✅ Summary generated successfully!")
+                st.session_state["analysis_params"] = (
+                    params  # Store for report generation
+                )
+                st.session_state["analysis_performed"] = (
+                    True  # Mark that analysis was performed
+                )
+
+                # Force rerun to update the UI state (enable download button and hide warning)
+                st.rerun()
+
             except requests.exceptions.HTTPError as http_err:
                 clear_session_state()
                 handle_http_error(http_err.response, "Analysis failed")
@@ -366,6 +605,7 @@ if page == "📊 vLLM Metric Summarizer":
 
         with col2:
             st.markdown("### 📊 Metric Dashboard")
+
             metric_data = st.session_state.get("metric_data", {})
             
             # Get dynamic vLLM metrics and use the first 6 for display
@@ -378,63 +618,39 @@ if page == "📊 vLLM Metric Summarizer":
                 "Output Tokens Created",
                 "Inference Time (s)",
             ]
+
+            # Use the shared function to get metrics data
+            metric_data, metrics = get_metrics_data_and_list()
+
+            # Get calculated metrics from MCP
+            calculated_metrics = get_calculated_metrics_from_mcp(metric_data)
+
             cols = st.columns(3)
             for i, label in enumerate(metrics):
-                df = metric_data.get(label)
-                if df:
-                    try:
-                        values = [point["value"] for point in df]
-                        avg_val = sum(values) / len(values)
-                        max_val = max(values)
-                        with cols[i % 3]:
+                with cols[i % 3]:
+                    if label in calculated_metrics:
+                        calc_data = calculated_metrics[label]
+                        if (
+                            calc_data["avg"] is not None
+                            and calc_data["max"] is not None
+                        ):
                             st.metric(
                                 label=label,
-                                value=f"{avg_val:.2f}",
-                                delta=f"↑ Max: {max_val:.2f}",
+                                value=f"{calc_data['avg']:.2f}",
+                                delta=f"↑ Max: {calc_data['max']:.2f}",
                             )
-                    except Exception as e:
-                        with cols[i % 3]:
-                            st.metric(label=label, value="Error", delta=f"{e}")
-                else:
-                    with cols[i % 3]:
+                        else:
+                            st.metric(label=label, value="N/A", delta="No data")
+                    else:
                         st.metric(label=label, value="N/A", delta="No data")
 
             st.markdown("### 📈 Trend Over Time")
-            dfs = []
-            for label in ["GPU Usage (%)", "P95 Latency (s)"]:
-                raw_data = metric_data.get(label, [])
-                if raw_data:
-                    try:
-                        timestamps = [
-                            datetime.fromisoformat(p["timestamp"]) for p in raw_data
-                        ]
-                        values = [p["value"] for p in raw_data]
-                        df = pd.DataFrame({label: values}, index=timestamps)
-                        dfs.append(df)
-                    except Exception as e:
-                        st.warning(f"Chart error for {label}: {e}")
+            dfs = process_chart_data(metric_data)
             if dfs:
                 chart_df = pd.concat(dfs, axis=1).fillna(0)
                 st.line_chart(chart_df)
             else:
                 st.info("No data available to generate chart.")
-
-            if current_model_cost:
-                st.markdown("### 💸 Estimated Cost")
-                try:
-                    prompt_tokens = sum(p["value"] for p in metric_data.get("Prompt Tokens Created", []))
-                    output_tokens = sum(p["value"] for p in metric_data.get("Output Tokens Created", []))
-
-                    cost_prompt = prompt_tokens * current_model_cost["prompt_rate"]
-                    cost_output = output_tokens * current_model_cost["output_rate"]
-
-                    total_cost = cost_prompt + cost_output
-
-                    st.metric("Total Estimated Cost", f"${total_cost:.4f}")
-                    st.write(f"📨 Prompt Tokens: {prompt_tokens:.0f} → ${cost_prompt:.4f}")
-                    st.write(f"📝 Output Tokens: {output_tokens:.0f} → ${cost_output:.4f}")
-                except Exception as e:
-                    st.error(f"Could not estimate cost: {e}")
 
 # --- 🤖 Chat with Prometheus Page ---
 elif page == "🤖 Chat with Prometheus":
