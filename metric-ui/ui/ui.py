@@ -33,7 +33,7 @@ st.markdown(
 
 # --- Page Selector ---
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to:", ["📊 vLLM Metric Summarizer", "🤖 Chat with Prometheus", "🔧 OpenShift Metrics"])
+page = st.sidebar.radio("Go to:", ["vLLM Metric Summarizer", "Chat with Prometheus", "OpenShift Metrics"])
 
 
 # --- Shared Utilities ---
@@ -97,6 +97,17 @@ def get_openshift_metric_groups():
 
 
 @st.cache_data(ttl=300)
+def get_openshift_namespace_metric_groups():
+    """Fetch available OpenShift namespace-specific metric groups from API"""
+    try:
+        res = requests.get(f"{API_URL}/openshift-namespace-metric-groups")
+        return res.json()
+    except Exception as e:
+        st.sidebar.error(f"Error fetching namespace metric groups: {e}")
+        return []
+
+
+@st.cache_data(ttl=300)
 def get_openshift_namespaces():
     """Fetch available OpenShift namespaces from API"""
     try:
@@ -121,7 +132,8 @@ def get_vllm_metrics():
 def model_requires_api_key(model_id, model_config):
     """Check if a model requires an API key based on unified configuration"""
     model_info = model_config.get(model_id, {})
-    return model_info.get("requiresApiKey", False)
+    # Check for both requiresApiKey and external fields
+    return model_info.get("requiresApiKey", False) or model_info.get("external", False)
 
 
 def clear_session_state():
@@ -344,24 +356,23 @@ if current_model_requires_api_key:
     st.sidebar.caption("⚠️ This model requires an API key.")
 
 # Page-specific sidebar configuration
-if page == "🔧 OpenShift Metrics":
+if page == "OpenShift Metrics":
     # OpenShift-specific sidebar controls
     st.sidebar.markdown("### OpenShift Configuration")
     
-    # Get OpenShift metric groups and namespaces
-    openshift_metric_groups = get_openshift_metric_groups()
+    # Get OpenShift namespaces
     openshift_namespaces = get_openshift_namespaces()
     
     # 1. Analysis Scope Selection (Dropdown)
     scope_type = st.sidebar.selectbox(
         "Analysis Scope",
-        ["Cluster-wide", "Namespace-specific"],
+        ["Cluster-wide", "Namespace scoped"],
         help="Choose whether to analyze the entire cluster or a specific namespace"
     )
     
     # 2. Namespace Selection (Conditional - grayed out if cluster-wide)
     selected_openshift_namespace = None
-    if scope_type == "Namespace-specific":
+    if scope_type == "Namespace scoped":
         selected_openshift_namespace = st.sidebar.selectbox(
             "Select Namespace", 
             openshift_namespaces,
@@ -376,11 +387,20 @@ if page == "🔧 OpenShift Metrics":
             help="Namespace selection is disabled for cluster-wide analysis"
         )
     
-    # 3. Metric Categories Selection
+    # 3. Metric Categories Selection (Conditional based on scope)
+    if scope_type == "Namespace scoped":
+        # Get namespace-specific metric groups (excludes GPU & Accelerators)
+        openshift_metric_groups = get_openshift_namespace_metric_groups()
+        help_text = "Choose metric category to analyze for this namespace"
+    else:
+        # Get all metric groups (includes GPU & Accelerators)
+        openshift_metric_groups = get_openshift_metric_groups()
+        help_text = "Choose metric category to analyze across the entire cluster"
+    
     selected_metric_category = st.sidebar.selectbox(
         "Metric Category", 
         openshift_metric_groups,
-        help="Choose metric category to analyze"
+        help=help_text
     )
     
     st.sidebar.markdown("---")
@@ -541,8 +561,8 @@ if page == "📊 Metric Summarizer":
         st.sidebar.warning("🚫 Please enter an API key to use this model.")
 
 # --- 📊 vLLM Metric Summarizer Page ---
-if page == "📊 vLLM Metric Summarizer":
-    st.markdown("<h1>📊 vLLM Metric Summarizer</h1>", unsafe_allow_html=True)
+if page == "vLLM Metric Summarizer":
+    st.markdown("<h1>vLLM Metric Summarizer</h1>", unsafe_allow_html=True)
 
     # --- Analyze Button ---
     if st.button("🔍 Analyze Metrics"):
@@ -662,7 +682,7 @@ if page == "📊 vLLM Metric Summarizer":
                 st.info("No data available to generate chart.")
 
 # --- 🤖 Chat with Prometheus Page ---
-elif page == "🤖 Chat with Prometheus":
+elif page == "Chat with Prometheus":
     st.markdown("<h1>Chat with Prometheus</h1>", unsafe_allow_html=True)
     st.markdown(f"Currently selected namespace: **{selected_namespace}**")
     st.markdown(
@@ -704,8 +724,8 @@ elif page == "🤖 Chat with Prometheus":
                     st.error(f"Error: {e}")
 
 # --- 🔧 OpenShift Metrics Page ---
-elif page == "🔧 OpenShift Metrics":
-    st.markdown("<h1>🔧 OpenShift Metrics Dashboard</h1>", unsafe_allow_html=True)
+elif page == "OpenShift Metrics":
+    st.markdown("<h1>OpenShift Metrics Dashboard</h1>", unsafe_allow_html=True)
     
     # Display current configuration
     scope_display = scope_type + (f" ({selected_openshift_namespace})" if selected_openshift_namespace else "")
@@ -724,7 +744,7 @@ elif page == "🔧 OpenShift Metrics":
                 # Get parameters for OpenShift analysis
                 params = {
                     "metric_category": selected_metric_category,  # Specific category
-                    "scope": scope_type.lower().replace("-", "_"),  # "cluster_wide" or "namespace_specific"
+                    "scope": scope_type.lower().replace("-", "_").replace(" ", "_"),  # "cluster_wide" or "namespace_scoped"
                     "namespace": selected_openshift_namespace,  # None for cluster-wide
                     "start_ts": selected_start,
                     "end_ts": selected_end,
@@ -808,22 +828,22 @@ elif page == "🔧 OpenShift Metrics":
             # Determine metrics to show based on category selection and scope
             scope = st.session_state.get("openshift_scope", "cluster_wide")
             
-            if scope == "namespace_specific":
+            if scope == "namespace_scoped":
                 # Show namespace-specific metrics that actually have data
                 if metric_category == "Fleet Overview":
                     metrics_to_show = [
-                        "Namespace Pods Running", "Namespace Pods Failed", "Container CPU Usage",
-                        "Container Memory Usage", "Pod Restart Rate", "Container Network I/O"
+                        "Pods Running", "Pods Failed", "Container CPU Usage",
+                        "Container Memory Usage", "Pod Restart Rate", "Deployment Replicas Ready"
                     ]
                 elif metric_category == "Workloads & Pods":
                     metrics_to_show = [
                         "Pods Running", "Pods Pending", "Pods Failed",
                         "Pod Restarts (Rate)", "Container CPU Usage", "Container Memory Usage"
                     ]
-                elif metric_category == "GPU & Accelerators":
+                elif metric_category == "Compute & Resources":
                     metrics_to_show = [
-                        "High CPU Containers", "Memory Intensive Pods", "Container CPU Throttling",
-                        "Container Memory Pressure", "OOM Killed Containers", "High I/O Containers"
+                        "Container CPU Throttling", "Container Memory Failures", "OOM Events",
+                        "Container Processes", "Container Threads", "Container File Descriptors"
                     ]
                 elif metric_category == "Storage & Networking":
                     metrics_to_show = [
@@ -842,7 +862,7 @@ elif page == "🔧 OpenShift Metrics":
                 if metric_category == "Fleet Overview":
                     metrics_to_show = [
                         "Total Pods Running", "Total Pods Failed", "Cluster CPU Usage (%)",
-                        "Cluster Memory Usage (%)", "GPU Utilization (%)", "Nodes Ready"
+                        "Cluster Memory Usage (%)", "GPU Utilization (%)", "Deployment Replicas Ready"
                     ]
                 elif metric_category == "Workloads & Pods":
                     metrics_to_show = [
@@ -851,8 +871,8 @@ elif page == "🔧 OpenShift Metrics":
                     ]
                 elif metric_category == "GPU & Accelerators":
                     metrics_to_show = [
-                        "GPU Utilization (%)", "GPU Memory Used (%)", "GPU Temperature (°C)",
-                        "GPU Power Usage (Watts)", "GPU Total Energy (Joules)", "GPU Memory Clock (MHz)"
+                        "GPU Temperature (°C)", "GPU Memory Temperature (°C)", "GPU Utilization (%)",
+                        "GPU Power Usage (Watts)", "Total GPU Nodes", "GPU Cards by Vendor/Model"
                     ]
                 elif metric_category == "Storage & Networking":
                     metrics_to_show = [
@@ -918,13 +938,13 @@ elif page == "🔧 OpenShift Metrics":
             
             # Determine chart metrics based on category and scope
             chart_metrics = []
-            if scope == "namespace_specific":
+            if scope == "namespace_scoped":
                 if metric_category == "Fleet Overview":
                     chart_metrics = ["Namespace Pods Running", "Container CPU Usage", "Container Memory Usage"]
                 elif metric_category == "Workloads & Pods":
                     chart_metrics = ["Pods Running", "Container CPU Usage", "Pod Restarts (Rate)"]
-                elif metric_category == "GPU & Accelerators":
-                    chart_metrics = ["High CPU Containers", "Memory Intensive Pods", "Container CPU Throttling"]
+                elif metric_category == "Compute & Resources":
+                    chart_metrics = ["Container CPU Throttling", "Container Memory Failures", "OOM Events"]
                 elif metric_category == "Storage & Networking":
                     chart_metrics = ["Container Network Receive", "Container Network Transmit", "Filesystem Usage"]
                 elif metric_category == "Application Services":
@@ -935,7 +955,7 @@ elif page == "🔧 OpenShift Metrics":
                 elif metric_category == "Workloads & Pods":
                     chart_metrics = ["Pods Running", "Container CPU Usage", "Pod Restarts (Rate)"]
                 elif metric_category == "GPU & Accelerators":
-                    chart_metrics = ["GPU Utilization (%)", "GPU Memory Used (%)", "GPU Temperature (°C)"]
+                    chart_metrics = ["GPU Utilization (%)", "GPU Temperature (°C)", "GPU Power Usage (Watts)"]
                 elif metric_category == "Storage & Networking":
                     chart_metrics = ["Network Receive Rate", "Network Transmit Rate", "Storage I/O Rate"]
                 elif metric_category == "Application Services":
@@ -966,8 +986,8 @@ elif page == "🔧 OpenShift Metrics":
             
             # Analysis scope information
             st.markdown(f"### ℹ️ Analysis Details")
-            scope_text = "Cluster-wide" if scope == "cluster_wide" else "Namespace-specific"
-            namespace_info = f" | **Namespace:** {st.session_state.get('openshift_namespace', 'N/A')}" if scope == "namespace_specific" else ""
+            scope_text = "Cluster-wide" if scope == "cluster_wide" else "Namespace scoped"
+            namespace_info = f" | **Namespace:** {st.session_state.get('openshift_namespace', 'N/A')}" if scope == "namespace_scoped" else ""
             category_info = f" | **Category:** {metric_category}"
             
             st.info(f"**Scope:** {scope_text}{namespace_info}{category_info}")

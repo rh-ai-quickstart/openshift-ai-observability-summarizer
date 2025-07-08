@@ -112,11 +112,11 @@ def discover_openshift_metrics():
         "Fleet Overview": {
             # 6 most important cluster-wide metrics
             "Total Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
+            "Deployment Replicas Ready": "sum(kube_deployment_status_replicas_ready)",
             "Total Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
             "Cluster CPU Usage (%)": "100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)",
             "Cluster Memory Usage (%)": "100 - (sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes) * 100)",
             "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
-            "Nodes Ready": "sum(kube_node_status_condition{condition='Ready', status='true'})",
         },
         "Workloads & Pods": {
             # 6 most important pod/container metrics
@@ -129,13 +129,13 @@ def discover_openshift_metrics():
         },
 
         "GPU & Accelerators": {
-            # 6 GPU-specific metrics for AI workloads
-            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
-            "GPU Memory Used (%)": "avg(DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) * 100)",
+            # 🚀 GPU performance and hardware monitoring
             "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
+            "GPU Memory Temperature (°C)": "avg(DCGM_FI_DEV_MEMORY_TEMP)",
+            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
             "GPU Power Usage (Watts)": "avg(DCGM_FI_DEV_POWER_USAGE)",
-            "GPU Total Energy (Joules)": "avg(DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION)",
-            "GPU Memory Clock (MHz)": "avg(DCGM_FI_DEV_MEM_CLOCK)",
+            "Total GPU Nodes": "sum(gpu_operator_gpu_nodes_total)",
+            "GPU Cards by Vendor/Model": "sum(vendor_model:node_accelerator_cards:sum)",
         },
         "Storage & Networking": {
             # 6 storage and network metrics
@@ -853,7 +853,7 @@ def chat_metrics(req: ChatMetricsRequest):
             promql = re.sub(r"\{([^}]*)namespace=[^,}]*(,)?", r"{\1", promql)
             # Add the correct namespace. Handle cases where there are no existing labels or existing labels.
             if "{" in promql:
-                promql = promql.replace("{", f"{{namespace='{req.namespace}', ")
+                promql = promql.replace("{", f'{{namespace="{req.namespace}", ')
             else:
                 # If no existing curly braces, add them with the namespace
                 promql = f"{promql}{{namespace='{req.namespace}'}}"
@@ -1033,37 +1033,47 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
     """Fetch OpenShift metrics with optional namespace filtering"""
     headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
     
-    # Add namespace filter to the query if specified and not aggregated
+    # Add namespace filter to the query if specified
     if namespace:
-        # Don't add namespace filters to aggregated queries (sum, avg, etc.) 
-        # for cluster-wide analysis, only for namespace-specific analysis
-        if not query.startswith(('sum(', 'avg(', 'count(', 'max(', 'min(')):
-            # Check if query already has labels
-            if "{" in query:
-                # Insert namespace into existing label set
-                query = query.replace("{", f'{{namespace="{namespace}",')
-            else:
-                # Add namespace label to query without existing labels
-                query = f'{query}{{namespace="{namespace}"}}'
+        import re
+        
+        # Skip if namespace already exists in the query
+        if f'namespace="{namespace}"' in query:
+            pass  # Already has the correct namespace
         else:
-            # For aggregated queries, add namespace filter inside the aggregation
-            # Example: sum(kube_pod_status_phase{phase="Running"}) -> sum(kube_pod_status_phase{phase="Running", namespace="ns"})
-            import re
-            # Find the first metric name inside parentheses
-            match = re.search(r'(\w+\([^{(]+)(\{[^}]*\})?', query)
-            if match:
-                base_part = match.group(1)
-                labels_part = match.group(2) if match.group(2) else "{}"
-                
-                if labels_part == "{}":
-                    # No existing labels
-                    new_labels = f'{{namespace="{namespace}"}}'
-                else:
-                    # Has existing labels, add namespace
-                    new_labels = labels_part.replace("{", f'{{namespace="{namespace}",')
-                
-                # Replace the original pattern with the namespace-filtered version
-                query = query.replace(match.group(0), base_part + new_labels)
+            # Simple string replacements for common patterns
+            
+            # Pattern 1: sum(metric_name)
+            pattern1 = r'sum\(([a-zA-Z_:][a-zA-Z0-9_:]*)\)'
+            if re.search(pattern1, query):
+                query = re.sub(pattern1, f'sum(\\1{{namespace="{namespace}"}})', query)
+            
+            # Pattern 2: sum(rate(metric_name[5m]))
+            elif re.search(r'sum\(rate\([a-zA-Z_:][a-zA-Z0-9_:]*\[[^\]]+\]\)\)', query):
+                pattern2 = r'sum\(rate\(([a-zA-Z_:][a-zA-Z0-9_:]*)\[([^\]]+)\]\)\)'
+                query = re.sub(pattern2, f'sum(rate(\\1{{namespace="{namespace}"}}[\\2]))', query)
+            
+            # Pattern 3: rate(metric_name[5m])
+            elif re.search(r'rate\([a-zA-Z_:][a-zA-Z0-9_:]*\[[^\]]+\]\)', query):
+                pattern3 = r'rate\(([a-zA-Z_:][a-zA-Z0-9_:]*)\[([^\]]+)\]\)'
+                query = re.sub(pattern3, f'rate(\\1{{namespace="{namespace}"}}[\\2])', query)
+            
+            # Pattern 4: metric_name{existing_labels}
+            elif re.search(r'[a-zA-Z_:][a-zA-Z0-9_:]*\{[^}]*\}', query):
+                pattern4 = r'([a-zA-Z_:][a-zA-Z0-9_:]*)\{([^}]*)\}'
+                query = re.sub(pattern4, f'\\1{{namespace="{namespace}",\\2}}', query)
+            
+            # Pattern 5: simple metric_name (no labels)
+            elif re.search(r'^[a-zA-Z_:][a-zA-Z0-9_:]*$', query):
+                query = f'{query}{{namespace="{namespace}"}}'
+            
+            # Pattern 6: handle other aggregations (avg, count, etc.)
+            else:
+                for func in ['avg', 'count', 'max', 'min']:
+                    pattern = f'{func}\\(([a-zA-Z_:][a-zA-Z0-9_:]*)\\)'
+                    if re.search(pattern, query):
+                        query = re.sub(pattern, f'{func}(\\1{{namespace="{namespace}"}})', query)
+                        break
     
     response = requests.get(
         f"{PROMETHEUS_URL}/api/v1/query_range",
@@ -1131,8 +1141,8 @@ def build_openshift_prompt(metric_dfs, metric_category, namespace=None, scope_de
 # --- OpenShift Request Models ---
 class OpenShiftAnalyzeRequest(BaseModel):
     metric_category: str  # Specific category
-    scope: str  # "cluster_wide" or "namespace_specific"
-    namespace: Optional[str] = None  # Required if scope is "namespace_specific"
+    scope: str  # "cluster_wide" or "namespace_scoped"
+    namespace: Optional[str] = None  # Required if scope is "namespace_scoped"
     start_ts: int
     end_ts: int
     summarize_model_id: str
@@ -1141,9 +1151,9 @@ class OpenShiftAnalyzeRequest(BaseModel):
 
 class OpenShiftChatRequest(BaseModel):
     metric_category: str  # Specific category
-    scope: str  # "cluster_wide" or "namespace_specific"
+    scope: str  # "cluster_wide" or "namespace_scoped"
     question: str
-    namespace: Optional[str] = None  # Required if scope is "namespace_specific"
+    namespace: Optional[str] = None  # Required if scope is "namespace_scoped"
     start_ts: int
     end_ts: int
     summarize_model_id: str
@@ -1156,14 +1166,14 @@ def get_namespace_specific_metrics(category):
     namespace_aware_metrics = {
         "Fleet Overview": {
             # Metrics that work with namespace filtering
-            "Namespace Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
-            "Namespace Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
+            "Deployment Replicas Ready": "sum(kube_deployment_status_replicas_ready)",
+            "Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
+            "Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
             "Container CPU Usage": "sum(rate(container_cpu_usage_seconds_total[5m]))",
             "Container Memory Usage": "sum(container_memory_usage_bytes)",
             "Pod Restart Rate": "sum(rate(kube_pod_container_status_restarts_total[5m]))",
-            "Container Network I/O": "sum(rate(container_network_receive_bytes_total[5m]) + rate(container_network_transmit_bytes_total[5m]))",
         },
-        "Workloads & Pods": {
+                "Workloads & Pods": {
             # Pod and container metrics naturally have namespace labels
             "Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
             "Pods Pending": "sum(kube_pod_status_phase{phase='Pending'})",
@@ -1172,14 +1182,14 @@ def get_namespace_specific_metrics(category):
             "Container CPU Usage": "sum(rate(container_cpu_usage_seconds_total[5m]))",
             "Container Memory Usage": "sum(container_memory_usage_bytes)",
         },
-        "GPU & Accelerators": {
-            # For namespace-specific, show compute-related metrics instead of node-level GPU
-            "High CPU Containers": "count(rate(container_cpu_usage_seconds_total[5m]) > 0.5)",
-            "Memory Intensive Pods": "count(container_memory_usage_bytes > 1000000000)",
-            "Container CPU Throttling": "sum(rate(container_cpu_cfs_throttled_seconds_total[5m]))",
-            "Container Memory Pressure": "sum(rate(container_memory_failcnt[5m]))",
-            "OOM Killed Containers": "sum(rate(container_oom_events_total[5m]))",
-            "High I/O Containers": "sum(rate(container_fs_reads_total[5m]) + rate(container_fs_writes_total[5m]))",
+        "Compute & Resources": {
+            # Container-level compute and resource metrics
+            "Container CPU Throttling": "sum(container_cpu_cfs_throttled_seconds_total)",
+            "Container Memory Failures": "sum(container_memory_failcnt)",
+            "OOM Events": "sum(container_oom_events_total)",
+            "Container Processes": "sum(container_processes)",
+            "Container Threads": "sum(container_threads)",
+            "Container File Descriptors": "sum(container_file_descriptors)",
         },
         "Storage & Networking": {
             # Storage and network metrics that have namespace context
@@ -1194,7 +1204,7 @@ def get_namespace_specific_metrics(category):
             # Application metrics that work at namespace level
             "HTTP Request Rate": "sum(rate(http_requests_total[5m]))",
             "HTTP Error Rate (%)": "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) * 100",
-            "Service Endpoints": "sum(kube_endpoints_ready)",
+            "Available Endpoints": "sum(kube_endpoint_address_available)",
             "Container Processes": "sum(container_processes)",
             "Container File Descriptors": "sum(container_file_descriptors)",
             "Container Threads": "sum(container_threads)",
@@ -1210,6 +1220,14 @@ def get_namespace_specific_metrics(category):
 def list_openshift_metric_groups():
     """Get available OpenShift metric groups"""
     return list(get_openshift_metrics().keys())
+
+
+@app.get("/openshift-namespace-metric-groups")
+def list_openshift_namespace_metric_groups():
+    """Get available OpenShift metric groups for namespace-specific analysis"""
+    # Return only categories that have namespace-specific implementations
+    # These are the categories that make sense at namespace level
+    return ["Fleet Overview", "Workloads & Pods", "Compute & Resources", "Storage & Networking", "Application Services"]
 
 
 @app.get("/vllm-metrics")
@@ -1253,18 +1271,31 @@ def analyze_openshift(req: OpenShiftAnalyzeRequest):
     try:
         openshift_metrics = get_openshift_metrics()
         
-        # Fetch metrics from specific category
-        if req.metric_category not in openshift_metrics:
-            raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
-        
-        # For namespace-specific analysis, use metrics that actually have namespace labels
-        if req.scope == "namespace_specific" and req.namespace:
-            metrics_to_fetch = get_namespace_specific_metrics(req.metric_category)
+        # Validate metric category based on scope
+        if req.scope == "namespace_scoped" and req.namespace:
+            # For namespace-scoped analysis, check against namespace-specific metrics first
+            namespace_metrics = get_namespace_specific_metrics(req.metric_category)
+            if not namespace_metrics:
+                # Fall back to cluster-wide metrics if no namespace-specific metrics available
+                if req.metric_category not in openshift_metrics:
+                    raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+                metrics_to_fetch = openshift_metrics[req.metric_category]
+            else:
+                metrics_to_fetch = namespace_metrics
         else:
+            # For cluster-wide analysis, check against cluster-wide metrics
+            if req.metric_category not in openshift_metrics:
+                raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
             metrics_to_fetch = openshift_metrics[req.metric_category]
         
-        # Determine namespace for fetching based on scope
-        namespace_for_query = req.namespace if req.scope == "namespace_specific" else None
+        # Determine namespace for fetching based on scope and available metrics
+        # Don't use namespace filtering if we fell back to cluster-wide metrics (like GPU)
+        namespace_for_query = None
+        if req.scope == "namespace_scoped" and req.namespace:
+            # Only apply namespace filtering if we have actual namespace-specific metrics
+            original_ns_metrics = get_namespace_specific_metrics(req.metric_category)
+            if original_ns_metrics:
+                namespace_for_query = req.namespace
         
         metric_dfs = {}
         for label, query in metrics_to_fetch.items():
@@ -1277,8 +1308,13 @@ def analyze_openshift(req: OpenShiftAnalyzeRequest):
         
         # Build analysis prompt
         scope_description = f"{req.scope.replace('_', ' ').title()}"
-        if req.scope == "namespace_specific" and req.namespace:
-            scope_description += f" ({req.namespace})"
+        if req.scope == "namespace_scoped" and req.namespace:
+            # Check if we fell back to cluster-wide metrics
+            original_ns_metrics = get_namespace_specific_metrics(req.metric_category)
+            if original_ns_metrics:
+                scope_description += f" ({req.namespace})"
+            else:
+                scope_description += f" ({req.namespace}) - Note: {req.metric_category} metrics are cluster-wide"
             
         prompt = build_openshift_prompt(metric_dfs, req.metric_category, namespace_for_query, scope_description)
         summary = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
@@ -1324,13 +1360,25 @@ def chat_openshift(req: OpenShiftChatRequest):
     try:
         openshift_metrics = get_openshift_metrics()
         
-        # Fetch metrics from specific category
-        if req.metric_category not in openshift_metrics:
-            raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
-        metrics_to_fetch = openshift_metrics[req.metric_category]
+        # Validate metric category based on scope
+        if req.scope == "namespace_scoped" and req.namespace:
+            # For namespace-scoped analysis, check against namespace-specific metrics first
+            namespace_metrics = get_namespace_specific_metrics(req.metric_category)
+            if not namespace_metrics:
+                # Fall back to cluster-wide metrics if no namespace-specific metrics available
+                if req.metric_category not in openshift_metrics:
+                    raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+                metrics_to_fetch = openshift_metrics[req.metric_category]
+            else:
+                metrics_to_fetch = namespace_metrics
+        else:
+            # For cluster-wide analysis, check against cluster-wide metrics
+            if req.metric_category not in openshift_metrics:
+                raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+            metrics_to_fetch = openshift_metrics[req.metric_category]
         
         # Determine namespace for fetching based on scope
-        namespace_for_query = req.namespace if req.scope == "namespace_specific" else None
+        namespace_for_query = req.namespace if req.scope == "namespace_scoped" else None
         
         metric_dfs = {}
         # Fetch metrics for the specified category
@@ -1344,7 +1392,7 @@ def chat_openshift(req: OpenShiftChatRequest):
         
         # Build scope description
         scope_description = f"{req.scope.replace('_', ' ').title()}"
-        if req.scope == "namespace_specific" and req.namespace:
+        if req.scope == "namespace_scoped" and req.namespace:
             scope_description += f" ({req.namespace})"
         
         # Build metrics summary for the LLM
@@ -1377,7 +1425,7 @@ Provide a concise technical response focusing on operational insights and recomm
                 # Add namespace filtering to PromQL if specified and not already present
                 if promql and req.namespace and "namespace=" not in promql:
                     if "{" in promql:
-                        promql = promql.replace("{", f'{{namespace="{req.namespace}",')
+                        promql = promql.replace("{", f'{{namespace="{req.namespace}", ')
                     else:
                         promql = f'{promql}{{namespace="{req.namespace}"}}'
                 
@@ -1395,3 +1443,52 @@ Provide a concise technical response focusing on operational insights and recomm
         raise HTTPException(
             status_code=500, detail="Please check your API Key or try again later."
         )
+
+
+@app.post("/debug-query")
+def debug_query(req: dict):
+    """Debug query rewriting for namespace filtering"""
+    query = req.get("query", "")
+    namespace = req.get("namespace", "")
+    
+    print(f"Original query: {query}")
+    print(f"Namespace: {namespace}")
+    
+    # Simulate the query rewriting logic from fetch_openshift_metrics
+    if namespace:
+        if not query.startswith(('sum(', 'avg(', 'count(', 'max(', 'min(')):
+            # Check if query already has labels
+            if "{" in query:
+                # Insert namespace into existing label set
+                query = query.replace("{", f'{{namespace="{namespace}",')
+            else:
+                # Add namespace label to query without existing labels
+                query = f'{query}{{namespace="{namespace}"}}'
+        else:
+            # For aggregated queries, add namespace filter inside the aggregation
+            import re
+            # Find the first metric name inside parentheses
+            match = re.search(r'(\w+\([^{(]+)(\{[^}]*\})?', query)
+            print(f"Regex match: {match}")
+            if match:
+                base_part = match.group(1)
+                labels_part = match.group(2) if match.group(2) else "{}"
+                print(f"Base part: {base_part}")
+                print(f"Labels part: {labels_part}")
+                
+                if labels_part == "{}":
+                    # No existing labels
+                    new_labels = f'{{namespace="{namespace}"}}'
+                else:
+                    # Has existing labels, add namespace
+                    new_labels = labels_part.replace("{", f'{{namespace="{namespace}",')
+                print(f"New labels: {new_labels}")
+                
+                # Replace the original pattern with the namespace-filtered version
+                old_pattern = match.group(0)
+                new_pattern = base_part + new_labels
+                print(f"Replacing '{old_pattern}' with '{new_pattern}'")
+                query = query.replace(old_pattern, new_pattern)
+    
+    print(f"Final query: {query}")
+    return {"original": req.get("query", ""), "rewritten": query, "namespace": namespace}
