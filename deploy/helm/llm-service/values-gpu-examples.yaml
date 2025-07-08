@@ -1,0 +1,83 @@
+# Example configurations for different GPU types
+# This file demonstrates how to configure the LLM service for different accelerators
+
+---
+# NVIDIA GPU Configuration (Default)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-gpu-config
+data:
+  values.yaml: |
+    global:
+      accelerator:
+        resourceType: nvidia.com/gpu
+    
+    # Enable a model for NVIDIA GPU
+    models:
+      llama-3-2-3b-instruct:
+        enabled: true
+        
+---
+# Habana Gaudi Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: habana-gaudi-config
+data:
+  values.yaml: |
+    global:
+      accelerator:
+        resourceType: habana.ai/gaudi
+    
+    # Enable a model for Habana Gaudi
+    models:
+      llama-3-1-8b-instruct:
+        enabled: true
+        
+---
+# AMD GPU Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amd-gpu-config
+data:
+  values.yaml: |
+    global:
+      accelerator:
+        resourceType: amd.com/gpu
+    
+    # Enable a model for AMD GPU
+    models:
+      llama-3-2-1b-instruct:
+        enabled: true
+
+---
+# Example: Override using Helm command line
+# 
+# For NVIDIA (default):
+# helm install my-llm ./llm-service -f values-gpu.yaml
+#
+# For Habana Gaudi:
+# helm install my-llm ./llm-service -f values-gpu.yaml \
+#   --set global.accelerator.resourceType=habana.ai/gaudi
+#
+# For AMD GPU:
+# helm install my-llm ./llm-service -f values-gpu.yaml \
+#   --set global.accelerator.resourceType=amd.com/gpu
+
+---
+# Example: Using with Makefile
+# 
+# Update the Makefile to support different accelerators:
+# 
+# ACCELERATOR_TYPE ?= nvidia.com/gpu
+# 
+# install-gpu-accelerator:
+#   helm upgrade --install $(RAG_CHART) $(RAG_CHART) \
+#     --set global.accelerator.resourceType=$(ACCELERATOR_TYPE) \
+#     -f llm-service/values-gpu.yaml
+#
+# Usage:
+# make install-gpu-accelerator ACCELERATOR_TYPE=habana.ai/gaudi
+# make install-gpu-accelerator ACCELERATOR_TYPE=amd.com/gpu 

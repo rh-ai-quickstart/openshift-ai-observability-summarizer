@@ -39,15 +39,18 @@ volumeMounts:
 # For e.g., to add a new model add the following block and it will append to the list of models defined in the llm-service
 
 # global:
+#   # Configurable accelerator type - supports nvidia.com/gpu, habana.ai/gaudi, amd.com/gpu
+#   accelerator:
+#     resourceType: nvidia.com/gpu
 #   models:
 #     llama-3-2-3b-instruct:
 #       id: meta-llama/Llama-3.2-3B-Instruct
 #       enabled: true
 #       resources:
 #         limits:
-#           nvidia.com/gpu: "1"
+#           "{{ .Values.global.accelerator.resourceType }}": "1"
 #       tolerations:
-#       - key: "nvidia.com/gpu"
+#       - key: "{{ .Values.global.accelerator.resourceType }}"
 #         operator: Exists
 #         effect: NoSchedule
 #       args:
@@ -63,7 +66,7 @@ volumeMounts:
 #       enabled: true
 #       registerShield: true
 #       tolerations:
-#       - key: "nvidia.com/gpu"
+#       - key: "{{ .Values.global.accelerator.resourceType }}"
 #         operator: Exists
 #         effect: NoSchedule      
 #       args:
@@ -74,9 +77,9 @@ volumeMounts:
 #       enabled: true      
 #       resources:
 #         limits:
-#           nvidia.com/gpu: "1"
+#           "{{ .Values.global.accelerator.resourceType }}": "1"
 #       tolerations:
-#       - key: "nvidia.com/gpu"
+#       - key: "{{ .Values.global.accelerator.resourceType }}"
 #         operator: Exists
 #         effect: NoSchedule
 #       args:
@@ -92,9 +95,9 @@ volumeMounts:
 #       enabled: true      
 #       resources:
 #         limits:
-#           nvidia.com/gpu: "1"
+#           "{{ .Values.global.accelerator.resourceType }}": "1"
 #       tolerations:
-#       - key: "nvidia.com/gpu"
+#       - key: "{{ .Values.global.accelerator.resourceType }}"
 #         operator: Exists
 #         effect: NoSchedule
 #       args:

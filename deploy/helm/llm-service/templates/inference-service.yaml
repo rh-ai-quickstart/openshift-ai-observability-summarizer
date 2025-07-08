@@ -30,11 +30,11 @@ spec:
         limits:
           cpu: "2"
           memory: 8Gi
-          nvidia.com/gpu: "1"
+          {{ $root.Values.global.accelerator.resourceType }}: "1"
         requests:
           cpu: "1"
           memory: 4Gi
-          nvidia.com/gpu: "1"
+          {{ $root.Values.global.accelerator.resourceType }}: "1"
       {{- end }}
       runtime: {{ $root.Values.servingRuntime.name }}
       storageUri: pvc://{{ $key }}/

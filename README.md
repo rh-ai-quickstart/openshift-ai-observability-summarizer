@@ -77,6 +77,20 @@ To install with alerting configured, include the `ALERTS` flag:
 make install NAMESPACE=$NAMESPACE ALERTS=TRUE
 ```
 
+For different accelerator types (GPU, Gaudi, AMD), use the `ACCELERATOR_TYPE` parameter:
+```bash
+# NVIDIA GPUs (default)
+make install NAMESPACE=$NAMESPACE DEVICE=gpu
+OR
+make install NAMESPACE=$NAMESPACE DEVICE=gpu ACCELERATOR_TYPE=nvidia.com/gpu
+
+# Habana Gaudi processors  
+make install NAMESPACE=$NAMESPACE DEVICE=gpu ACCELERATOR_TYPE=habana.ai/gaudi
+
+# AMD GPUs
+make install NAMESPACE=$NAMESPACE DEVICE=gpu ACCELERATOR_TYPE=amd.com/gpu
+```
+
 This will:
 
 1. Deploy Prometheus

@@ -1,7 +1,13 @@
+# Global configuration for GPU resource type
+global:
+  accelerator:
+    # Supported values: nvidia.com/gpu, habana.ai/gaudi, amd.com/gpu
+    resourceType: nvidia.com/gpu
+
 servingRuntime:
   image: quay.io/ecosystem-appeng/vllm:openai-v0.8.5
   recommendedAccelerators:
-    - nvidia.com/gpu
+    - "{{ .Values.global.accelerator.resourceType }}"
 
 models:
   llama-3-2-1b-instruct:
@@ -52,7 +58,7 @@ models:
     inferenceService:
       resources:
         limits:
-          nvidia.com/gpu: "1"
+          "{{ .Values.global.accelerator.resourceType }}": "1"
       args:
         - --max-model-len
         - "14336"
@@ -69,7 +75,7 @@ models:
     inferenceService:
       resources:
         limits:
-          nvidia.com/gpu: "4"
+          "{{ .Values.global.accelerator.resourceType }}": "4"
       args:
         - --tensor-parallel-size
         - "4"
