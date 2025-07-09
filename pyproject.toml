@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "metric_ui"
+version = "0.1.0"
+description = "AI Observability Metric Summarizer"
+requires-python = ">=3.11"
+
+dependencies = [
+    "requests",
+    "llama-stack-client",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]

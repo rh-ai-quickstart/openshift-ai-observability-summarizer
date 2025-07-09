@@ -23,10 +23,6 @@ else:
 CA_BUNDLE_PATH = "/etc/pki/ca-trust/extracted/pem/ca-bundle.crt"
 verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 
-# --- LLAMASTACK SETUP ---
-client = LlamaStackClient(base_url=LLAMA_STACK_URL)
-llm = next(m for m in client.models.list() if m.model_type == "llm")
-
 # pull active alerts from Alertmanager
 def get_active_alerts() -> list[dict[str, Any]]:
     headers = {"Authorization": f"Bearer {AUTH_TOKEN}"}
@@ -61,6 +57,11 @@ def send_slack_message(payload: dict[str, Any]) -> bool:
     
 # generate a description based on the alert labels
 def generate_description(labels: str) -> str:
+
+    # --- LLAMASTACK SETUP ---
+    client = LlamaStackClient(base_url=LLAMA_STACK_URL)
+    llm = next(m for m in client.models.list() if m.model_type == "llm")
+
     labels = json.dumps(labels)
     prompt = """
     You are an AI assistant designed to generate concise, informative, and *technically detailed* Slack message descriptions for OpenShift vLLM alerts. Your task is to analyze the provided alert data, *especially the 'expr' and 'for' fields*, and create a clear, actionable description of the problem.
