@@ -197,6 +197,19 @@ Access via the OpenShift route: `oc get route ui`
 - **Storage & Networking**: I/O rates, network throughput
 - **Application Services**: HTTP metrics, endpoints, errors
 
+#### Generate Reports
+You can generate detailed metric reports in multiple formats directly from the dashboard:
+
+- **HTML Report**: Interactive and visually rich, suitable for sharing or archiving.
+- **PDF Report**: Print-ready, ideal for documentation or compliance needs.
+- **Markdown Report**: Lightweight, easy to edit or integrate into wikis and documentation.
+
+To generate a report:
+1. Complete your analysis in either the vLLM or OpenShift dashboard.
+2. Click the **Download Report** button.
+3. Choose your preferred format (HTML, PDF, or Markdown).
+4. The report will be generated and downloaded automatically, containing charts, summaries, and key insights from your session.
+
 ---
 
 ## Powered By
