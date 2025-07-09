@@ -128,7 +128,18 @@ NAME              HOST/PORT                                                     
 metric-ui-route   metric-ui-route-llama-1.apps.tsisodia-spark.2vn8.p1.openshiftapps.com          metric-ui-svc   8501   edge/Redirect   None
 ```
 
-![UI](docs/img/ui-1.png)
+### Openshift Summarizer Dashboard 
+![UI](docs/img/os.png)
+
+### vLLM SUmmarizer Dashboard 
+![UI](docs/img/vllm.png)
+
+### Chat with Prometheus 
+![UI](docs/img/chat.png)
+
+### Report Generated 
+![UI](docs/img/report.png)
+
 
 To uninstall:
 
