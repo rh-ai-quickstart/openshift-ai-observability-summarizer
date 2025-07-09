@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: quay.io/ecosystem-appeng/metric-mcp
-  tag: ts10
+  tag: ts11
 
 service:
   type: ClusterIP
