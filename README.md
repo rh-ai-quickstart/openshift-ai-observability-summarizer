@@ -46,7 +46,6 @@ It helps teams **monitor vLLM deployments, OpenShift fleet health, and GPU utili
 ### **Core backend components**
 - **llm-service**: LLM inference services (Llama models)
 - **llama-stack**: LlamaStack backend API
-- **pgvector**: Vector database for embeddings
 
 ### **Monitoring Stack**
 - **Prometheus/Thanos**: Collects AI model and OpenShift metrics
