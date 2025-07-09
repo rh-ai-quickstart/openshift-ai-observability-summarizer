@@ -118,8 +118,8 @@ make uninstall NAMESPACE=metric-summarizer
 
 ## Local Development via Port-Forwarding
 
-- In order to develop locally faster on the MCP/UI you can leverage port-forwarding to llamastack, model and thanos. 
-- Pre-requisites: you have a deployment on the cluster already.
+In order to develop locally faster on the MCP/UI you can leverage port-forwarding to llamastack, model and thanos. 
+Pre-requisites: you have a deployment on the cluster already.
 
 1. Port-Forward to llamastack, model & thanos:
     1. `oc port-forward pod/llamastack 8321`
