@@ -41,6 +41,25 @@ It helps teams **monitor vLLM deployments, OpenShift fleet health, and GPU utili
 
 ---
 
+## GPU Monitoring
+
+### **DCGM Metrics Support**
+Automatically discovers and monitors:
+- **Temperature**: GPU core and memory temperature (°C)
+- **Power**: Real-time power consumption (Watts)  
+- **Memory**: GPU memory usage (GB) and utilization (%)
+- **Energy**: Total energy consumption (Joules)
+- **Performance**: GPU utilization, clock speeds (MHz)
+
+### **Fleet View**
+Monitor GPU health across your entire OpenShift cluster:
+- Cluster-wide GPU temperature averaging
+- Power consumption trends
+- Memory usage patterns
+- Vendor/model detection and inventory
+
+---
+
 ## Architecture
 
 ### **Core backend components**
@@ -194,20 +213,3 @@ We welcome contributions and feedback!
 Please open issues or submit PRs to improve this dashboard or expand model compatibility.
 
 ---
-
-## GPU Monitoring
-
-### **DCGM Metrics Support**
-Automatically discovers and monitors:
-- **Temperature**: GPU core and memory temperature (°C)
-- **Power**: Real-time power consumption (Watts)  
-- **Memory**: GPU memory usage (GB) and utilization (%)
-- **Energy**: Total energy consumption (Joules)
-- **Performance**: GPU utilization, clock speeds (MHz)
-
-### **Fleet View**
-Monitor GPU health across your entire OpenShift cluster:
-- Cluster-wide GPU temperature averaging
-- Power consumption trends
-- Memory usage patterns
-- Vendor/model detection and inventory
