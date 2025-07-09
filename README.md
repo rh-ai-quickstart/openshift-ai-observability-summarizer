@@ -116,6 +116,29 @@ make uninstall NAMESPACE=metric-summarizer
 
 ---
 
+## Local Development via Port-Forwarding
+
+- In order to develop locally faster on the MCP/UI you can leverage port-forwarding to llamastack, model and thanos. 
+- Pre-requisites: you have a deployment on the cluster already.
+
+1. Port-Forward to llamastack, model & thanos:
+    1. `oc port-forward pod/llamastack 8321`
+    1. `oc port-forward pod/model 8080`
+    1. `oc port-forward pod/thanos-querier 9090 -n openshift-monitoring`
+1. If testing mcp, navigate to mcp/ and run -- `python3 -m uvicorn mcp:app --host 0.0.0.0 --port 8000 --reload` and you can use curl commands to test the apis
+   1. Configure **MODEL_CONFIG** env variable `export MODEL_CONFIG='{"meta-llama/Llama-3.2-3B-Instruct":{"external":false,"requiresApiKey":false,"serviceName":"llama-3-2-3b-instruct"},"openai/gpt-4o-mini":{"external":true,"requiresApiKey":true,"serviceName":null,"provider":"openai","apiUrl":"https://api.openai.com/v1/chat/completions","modelName":"gpt-4o-mini", "cost": {"prompt_rate": 0.00000015, "output_rate": 0.0000006}}}'`
+   2. This may change, see `deploy/helm/Makefile` for the latest version. 
+1. And then to test the ui, navigate to ui/ and run -- `streamlit run ui.py`
+
+### Macos weasyprint install
+
+In order to run the mcp locally you'll need to install weasyprint:
+1. Install via brew `brew install weasyprint`
+2. Ensure installation `weasyprint --version`
+3. Set **DYLD_FALLBACK_LIBRARY_PATH** `export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH`
+
+---
+
 ## Powered By
 
 - [OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)
