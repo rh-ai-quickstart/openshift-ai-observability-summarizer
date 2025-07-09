@@ -3,6 +3,7 @@ import json
 import os
 import datetime
 from llama_stack_client import LlamaStackClient
+from typing import Any
 
 # --- CONFIG ---
 ALERTMANAGER_URL = os.getenv("ALERTMANAGER_URL", "http://localhost:9093")
@@ -27,7 +28,7 @@ client = LlamaStackClient(base_url=LLAMA_STACK_URL)
 llm = next(m for m in client.models.list() if m.model_type == "llm")
 
 # pull active alerts from Alertmanager
-def get_active_alerts():
+def get_active_alerts() -> list[dict[str, Any]]:
     headers = {"Authorization": f"Bearer {AUTH_TOKEN}"}
     endpoint = f"{ALERTMANAGER_URL}/api/v2/alerts"
     verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
@@ -42,9 +43,9 @@ def get_active_alerts():
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error querying Alertmanager: {e}")
-        return None
+        return []
 
-def send_slack_message(payload):
+def send_slack_message(payload: dict[str, Any]) -> bool:
     headers = {"Content-Type": "application/json"}
     if SLACK_WEBHOOK_URL == "":
         print("No Slack URL found")
@@ -59,7 +60,7 @@ def send_slack_message(payload):
         return False
     
 # generate a description based on the alert labels
-def generate_description(labels):
+def generate_description(labels: str) -> str:
     labels = json.dumps(labels)
     prompt = """
     You are an AI assistant designed to generate concise, informative, and *technically detailed* Slack message descriptions for OpenShift vLLM alerts. Your task is to analyze the provided alert data, *especially the 'expr' and 'for' fields*, and create a clear, actionable description of the problem.
@@ -82,10 +83,10 @@ def generate_description(labels):
         stream=False
     )
 
-    return response.completion_message.content
+    return str(response.completion_message.content)
     
 # formats slack message for a single alert
-def format_slack_message(alert_data):
+def format_slack_message(alert_data: dict[str, Any]) -> dict[str, Any]:
     alertname = alert_data['labels'].get('alertname', 'N/A')
     severity = alert_data['labels'].get('severity', 'info').upper()
     generator_url = alert_data.get('generatorURL', 'No generator URL.')
@@ -126,37 +127,41 @@ def format_slack_message(alert_data):
     return payload
 
 # filters Alertmanager alerts by name + time and sends a slack message for each resulting alert
-def process_vllm_alerts_and_notify(alerts, time_window=TIME_WINDOW):
+def process_vllm_alerts_and_notify(alerts: list[dict[str, Any]], time_window: int = TIME_WINDOW) -> None:
     if alerts:
-        now_utc = datetime.datetime.now(datetime.timezone.utc) 
-        time_threshold = now_utc - datetime.timedelta(seconds=time_window)
-
         found = False
         for alert in alerts:
-            alertname = alert['labels'].get('alertname', '')
-            starts_at_iso = alert.get('startsAt')
-            test_alert_label = alert['labels'].get('test_alert', 'false').lower()
-
-            # filter by VLLM alerts
-            if alertname.startswith("VLLM") and test_alert_label != 'true':
-                
-                if starts_at_iso:
-                    try:
-                        # filter by time, only notify on alerts that started within given time window
-                        alert_start_time_utc = datetime.datetime.fromisoformat(starts_at_iso.replace('Z', '+00:00'))
-                        if alert_start_time_utc >= time_threshold:
-                            print(f"\n--- Found NEW relevant VLLM Alert: {alertname} ---")
-                            slack_payload = format_slack_message(alert)
-                            send_slack_message(slack_payload)
-                            found = True
-                        else:
-                            print(f"VLLM alert '{alertname}' is active but started too long ago ({alert_start_time_utc}). Skipping.")
-                    except ValueError:
-                        print(f"Warning: Could not parse startsAt time for alert '{alertname}': {starts_at_iso}")
+            if is_new_vllm_alert(alert, time_window):
+                alertname = alert['labels'].get('alertname', '')
+                print(f"\n--- Found NEW relevant VLLM Alert: {alertname} ---")
+                slack_payload = format_slack_message(alert)
+                send_slack_message(slack_payload)
+                found = True
         if not found:
             print("No new alerts found")
     else:
         print("No alerts to process")
+
+# check if alert is a new VLLM alert that started within the given time window
+def is_new_vllm_alert(alert: dict[str, Any], time_window: int = TIME_WINDOW) -> bool:
+    alertname = alert['labels'].get('alertname', '')
+    starts_at_iso = alert.get('startsAt')
+    test_alert_label = alert['labels'].get('test_alert', 'false').lower()
+    
+    if not alertname.startswith("VLLM") or test_alert_label == 'true':
+        return False
+    
+    if starts_at_iso:
+        try:
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            time_threshold = now_utc - datetime.timedelta(seconds=time_window)
+            alert_start_time_utc = datetime.datetime.fromisoformat(starts_at_iso.replace('Z', '+00:00'))
+            return alert_start_time_utc >= time_threshold
+        except ValueError:
+            print(f"Warning: Could not parse startsAt time for alert '{alertname}': {starts_at_iso}")
+            return False
+    
+    return False
 
 def generate_test():
     alert = json.loads('{"alertname": "VLLMHighAverageInferenceTime", "container": "kserve-container", "endpoint": "vllm-serving-runtime-metrics", "engine": "0", "expr": "rate(vllm:request_inference_time_seconds_sum[5m]) / rate(vllm:request_inference_time_seconds_count[5m]) > 2", "for": "5m", "instance": "10.129.2.73:8080", "job": "llama-3-2-3b-instruct-metrics", "model_name": "meta-llama/Llama-3.2-3B-Instruct", "namespace": "m3", "pod": "llama-3-2-3b-instruct-predictor-9fd74489-c6dwt", "prometheus": "openshift-user-workload-monitoring/user-workload", "service": "llama-3-2-3b-instruct-metrics", "severity": "warning"}')
