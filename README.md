@@ -13,28 +13,28 @@ It helps teams **monitor vLLM deployments, OpenShift fleet health, and GPU utili
 
 ## Features
 
-### **vLLM Monitoring**
+### **1. vLLM Monitoring**
 - Visualize core vLLM metrics (GPU usage, latency, request volume, etc.)
 - Dynamic DCGM GPU metrics discovery (temperature, power, memory)
 - Real-time performance analysis and anomaly detection
 
-### **OpenShift Fleet Monitoring** 
+### **2. OpenShift Fleet Monitoring** 
 - Cluster-wide and namespace-scoped metric analysis
 - GPU & Accelerators fleet monitoring with comprehensive DCGM metrics
 - Workloads, Storage, Networking, and Application Services monitoring
 - Enhanced unit formatting (°C, Watts, GB, MB/s, etc.)
 
-### **AI-Powered Insights**
+### **3. AI-Powered Insights**
 - Generate summaries using fine-tuned Llama models
 - Chat with an MLOps assistant based on real metrics
 - Support for both internal and external LLM models
 
-### **Report Generation**
+### **4. Report Generation**
 - Export analysis as HTML, PDF, or Markdown reports
 - Time-series charts and metric visualizations
 - Automated metric calculations and trend analysis
 
-### **Alerting & Notifications**
+### **5. Alerting & Notifications**
 - Set up alerts for vLLM models and OpenShift metrics  
 - Slack notifications when alerts are triggered
 - Custom alert thresholds and conditions
@@ -43,9 +43,7 @@ It helps teams **monitor vLLM deployments, OpenShift fleet health, and GPU utili
 
 ## Architecture
 
-### **Backend Services Only Deployment**
-The deployment now focuses on backend services for maximum flexibility:
-
+### **Core backend components**
 - **llm-service**: LLM inference services (Llama models)
 - **llama-stack**: LlamaStack backend API
 - **pgvector**: Vector database for embeddings
@@ -91,7 +89,7 @@ brew install yq
 cd deploy/helm
 ```
 
-# Install backend services only
+# Install the AI Summarizer
 make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
 
 # With GPU tolerations
