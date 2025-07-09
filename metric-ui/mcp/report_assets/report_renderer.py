@@ -5,10 +5,17 @@ Handles report generation for different formats with proper separation of concer
 
 import os
 import markdown
-from weasyprint import HTML, CSS
-from weasyprint.text.fonts import FontConfiguration
 from typing import List, Dict, Any, Optional
 import report_assets.report_config as report_config
+
+# Optional weasyprint import for PDF generation
+try:
+    from weasyprint import HTML, CSS
+    from weasyprint.text.fonts import FontConfiguration
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
+    print("WeasyPrint not available. PDF generation will be disabled.")
 
 # Import models from mcp module
 from pydantic import BaseModel
@@ -208,17 +215,32 @@ def generate_markdown_report(report_schema: ReportSchema) -> str:
 
 def generate_pdf_report(report_schema: ReportSchema) -> bytes:
     """Generate PDF report from unified schema"""
-
-    html_content = generate_html_report(report_schema)
-    css_string = load_report_css()
-    font_config = FontConfiguration()
-
-    html = HTML(string=html_content, base_url=os.path.abspath("report_assets"))
-    css = CSS(string=css_string)
+    
+    if not WEASYPRINT_AVAILABLE:
+        # Fallback to HTML when weasyprint is not available
+        html_content = generate_html_report(report_schema)
+        print("WeasyPrint not available. Returning HTML content instead of PDF.")
+        return html_content.encode("utf-8")
 
     try:
+        html_content = generate_html_report(report_schema)
+        css_string = load_report_css()
+        font_config = FontConfiguration()
+
+        # Use absolute path for base_url
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        html = HTML(string=html_content, base_url=base_dir)
+        css = CSS(string=css_string)
+
+        print("Generating PDF with WeasyPrint...")
         pdf_bytes = html.write_pdf(stylesheets=[css], font_config=font_config)
+        print("PDF generated successfully!")
         return pdf_bytes
     except Exception as e:
         print(f"Error generating PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return HTML as fallback
+        html_content = generate_html_report(report_schema)
         return html_content.encode("utf-8")

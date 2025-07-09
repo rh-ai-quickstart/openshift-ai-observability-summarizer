@@ -83,7 +83,7 @@ helm_pgvector_args = \
 help:
 	@echo "Available targets:"
 	@echo "  list-models   - List available models"
-	@echo "  install       - Install the RAG deployment (creates namespace, secrets, and deploys Helm chart)"
+	@echo "  install       - Install backend services only (llm-service, llama-stack, pgvector)"
 	@echo "  install-ingestion-pipeline - Install extra ingestion pipelines (must be on the same namespace as the RAG deployment)"
 	@echo "  uninstall     - Uninstall the RAG deployment and clean up resources"
 	@echo "  status        - Check status of the deployment"
@@ -112,8 +112,8 @@ namespace:
 	@if oc get namespace $(NAMESPACE) > /dev/null 2>&1; then \
 		echo "✅ Namespace $(NAMESPACE) exists."; \
 	else \
-		echo "❌ Namespace $(NAMESPACE) not found. Please create it manually."; \
-		exit 1; \
+		echo "Namespace $(NAMESPACE) not found. Creating one!"; \
+		oc create namespace $(NAMESPACE); \
 	fi
 	@oc project $(NAMESPACE) > /dev/null
 
@@ -162,7 +162,7 @@ install-rag: namespace
 	@$(eval LLM_SERVICE_ARGS := $(call helm_llm_service_args))
 	@$(eval LLAMA_STACK_ARGS := $(call helm_llama_stack_args))
 	@$(eval PGVECTOR_ARGS := $(call helm_pgvector_args))
-	@echo "Installing $(RAG_CHART) helm chart"
+	@echo "Installing $(RAG_CHART) helm chart (backend services only)"
 	@helm -n $(NAMESPACE) upgrade --install $(RAG_CHART) $(RAG_CHART) \
 	--atomic --timeout 10m \
 	$(LLM_SERVICE_ARGS) \
