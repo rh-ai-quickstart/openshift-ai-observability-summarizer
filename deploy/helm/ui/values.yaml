@@ -1,6 +1,6 @@
 image:
-  repository: quay.io/rh-ee-lbitan/metric-ui
-  tag: metric-ui-3.0.1
+  repository: quay.io/ecosystem-appeng/metric-ui
+  tag: ts11
   pullPolicy: IfNotPresent
 
 service:
