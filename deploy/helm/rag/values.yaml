@@ -1,38 +1,5 @@
-replicaCount: 1
-
-image:
-  repository: quay.io/ecosystem-appeng/llamastack-dist-ui
-  pullPolicy: IfNotPresent
-  tag: 0.2.8
-
-service:
-  type: ClusterIP
-  port: 8501
-
-serviceAccount:
-  create: false
-
-livenessProbe:
-  httpGet:
-    path: /
-    port: http
-
-readinessProbe:
-  httpGet:
-    path: /
-    port: http
-
-env:
-  - name: LLAMA_STACK_ENDPOINT
-    value: 'http://llamastack:8321'
-
-volumes:
-  - emptyDir: {}
-    name: dot-streamlit
-
-volumeMounts:
-  - mountPath: /.streamlit
-    name: dot-streamlit
+# This chart now only deploys backend services (llm-service, llama-stack, pgvector)
+# RAG UI components have been removed
 
 # Common model values for llm-service and llama-stack
 # See format in https://github.com/RHEcosystemAppEng/ai-architecture-charts/blob/main/helm/llm-service/values.yaml

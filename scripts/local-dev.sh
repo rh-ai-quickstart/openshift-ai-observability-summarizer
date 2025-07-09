@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROMETHEUS_NAMESPACE="openshift-monitoring"
-LLM_NAMESPACE="${LLM_NAMESPACE:-m2}"
+LLM_NAMESPACE="${LLM_NAMESPACE:-m6}"
 THANOS_PORT=9090
 LLAMASTACK_PORT=8321
 LLAMA_MODEL_PORT=8080
@@ -103,13 +103,17 @@ start_local_services() {
     export PROMETHEUS_URL="http://localhost:$THANOS_PORT"
     export LLAMA_STACK_URL="http://localhost:$LLAMASTACK_PORT/v1/openai/v1"
     export THANOS_TOKEN="$TOKEN"
-    export MODEL_CONFIG='{"meta-llama/Llama-3.2-3B-Instruct": {"external": false}, "gpt-4": {"external": true, "apiUrl": "https://api.openai.com/v1/chat/completions", "modelName": "gpt-4"}}'
+    export MODEL_CONFIG='{"meta-llama/Llama-3.2-3B-Instruct":{"external":false,"requiresApiKey":false,"serviceName":"llama-3-2-3b-instruct"},"openai/gpt-4o-mini":{"external":true,"requiresApiKey":true,"serviceName":null,"provider":"openai","apiUrl":"https://api.openai.com/v1/chat/completions","modelName":"gpt-4o-mini", "cost": {"prompt_rate": 0.00000015, "output_rate": 0.0000006}}}'
     export MCP_API_URL="http://localhost:$MCP_PORT"
     export PROM_URL="http://localhost:$THANOS_PORT"
+    export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
+    
+    # macOS weasyprint support
+    export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
     
     # Start MCP service
     echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
-    (cd ../metric-ui/mcp && python3 -m uvicorn mcp:app --host 0.0.0.0 --port $MCP_PORT --reload) &
+    (cd metric-ui/mcp && python3 -m uvicorn mcp:app --host 0.0.0.0 --port $MCP_PORT --reload) &
     MCP_PID=$!
     
     # Wait for MCP to start
@@ -125,7 +129,7 @@ start_local_services() {
     
     # Start Streamlit UI
     echo -e "${BLUE}🎨 Starting Streamlit UI...${NC}"
-    (cd ../metric-ui/ui && streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true) &
+    (cd metric-ui/ui && streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true) &
     UI_PID=$!
     
     # Wait for UI to start

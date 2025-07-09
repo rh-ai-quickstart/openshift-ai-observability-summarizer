@@ -54,7 +54,7 @@ verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 # --- Dynamic Metric Discovery Functions ---
 
 def discover_vllm_metrics():
-    """Dynamically discover available vLLM metrics from Prometheus"""
+    """Dynamically discover available vLLM metrics from Prometheus, including GPU metrics"""
     try:
         headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
         response = requests.get(
@@ -65,11 +65,27 @@ def discover_vllm_metrics():
         response.raise_for_status()
         all_metrics = response.json()["data"]
         
+        # Create friendly names for metrics
+        metric_mapping = {}
+        
+        # First, add GPU metrics (DCGM) that are relevant for vLLM monitoring
+        gpu_metrics = {
+            "GPU Temperature (°C)": "DCGM_FI_DEV_GPU_TEMP",
+            "GPU Power Usage (Watts)": "DCGM_FI_DEV_POWER_USAGE", 
+            "GPU Memory Usage (GB)": "DCGM_FI_DEV_FB_USED / (1024*1024*1024)",
+            "GPU Energy Consumption (Joules)": "DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION",
+            "GPU Memory Temperature (°C)": "DCGM_FI_DEV_MEMORY_TEMP",
+            "GPU Utilization (%)": "DCGM_FI_DEV_GPU_UTIL",
+        }
+        
+        for friendly_name, metric_name in gpu_metrics.items():
+            if metric_name in all_metrics:
+                metric_mapping[friendly_name] = f"avg({metric_name})"
+        
         # Filter for vLLM metrics
         vllm_metrics = [metric for metric in all_metrics if metric.startswith("vllm:")]
         
-        # Create friendly names for metrics
-        metric_mapping = {}
+        # Add vLLM-specific metrics
         for metric in vllm_metrics:
             # Convert metric name to friendly display name
             friendly_name = metric.replace("vllm:", "").replace("_", " ").title()
@@ -96,27 +112,81 @@ def discover_vllm_metrics():
         return metric_mapping
     except Exception as e:
         print(f"Error discovering vLLM metrics: {e}")
-        # Fallback to basic set
+        # Enhanced fallback with comprehensive GPU metrics and vLLM metrics
         return {
+            "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
+            "GPU Power Usage (Watts)": "avg(DCGM_FI_DEV_POWER_USAGE)",
+            "GPU Memory Usage (GB)": "avg(DCGM_FI_DEV_FB_USED) / (1024*1024*1024)",
+            "GPU Energy Consumption (Joules)": "avg(DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION)",
+            "GPU Memory Temperature (°C)": "avg(DCGM_FI_DEV_MEMORY_TEMP)",
+            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
             "Prompt Tokens Created": "vllm:request_prompt_tokens_created",
             "Output Tokens Created": "vllm:request_generation_tokens_created",
-            "GPU Usage (%)": "vllm:gpu_cache_usage_perc",
             "Requests Running": "vllm:num_requests_running",
             "P95 Latency (s)": "vllm:e2e_request_latency_seconds_count",
             "Inference Time (s)": "vllm:request_inference_time_seconds_count",
         }
 
+def discover_dcgm_metrics():
+    """Dynamically discover available DCGM GPU metrics"""
+    try:
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        response = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/label/__name__/values",
+            headers=headers,
+            verify=verify,
+        )
+        response.raise_for_status()
+        all_metrics = response.json()["data"]
+        
+        # Filter for DCGM metrics
+        dcgm_metrics = [metric for metric in all_metrics if metric.startswith("DCGM_")]
+        
+        # Create a mapping of useful DCGM metrics for fleet monitoring
+        dcgm_mapping = {}
+        fb_used_metric = None
+        
+        for metric in dcgm_metrics:
+            if "GPU_TEMP" in metric:
+                dcgm_mapping["GPU Temperature (°C)"] = f"avg({metric})"
+            elif "POWER_USAGE" in metric:
+                dcgm_mapping["GPU Power Usage (Watts)"] = f"avg({metric})"
+            elif "GPU_UTIL" in metric:
+                dcgm_mapping["GPU Utilization (%)"] = f"avg({metric})"
+            elif "MEMORY_TEMP" in metric:
+                dcgm_mapping["GPU Memory Temperature (°C)"] = f"avg({metric})"
+            elif "TOTAL_ENERGY_CONSUMPTION" in metric:
+                dcgm_mapping["GPU Energy Consumption (Joules)"] = f"avg({metric})"
+            elif "FB_USED" in metric:
+                fb_used_metric = metric
+                dcgm_mapping["GPU Memory Used (bytes)"] = f"avg({metric})"
+            elif "FB_TOTAL" in metric:
+                dcgm_mapping["GPU Memory Total (bytes)"] = f"avg({metric})"
+            elif "SM_CLOCK" in metric:
+                dcgm_mapping["GPU SM Clock (MHz)"] = f"avg({metric})"
+            elif "MEM_CLOCK" in metric:
+                dcgm_mapping["GPU Memory Clock (MHz)"] = f"avg({metric})"
+        
+        # Add GPU Memory Usage in GB if we found the FB_USED metric
+        if fb_used_metric:
+            dcgm_mapping["GPU Memory Usage (GB)"] = f"avg({fb_used_metric}) / (1024*1024*1024)"
+        
+        return dcgm_mapping
+    except Exception as e:
+        print(f"Error discovering DCGM metrics: {e}")
+        return {}
+
 def discover_openshift_metrics():
     """Return static, well-tested OpenShift/Kubernetes metrics organized by category"""
     return {
         "Fleet Overview": {
-            # 6 most important cluster-wide metrics
+            # 6 most important cluster-wide metrics with enhanced GPU monitoring
             "Total Pods Running": "sum(kube_pod_status_phase{phase='Running'})",
-            "Deployment Replicas Ready": "sum(kube_deployment_status_replicas_ready)",
             "Total Pods Failed": "sum(kube_pod_status_phase{phase='Failed'})",
             "Cluster CPU Usage (%)": "100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)",
             "Cluster Memory Usage (%)": "100 - (sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes) * 100)",
             "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
+            "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
         },
         "Workloads & Pods": {
             # 6 most important pod/container metrics
@@ -129,13 +199,13 @@ def discover_openshift_metrics():
         },
 
         "GPU & Accelerators": {
-            # 🚀 GPU performance and hardware monitoring
+            # 🚀 Comprehensive GPU fleet monitoring with DCGM metrics
             "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
-            "GPU Memory Temperature (°C)": "avg(DCGM_FI_DEV_MEMORY_TEMP)",
-            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
             "GPU Power Usage (Watts)": "avg(DCGM_FI_DEV_POWER_USAGE)",
-            "Total GPU Nodes": "sum(gpu_operator_gpu_nodes_total)",
-            "GPU Cards by Vendor/Model": "sum(vendor_model:node_accelerator_cards:sum)",
+            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
+            "GPU Memory Usage (GB)": "avg(DCGM_FI_DEV_FB_USED) / (1024*1024*1024)",
+            "GPU Energy Consumption (Joules)": "avg(DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION)",
+            "GPU Memory Temperature (°C)": "avg(DCGM_FI_DEV_MEMORY_TEMP)",
         },
         "Storage & Networking": {
             # 6 storage and network metrics
@@ -236,30 +306,35 @@ class MetricsCalculationResponse(BaseModel):
 
 # --- Helpers ---
 def fetch_metrics(query, model_name, start, end, namespace=None):
-    # If namespace is provided, ensure it's included in the query
-    if namespace:
-        namespace = namespace.strip()
-        if "|" in model_name:
-            model_namespace, actual_model_name = map(
-                str.strip, model_name.split("|", 1)
-            )
-            promql_query = (
-                f'{query}{{model_name="{actual_model_name}", namespace="{namespace}"}}'
-            )
-        else:
-            promql_query = (
-                f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
-            )
+    # Handle GPU metrics that don't have model_name labels (they're global/node-level metrics)
+    if query.startswith("avg(DCGM_") or "DCGM_" in query:
+        # GPU metrics are node-level, not model-specific
+        promql_query = query
     else:
-        # Original logic if no namespace is explicitly provided (for backward compatibility or other endpoints)
-        if "|" in model_name:
-            namespace, model_name = map(str.strip, model_name.split("|", 1))
-            promql_query = (
-                f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
-            )
+        # Handle vLLM metrics that have model_name and namespace labels
+        if namespace:
+            namespace = namespace.strip()
+            if "|" in model_name:
+                model_namespace, actual_model_name = map(
+                    str.strip, model_name.split("|", 1)
+                )
+                promql_query = (
+                    f'{query}{{model_name="{actual_model_name}", namespace="{namespace}"}}'
+                )
+            else:
+                promql_query = (
+                    f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
+                )
         else:
-            model_name = model_name.strip()
-            promql_query = f'{query}{{model_name="{model_name}"}}'
+            # Original logic if no namespace is explicitly provided (for backward compatibility or other endpoints)
+            if "|" in model_name:
+                namespace, model_name = map(str.strip, model_name.split("|", 1))
+                promql_query = (
+                    f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
+                )
+            else:
+                model_name = model_name.strip()
+                promql_query = f'{query}{{model_name="{model_name}"}}'
 
     headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
     response = requests.get(
@@ -1236,6 +1311,73 @@ def list_vllm_metrics():
     return get_vllm_metrics()
 
 
+@app.get("/dcgm-metrics")
+def list_dcgm_metrics():
+    """Get available DCGM GPU metrics"""
+    return discover_dcgm_metrics()
+
+
+@app.get("/gpu-info")
+def get_gpu_info():
+    """Get GPU vendor and model information from DCGM metrics"""
+    try:
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        
+        # Try to get GPU info from various metrics
+        info_queries = [
+            "DCGM_FI_DEV_GPU_TEMP",  # Basic GPU metric to check GPU availability
+            "gpu_operator_gpu_nodes_total",  # GPU operator metrics
+            "vendor_model:node_accelerator_cards:sum",  # Vendor/model info
+        ]
+        
+        gpu_info = {
+            "total_gpus": 0,
+            "vendors": [],
+            "models": [],
+            "temperatures": [],
+            "power_usage": [],
+        }
+        
+        for query in info_queries:
+            try:
+                response = requests.get(
+                    f"{PROMETHEUS_URL}/api/v1/query",
+                    headers=headers,
+                    params={"query": query},
+                    verify=verify,
+                )
+                response.raise_for_status()
+                result = response.json()["data"]["result"]
+                
+                if result and query == "DCGM_FI_DEV_GPU_TEMP":
+                    # Extract GPU count and current temperatures
+                    gpu_info["total_gpus"] = len(result)
+                    gpu_info["temperatures"] = [float(item["value"][1]) for item in result]
+                    
+                    # Extract vendor/model from labels if available
+                    for item in result:
+                        labels = item.get("metric", {})
+                        if "vendor" in labels:
+                            gpu_info["vendors"].append(labels["vendor"])
+                        if "model" in labels:
+                            gpu_info["models"].append(labels["model"])
+                        if "device" in labels:
+                            gpu_info["models"].append(labels["device"])
+                            
+            except Exception as e:
+                print(f"Error querying {query}: {e}")
+                continue
+        
+        # Remove duplicates and sort
+        gpu_info["vendors"] = sorted(list(set(gpu_info["vendors"])))
+        gpu_info["models"] = sorted(list(set(gpu_info["models"])))
+        
+        return gpu_info
+    except Exception as e:
+        print(f"Error fetching GPU info: {e}")
+        return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
+
+
 @app.get("/openshift-namespaces")
 def list_openshift_namespaces():
     """Get available OpenShift namespaces from kube-state-metrics"""
@@ -1443,6 +1585,51 @@ Provide a concise technical response focusing on operational insights and recomm
         raise HTTPException(
             status_code=500, detail="Please check your API Key or try again later."
         )
+
+
+@app.get("/debug-metrics")
+def debug_metrics():
+    """Debug endpoint to check available metrics"""
+    try:
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        response = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/label/__name__/values",
+            headers=headers,
+            verify=verify,
+        )
+        response.raise_for_status()
+        all_metrics = response.json()["data"]
+        
+        # Categorize metrics
+        dcgm_metrics = [m for m in all_metrics if m.startswith("DCGM_")]
+        vllm_metrics = [m for m in all_metrics if m.startswith("vllm:")]
+        kube_metrics = [m for m in all_metrics if m.startswith("kube_")]
+        container_metrics = [m for m in all_metrics if m.startswith("container_")]
+        
+        return {
+            "total_metrics": len(all_metrics),
+            "dcgm_metrics": {
+                "count": len(dcgm_metrics),
+                "examples": dcgm_metrics[:10]  # First 10
+            },
+            "vllm_metrics": {
+                "count": len(vllm_metrics),
+                "examples": vllm_metrics[:10]
+            },
+            "kube_metrics": {
+                "count": len(kube_metrics),
+                "examples": kube_metrics[:10]
+            },
+            "container_metrics": {
+                "count": len(container_metrics),
+                "examples": container_metrics[:10]
+            },
+            "gpu_info": get_gpu_info(),
+            "discovered_vllm": discover_vllm_metrics(),
+            "discovered_dcgm": discover_dcgm_metrics()
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.post("/debug-query")
