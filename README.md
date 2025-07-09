@@ -89,17 +89,24 @@ cd deploy/helm
 ```
 
 ### Install the AI Summarizer
+```
 make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
+```
 
 ### With GPU tolerations
+```
 make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu"
+```
 
 ### Multiple models with safety
+```
 make install NAMESPACE=your-namespace \
   LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu" \
   SAFETY=llama-guard-3-8b SAFETY_TOLERATION="nvidia.com/gpu"
+```
 
 ### With alerting
+```
 make install NAMESPACE=your-namespace ALERTS=TRUE
 ```
 
