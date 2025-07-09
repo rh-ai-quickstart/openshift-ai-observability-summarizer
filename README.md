@@ -117,8 +117,6 @@ This deploys:
 - **metric-mcp** - Metrics collection & processing API
 - **metric-ui** - Multi-dashboard Streamlit interface
 
-**No RAG UI** is deployed - this is a focused backend + monitoring deployment.
-
 Navigate to your **Openshift Cluster --> Networking --> Route** and you should be able to see the route for your application.
 
 On terminal you can access the route with -
