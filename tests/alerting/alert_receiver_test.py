@@ -1,10 +1,9 @@
 from metric_ui.alerting.alert_receiver import is_new_vllm_alert
 import pytest
-import copy
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 @pytest.fixture
-def base_alert():
+def alert():
     """Base alert fixture that can be modified for different test scenarios"""
     return {
         "annotations": {},
@@ -33,27 +32,23 @@ def base_alert():
         }
     }
 
-def test_is_new_vllm_alert_returns_false_for_test_alert(base_alert):
+def test_is_new_vllm_alert_returns_false_for_test_alert(alert):
     """Test that alerts marked as test_alert=true return False"""
-    alert = copy.deepcopy(base_alert)
     alert["labels"]["test_alert"] = "true"
     assert is_new_vllm_alert(alert, 60) == False
 
-def test_is_new_vllm_alert_returns_false_for_old_alert(base_alert):
+def test_is_new_vllm_alert_returns_false_for_old_alert(alert):
     """Test that alerts older than time window return False"""
-    alert = copy.deepcopy(base_alert)
     assert is_new_vllm_alert(alert, 60) == False
 
-def test_is_new_vllm_alert_returns_true_for_new_vllm_alert(base_alert):
+def test_is_new_vllm_alert_returns_true_for_new_vllm_alert(alert):
     """Test that new VLLM alerts return True"""
-    alert = copy.deepcopy(base_alert)
     now = datetime.now(timezone.utc)
     alert["startsAt"] = now.isoformat().replace('+00:00', 'Z')
     assert is_new_vllm_alert(alert, 60) == True
 
-def test_is_new_vllm_alert_returns_false_for_non_vllm_alert(base_alert):
+def test_is_new_vllm_alert_returns_false_for_non_vllm_alert(alert):
     """Test that non-VLLM alerts return False"""
-    alert = copy.deepcopy(base_alert)
     alert["labels"]["alertname"] = "ClusterAlert"
     now = datetime.now(timezone.utc)
     alert["startsAt"] = now.isoformat().replace('+00:00', 'Z')
