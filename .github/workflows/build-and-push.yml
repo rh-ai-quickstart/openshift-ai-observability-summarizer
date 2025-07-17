@@ -19,6 +19,9 @@ jobs:
           - name: metrics-ui
             context: metric_ui/ui
             image-name: metrics-ui
+          - name: metrics-alerting
+            context: metric_ui/alerting
+            image-name: metrics-alerting
     defaults:
       run:
         working-directory: ${{ env.MCP_DIR }}
@@ -48,7 +51,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.context }}/Dockerfile
           push: true
-          tags: quay.io/rh-ee-tgolan/${{ matrix.image-name }}:${{ steps.version.outputs.tag }} # TODO: change to the ecosystem-appeng registry
+          tags: quay.io/rh-ee-tgolan/${{ matrix.image-name }}:${{ steps.version.outputs.tag }} # TODO: change to the quay.io/ecosystem-appeng
           build-args: |
             IMAGE_TAG=${{ steps.version.outputs.tag }}
             
