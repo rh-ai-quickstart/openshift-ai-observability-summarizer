@@ -16,6 +16,9 @@ jobs:
           - name: metrics-mcp
             context: metric_ui/mcp
             image-name: metrics-mcp
+          - name: metrics-ui
+            context: metric_ui/ui
+            image-name: metrics-ui
     defaults:
       run:
         working-directory: ${{ env.MCP_DIR }}
