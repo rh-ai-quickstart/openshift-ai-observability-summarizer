@@ -42,7 +42,7 @@ jobs:
       - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.context }}/src
+          context: ${{ matrix.context }}
           file: ${{ matrix.context }}/Containerfile
           push: true
           tags: quay.io/rh-ee-tgolan/${{ matrix.image-name }}:${{ steps.version.outputs.tag }} # TODO: change to the ecosystem-appeng registry
