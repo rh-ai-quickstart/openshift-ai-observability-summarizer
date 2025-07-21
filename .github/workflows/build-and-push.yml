@@ -51,7 +51,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.context }}/Dockerfile
           push: true
-          tags: quay.io/rh-ee-tgolan/${{ matrix.image-name }}:${{ steps.version.outputs.tag }} # TODO: change to the quay.io/ecosystem-appeng
+          tags: quay.io/quay.io/ecosystem-appeng/${{ matrix.image-name }}:${{ steps.version.outputs.tag }}
           build-args: |
             IMAGE_TAG=${{ steps.version.outputs.tag }}
             
