@@ -22,7 +22,8 @@ TOLERATIONS_TEMPLATE=[{"key":"$(1)","effect":"NoSchedule","operator":"Exists"}]
 
 # Unified model configuration map
 # Contains all model details: external/internal, API key requirements, service mappings
-MODEL_CONFIG_JSON := $(shell echo '{"meta-llama/Llama-3.2-3B-Instruct":{"external":false,"requiresApiKey":false,"serviceName":"llama-3-2-3b-instruct"},"openai/gpt-4o-mini":{"external":true,"requiresApiKey":true,"serviceName":null,"provider":"openai","apiUrl":"https://api.openai.com/v1/chat/completions","modelName":"gpt-4o-mini", "cost": {"prompt_rate": 0.00000015, "output_rate": 0.0000006}}}')
+# Load model configuration from separate JSON file
+MODEL_CONFIG_JSON := $(shell cat model-config.json | jq -c .)
 
 # Extract only non-external models for deployment
 INTERNAL_MODELS := llama-3-2-3b-instruct

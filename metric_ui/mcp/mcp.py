@@ -486,12 +486,31 @@ def _validate_and_extract_response(
     response_json: dict, is_external: bool, provider: str = "LLM"
 ) -> str:
     """Validate response format and extract content"""
-    if "choices" not in response_json or not response_json["choices"]:
-        raise ValueError(f"Invalid {provider} response format")
-
     if is_external:
-        return response_json["choices"][0]["message"]["content"].strip()
+        if provider == "google":
+            # Google Gemini response format
+            if "candidates" not in response_json or not response_json["candidates"]:
+                raise ValueError(f"Invalid {provider} response format")
+            
+            candidate = response_json["candidates"][0]
+            if "content" not in candidate or "parts" not in candidate["content"]:
+                raise ValueError(f"Invalid {provider} response structure")
+            
+            parts = candidate["content"]["parts"]
+            if not parts or "text" not in parts[0]:
+                raise ValueError(f"Invalid {provider} response content")
+            
+            return parts[0]["text"].strip()
+        else:
+            # OpenAI and other providers using "choices" format
+            if "choices" not in response_json or not response_json["choices"]:
+                raise ValueError(f"Invalid {provider} response format")
+            
+            return response_json["choices"][0]["message"]["content"].strip()
     else:
+        # Local model response format
+        if "choices" not in response_json or not response_json["choices"]:
+            raise ValueError(f"Invalid {provider} response format")
         return response_json["choices"][0]["text"].strip()
 
 
@@ -525,15 +544,24 @@ def summarize_with_llm(
         api_url = model_info.get("apiUrl", "https://api.openai.com/v1/chat/completions")
         model_name = model_info.get("modelName")
 
-        headers["Authorization"] = f"Bearer {api_key}"
-
-        # Convert to OpenAI chat format
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.5,
-            "max_tokens": 1000,
-        }
+        # Provider-specific authentication and payload
+        if provider == "google":
+            # Google Gemini API format
+            headers["x-goog-api-key"] = api_key
+            
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+            }
+        else:
+            # OpenAI and compatible APIs
+            headers["Authorization"] = f"Bearer {api_key}"
+            
+            payload = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.5,
+                "max_tokens": 1000,
+            }
 
         response_json = _make_api_request(api_url, headers, payload, verify_ssl=True)
         return _validate_and_extract_response(

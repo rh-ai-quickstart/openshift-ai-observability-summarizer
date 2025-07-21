@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # AI Observability Metric Summarizer - Local Development Script
-# Usage: ./scripts/local-dev.sh
 
 # Colors for output
 RED='\033[0;31m'
@@ -12,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROMETHEUS_NAMESPACE="openshift-monitoring"
-LLM_NAMESPACE="${LLM_NAMESPACE:-m2}"
+LLM_NAMESPACE="${LLM_NAMESPACE:-m6}"
 THANOS_PORT=9090
 LLAMASTACK_PORT=8321
 LLAMA_MODEL_PORT=8080
@@ -103,7 +102,7 @@ start_local_services() {
     export PROMETHEUS_URL="http://localhost:$THANOS_PORT"
     export LLAMA_STACK_URL="http://localhost:$LLAMASTACK_PORT/v1/openai/v1"
     export THANOS_TOKEN="$TOKEN"
-    export MODEL_CONFIG='{"meta-llama/Llama-3.2-3B-Instruct":{"external":false,"requiresApiKey":false,"serviceName":"llama-3-2-3b-instruct"},"openai/gpt-4o-mini":{"external":true,"requiresApiKey":true,"serviceName":null,"provider":"openai","apiUrl":"https://api.openai.com/v1/chat/completions","modelName":"gpt-4o-mini", "cost": {"prompt_rate": 0.00000015, "output_rate": 0.0000006}}}'
+    export MODEL_CONFIG=$(cat scripts/model-config.json | jq -c .)
     export MCP_API_URL="http://localhost:$MCP_PORT"
     export PROM_URL="http://localhost:$THANOS_PORT"
     export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
