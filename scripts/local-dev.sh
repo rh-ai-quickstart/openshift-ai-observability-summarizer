@@ -140,6 +140,11 @@ start_local_services() {
 # Main execution
 main() {
     check_prerequisites
+    echo ""
+    echo -e "${BLUE}--------------------------------${NC}"
+    echo -e "${BLUE}Namespace being used for setup -> LLM_NAMESPACE: $LLM_NAMESPACE${NC}"
+    echo -e "${BLUE}--------------------------------${NC}\n"
+
     start_port_forwards
     start_local_services
     
