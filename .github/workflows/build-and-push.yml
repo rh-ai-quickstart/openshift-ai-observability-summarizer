@@ -13,15 +13,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: metrics-mcp
+          - name: metric-mcp
             context: metric_ui/mcp
-            image-name: metrics-mcp
-          - name: metrics-ui
+            image-name: metric-mcp
+          - name: metric-ui
             context: metric_ui/ui
-            image-name: metrics-ui
-          - name: metrics-alerting
+            image-name: metric-ui
+          - name: metric-alerting
             context: metric_ui/alerting
-            image-name: metrics-alerting
+            image-name: metric-alerting
     defaults:
       run:
         working-directory: ${{ env.MCP_DIR }}
