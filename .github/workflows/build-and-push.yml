@@ -57,4 +57,3 @@ jobs:
           tags: quay.io/ecosystem-appeng/${{ matrix.image-name }}:${{ steps.version.outputs.tag }}
           build-args: |
             IMAGE_TAG=${{ steps.version.outputs.tag }}
-            
