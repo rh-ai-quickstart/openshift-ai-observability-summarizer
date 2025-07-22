@@ -1,7 +1,7 @@
 image:
   repository: quay.io/ecosystem-appeng/vllm-alert-receiver
-  tag: 0.1.0
-  pullPolicy: Always
+  tag: 0.1.1
+  pullPolicy: IfNotPresent
 
 schedule: "*/1 * * * *" # cron job scheduled every minute
 

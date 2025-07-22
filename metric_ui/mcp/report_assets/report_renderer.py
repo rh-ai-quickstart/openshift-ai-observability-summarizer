@@ -13,7 +13,7 @@ try:
     from weasyprint import HTML, CSS
     from weasyprint.text.fonts import FontConfiguration
     WEASYPRINT_AVAILABLE = True
-except ImportError:
+except Exception as e:
     WEASYPRINT_AVAILABLE = False
     print("WeasyPrint not available. PDF generation will be disabled.")
 

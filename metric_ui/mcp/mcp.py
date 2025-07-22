@@ -11,6 +11,9 @@ import json
 import re
 from typing import List, Dict, Any, Optional
 import uuid
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from report_assets.report_renderer import (
     generate_html_report,
