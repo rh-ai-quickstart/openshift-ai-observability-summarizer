@@ -224,6 +224,31 @@ To generate a report:
 In order to develop locally faster on the MCP/UI you can leverage port-forwarding to llamastack, model and thanos. 
 Pre-requisites: you have a deployment on the cluster already.
 
+### Using script
+To perform local setup using the `./scripts/local-dev.sh` script, perform the following steps:
+1. **Make sure you are logged into the cluster and can execute `oc` commands against the cluster.**
+1. Install `uv` by following instructions on the [uv website](https://github.com/astral-sh/uv)
+1. Sync up the environment using the following command:
+   * `uv sync`
+
+      The `uv sync` command performs the following tasks:
+
+      1. Find or download an appropriate Python version
+      1. Creates a virtual environment in `.venv` folder
+      1. Build complete dependency using `pyproject.toml` (and `uv.lock`) file(s)
+      1. Sync up project dependencies in the virtual environment
+1. Activate the virtual environment using the following command:
+   * `source .venv/bin/activate`
+1. Export the namespace where the kickstart is deployed by running the following command:
+   * `export LLM_NAMESPACE=<DESIRED_NAMESPACE>`
+1. Run the script by executing the following command:
+   * `./scripts/local-dev.sh`
+
+      This script should perform the tasks shown in the following image:
+![Command Output](docs/img/local-dev-expected.png)
+
+
+### Manual setup
 1. Port-Forward to llamastack, model & thanos:
     1. `oc port-forward pod/llamastack 8321`
     1. `oc port-forward pod/model 8080`
@@ -233,7 +258,7 @@ Pre-requisites: you have a deployment on the cluster already.
    2. This may change, see `deploy/helm/Makefile` for the latest version. 
 1. And then to test the ui, navigate to ui/ and run -- `streamlit run ui.py`
 
-### Macos weasyprint install
+#### Macos weasyprint install
 
 In order to run the mcp locally you'll need to install weasyprint:
 1. Install via brew `brew install weasyprint`
