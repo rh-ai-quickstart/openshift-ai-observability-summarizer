@@ -98,7 +98,7 @@ Monitor GPU health across your entire OpenShift cluster:
 - `yq` for YAML processing
 - **Prometheus/Thanos** deployed for metrics collection
 - **DCGM exporter** for GPU monitoring (optional but recommended)
-- [Slack Webhook URL](https://api.slack.com/messaging/webhooks) (for alerting)
+- Slack Webhook URL for optional alerting ([How to create a Webhook for your Slack Workspace](https://api.slack.com/messaging/webhooks))
 
 ---
 
@@ -221,11 +221,14 @@ To generate a report:
 
 ## Local Development via Port-Forwarding
 
-In order to develop locally faster on the MCP/UI you can leverage port-forwarding to llamastack, model and thanos. 
-Pre-requisites: you have a deployment on the cluster already.
+In order to develop locally faster on the MCP/UI you can leverage port-forwarding to Llamastack, llm-service and Thanos by making use of `scripts/local-dev.sh` script.
 
-### Using script
-To perform local setup using the `./scripts/local-dev.sh` script, perform the following steps:
+**Pre-requisites**:
+1. You have a deployment on the cluster already.
+2. You are logged into the cluster and can execute `oc` commands against the cluster.
+
+### Running script
+To perform local setup using the `./scripts/local-dev.sh` script, execute the following steps:
 1. **Make sure you are logged into the cluster and can execute `oc` commands against the cluster.**
 1. Install `uv` by following instructions on the [uv website](https://github.com/astral-sh/uv)
 1. Sync up the environment using the following command:
@@ -247,23 +250,48 @@ To perform local setup using the `./scripts/local-dev.sh` script, perform the fo
       This script should perform the tasks shown in the following image:
 ![Command Output](docs/img/local-dev-expected.png)
 
-
-### Manual setup
-1. Port-Forward to llamastack, model & thanos:
-    1. `oc port-forward pod/llamastack 8321`
-    1. `oc port-forward pod/model 8080`
-    1. `oc port-forward pod/thanos-querier 9090 -n openshift-monitoring`
-1. If testing mcp, navigate to mcp/ and run -- `python3 -m uvicorn mcp:app --host 0.0.0.0 --port 8000 --reload` and you can use curl commands to test the apis
-   1. Configure **MODEL_CONFIG** env variable `export MODEL_CONFIG='{"meta-llama/Llama-3.2-3B-Instruct":{"external":false,"requiresApiKey":false,"serviceName":"llama-3-2-3b-instruct"},"openai/gpt-4o-mini":{"external":true,"requiresApiKey":true,"serviceName":null,"provider":"openai","apiUrl":"https://api.openai.com/v1/chat/completions","modelName":"gpt-4o-mini", "cost": {"prompt_rate": 0.00000015, "output_rate": 0.0000006}}}'`
-   2. This may change, see `deploy/helm/Makefile` for the latest version. 
-1. And then to test the ui, navigate to ui/ and run -- `streamlit run ui.py`
-
 #### Macos weasyprint install
+
+**Still verifying whether we need this setup or not as weasyprint is installed using `uv` in previous step.**
 
 In order to run the mcp locally you'll need to install weasyprint:
 1. Install via brew `brew install weasyprint`
 2. Ensure installation `weasyprint --version`
 3. Set **DYLD_FALLBACK_LIBRARY_PATH** `export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH`
+
+## Running Tests with Pytest
+
+The test suite is located in the `tests/` directory, with the tests for each service in their respective directories.
+
+1. Create a virtual environment and install the project with dev dependencies in the base directory. 
+
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Install development dependencies (includes formatting tools)
+pip install -e ".[dev]"
+```
+
+This will take the dependencies listed in `pyproject.toml` and install them.
+
+2. Use the `pytest` command go run all tests
+
+```bash
+# Run all tests with verbose output and coverage
+pytest -v --cov=metric_ui --cov-report=html --cov-report=term
+
+# Run only MCP tests
+pytest -v tests/mcp/
+
+# Run specific test file
+pytest -v tests/mcp/test_api_endpoints.py
+```
+
+To view a detailed coverage report after generating, open `htmlcov/index.html`.
 
 ---
 
