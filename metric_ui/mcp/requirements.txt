@@ -6,3 +6,4 @@ pandas
 uvicorn
 markdown
 weasyprint
+dateparser

@@ -33,7 +33,9 @@ st.markdown(
 
 # --- Page Selector ---
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to:", ["vLLM Metric Summarizer", "Chat with Prometheus", "OpenShift Metrics"])
+page = st.sidebar.radio(
+    "Go to:", ["vLLM Metric Summarizer", "Chat with Prometheus", "OpenShift Metrics"]
+)
 
 
 # --- Shared Utilities ---
@@ -137,7 +139,13 @@ def get_gpu_info():
         return res.json()
     except Exception as e:
         st.sidebar.error(f"Error fetching GPU info: {e}")
-        return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
+        return {
+            "total_gpus": 0,
+            "vendors": [],
+            "models": [],
+            "temperatures": [],
+            "power_usage": [],
+        }
 
 
 def model_requires_api_key(model_id, model_config):
@@ -150,15 +158,26 @@ def model_requires_api_key(model_id, model_config):
 def clear_session_state():
     """Clear session state on errors"""
     # Clear vLLM-specific session state
-    for key in ["summary", "prompt", "metric_data", "model_name", "analysis_params", "analysis_performed"]:
+    for key in [
+        "summary",
+        "prompt",
+        "metric_data",
+        "model_name",
+        "analysis_params",
+        "analysis_performed",
+    ]:
         if key in st.session_state:
             del st.session_state[key]
-    
+
     # Clear OpenShift-specific session state
     openshift_keys = [
-        "openshift_prompt", "openshift_summary", "openshift_metric_category", 
-        "openshift_scope", "openshift_namespace", "openshift_metric_data", 
-        "openshift_analysis_type"
+        "openshift_prompt",
+        "openshift_summary",
+        "openshift_metric_category",
+        "openshift_scope",
+        "openshift_namespace",
+        "openshift_metric_data",
+        "openshift_analysis_type",
     ]
     for key in openshift_keys:
         if key in st.session_state:
@@ -280,13 +299,13 @@ def generate_report_and_download(report_format: str):
             metric_data = st.session_state.get("openshift_metric_data", {})
             health_prompt = st.session_state.get("openshift_prompt", "")
             llm_summary = st.session_state.get("openshift_summary", "")
-            
+
             # Use OpenShift-specific model name format
             model_name = f"OpenShift-{analysis_params.get('scope', 'cluster')}-{analysis_params.get('metric_category', 'analysis')}"
-            
+
             # Create trend chart for OpenShift metrics
             trend_chart_image_b64 = create_trend_chart_image(metric_data)
-            
+
             payload = {
                 "model_name": model_name,
                 "start_ts": analysis_params["start_ts"],
@@ -299,7 +318,7 @@ def generate_report_and_download(report_format: str):
                 "metrics_data": metric_data,
             }
             filename = f"openshift_metrics_report.{report_format.lower()}"
-            
+
         else:
             # vLLM analysis data (original logic)
             metric_data, metrics = get_metrics_data_and_list()
@@ -327,7 +346,7 @@ def generate_report_and_download(report_format: str):
 
         if trend_chart_image_b64:
             payload["trend_chart_image"] = trend_chart_image_b64
-            
+
         response = requests.post(
             f"{API_URL}/generate_report",
             json=payload,
@@ -353,37 +372,37 @@ def generate_report_and_download(report_format: str):
 if page == "OpenShift Metrics":
     # OpenShift-specific sidebar controls
     st.sidebar.markdown("### OpenShift Configuration")
-    
+
     # Get OpenShift namespaces
     openshift_namespaces = get_openshift_namespaces()
-    
+
     # 1. Analysis Scope Selection (Dropdown)
     scope_type = st.sidebar.selectbox(
         "Analysis Scope",
         ["Cluster-wide", "Namespace scoped"],
         help="Choose whether to analyze the entire cluster or a specific namespace",
-        key="openshift_scope_selector"
+        key="openshift_scope_selector",
     )
-    
+
     # 2. Namespace Selection (Conditional - grayed out if cluster-wide)
     selected_openshift_namespace = None
     if scope_type == "Namespace scoped":
         selected_openshift_namespace = st.sidebar.selectbox(
-            "Select Namespace", 
+            "Select Namespace",
             openshift_namespaces,
             help="Choose the namespace to analyze",
-            key="openshift_namespace_selector"
+            key="openshift_namespace_selector",
         )
     else:
         # Show disabled dropdown for cluster-wide
         st.sidebar.selectbox(
-            "Select Namespace", 
+            "Select Namespace",
             ["All Namespaces (Cluster-wide)"],
             disabled=True,
             help="Namespace selection is disabled for cluster-wide analysis",
-            key="openshift_namespace_disabled"
+            key="openshift_namespace_disabled",
         )
-    
+
     # 3. Metric Categories Selection (Conditional based on scope)
     if scope_type == "Namespace scoped":
         # Get namespace-specific metric groups (excludes GPU & Accelerators)
@@ -393,24 +412,28 @@ if page == "OpenShift Metrics":
         # Get all metric groups (includes GPU & Accelerators)
         openshift_metric_groups = get_openshift_metric_groups()
         help_text = "Choose metric category to analyze across the entire cluster"
-    
+
     selected_metric_category = st.sidebar.selectbox(
-        "Metric Category", 
+        "Metric Category",
         openshift_metric_groups,
         help=help_text,
-        key="openshift_metric_category_selector"
+        key="openshift_metric_category_selector",
     )
-    
+
     st.sidebar.markdown("---")
-    
+
     # Common elements for OpenShift page
     st.sidebar.markdown("### Select Timestamp Range")
     if "selected_date" not in st.session_state:
         st.session_state["selected_date"] = datetime.now().date()
     if "selected_time" not in st.session_state:
         st.session_state["selected_time"] = datetime.now().time()
-    selected_date = st.sidebar.date_input("Date", value=st.session_state["selected_date"], key="openshift_date_input")
-    selected_time = st.sidebar.time_input("Time", value=st.session_state["selected_time"], key="openshift_time_input")
+    selected_date = st.sidebar.date_input(
+        "Date", value=st.session_state["selected_date"], key="openshift_date_input"
+    )
+    selected_time = st.sidebar.time_input(
+        "Time", value=st.session_state["selected_time"], key="openshift_time_input"
+    )
     selected_datetime = datetime.combine(selected_date, selected_time)
     now = datetime.now()
     if selected_datetime > now:
@@ -418,22 +441,26 @@ if page == "OpenShift Metrics":
         st.stop()
     selected_start = int(selected_datetime.timestamp())
     selected_end = int(now.timestamp())
-    
+
     st.sidebar.markdown("---")
-    
+
     # --- Select LLM ---
     st.sidebar.markdown("### Select LLM for summarization")
-    
+
     # --- Multi-model support ---
     multi_model_list = get_multi_models()
     multi_model_name = st.sidebar.selectbox(
-        "Select LLM for summarization", multi_model_list, key="openshift_multi_model_selector"
+        "Select LLM for summarization",
+        multi_model_list,
+        key="openshift_multi_model_selector",
     )
-    
+
     # --- Define model key requirements ---
     model_config = get_model_config()
-    current_model_requires_api_key = model_requires_api_key(multi_model_name, model_config)
-    
+    current_model_requires_api_key = model_requires_api_key(
+        multi_model_name, model_config
+    )
+
     # --- API Key Input ---
     api_key = st.sidebar.text_input(
         label="🔑 API Key",
@@ -441,19 +468,19 @@ if page == "OpenShift Metrics":
         value=st.session_state.get("api_key", ""),
         help="Enter your API key if required by the selected model",
         disabled=not current_model_requires_api_key,
-        key="openshift_api_key"
+        key="openshift_api_key",
     )
-    
+
     # Caption to show key requirement status
     if current_model_requires_api_key:
         st.sidebar.caption("⚠️ This model requires an API key.")
     else:
         st.sidebar.caption("✅ No API key is required for this model.")
-    
+
     # Optional validation warning if required key is missing
     if current_model_requires_api_key and not api_key:
         st.sidebar.warning("🚫 Please enter an API key to use this model.")
-    
+
     # Set default values for variables not used in OpenShift page
     selected_namespace = None
     model_name = None
@@ -461,26 +488,34 @@ if page == "OpenShift Metrics":
 else:
     # vLLM-specific sidebar controls (for vLLM pages)
     st.sidebar.markdown("### vLLM Configuration")
-    
+
     model_list = get_models()
     namespaces = get_namespaces()
 
     # Add namespace selector in sidebar
-    selected_namespace = st.sidebar.selectbox("Select Namespace", namespaces, key="namespace_selector")
-    
+    selected_namespace = st.sidebar.selectbox(
+        "Select Namespace", namespaces, key="namespace_selector"
+    )
+
     # Filter models by selected namespace
     filtered_models = [
         model for model in model_list if model.startswith(f"{selected_namespace} | ")
     ]
-    model_name = st.sidebar.selectbox("Select Model", filtered_models, key="model_selector")
+    model_name = st.sidebar.selectbox(
+        "Select Model", filtered_models, key="model_selector"
+    )
 
     st.sidebar.markdown("### Select Timestamp Range")
     if "selected_date" not in st.session_state:
         st.session_state["selected_date"] = datetime.now().date()
     if "selected_time" not in st.session_state:
         st.session_state["selected_time"] = datetime.now().time()
-    selected_date = st.sidebar.date_input("Date", value=st.session_state["selected_date"], key="vllm_date_input")
-    selected_time = st.sidebar.time_input("Time", value=st.session_state["selected_time"], key="vllm_time_input")
+    selected_date = st.sidebar.date_input(
+        "Date", value=st.session_state["selected_date"], key="vllm_date_input"
+    )
+    selected_time = st.sidebar.time_input(
+        "Time", value=st.session_state["selected_time"], key="vllm_time_input"
+    )
     selected_datetime = datetime.combine(selected_date, selected_time)
     now = datetime.now()
     if selected_datetime > now:
@@ -497,12 +532,16 @@ else:
     # --- Multi-model support ---
     multi_model_list = get_multi_models()
     multi_model_name = st.sidebar.selectbox(
-        "Select LLM for summarization", multi_model_list, key="vllm_multi_model_selector"
+        "Select LLM for summarization",
+        multi_model_list,
+        key="vllm_multi_model_selector",
     )
 
     # --- Define model key requirements ---
     model_config = get_model_config()
-    current_model_requires_api_key = model_requires_api_key(multi_model_name, model_config)
+    current_model_requires_api_key = model_requires_api_key(
+        multi_model_name, model_config
+    )
 
     # --- API Key Input ---
     api_key = st.sidebar.text_input(
@@ -511,7 +550,7 @@ else:
         value=st.session_state.get("api_key", ""),
         help="Enter your API key if required by the selected model",
         disabled=not current_model_requires_api_key,
-        key="default_api_key"
+        key="default_api_key",
     )
 
     # Caption to show key requirement status
@@ -531,7 +570,10 @@ if not analysis_performed:
     st.sidebar.warning("⚠️ Please analyze metrics first to generate a report.")
 
 report_format = st.sidebar.selectbox(
-    "Select Report Format", ["HTML", "PDF", "Markdown"], disabled=not analysis_performed, key="report_format_selector"
+    "Select Report Format",
+    ["HTML", "PDF", "Markdown"],
+    disabled=not analysis_performed,
+    key="report_format_selector",
 )
 
 if analysis_performed:
@@ -600,7 +642,9 @@ if page == "vLLM Metric Summarizer":
             st.markdown("### 🧠 Model Insights Summary")
             st.markdown(st.session_state["summary"])
             st.markdown("### 💬 Ask Assistant")
-            question = st.text_input("Ask a follow-up question", key="vllm_followup_question")
+            question = st.text_input(
+                "Ask a follow-up question", key="vllm_followup_question"
+            )
             if st.button("Ask"):
                 with st.spinner("Assistant is thinking..."):
                     try:
@@ -631,12 +675,11 @@ if page == "vLLM Metric Summarizer":
             # Get calculated metrics from MCP
             calculated_metrics = get_calculated_metrics_from_mcp(metric_data)
 
-
             metric_data = st.session_state.get("metric_data", {})
-            
+
             # Get dynamic vLLM metrics and prioritize useful ones for display
             available_vllm_metrics = get_vllm_metrics()
-            
+
             if available_vllm_metrics:
                 # Priority order for metrics to display (most useful first)
                 priority_metrics = [
@@ -649,9 +692,9 @@ if page == "vLLM Metric Summarizer":
                     "Requests Running",
                     "Inference Time (s)",
                     "GPU Memory Usage (GB)",
-                    "GPU Energy Consumption (Joules)"
+                    "GPU Energy Consumption (Joules)",
                 ]
-                
+
                 # Filter available metrics based on priority, excluding cache config
                 metrics = []
                 for priority_metric in priority_metrics:
@@ -659,11 +702,14 @@ if page == "vLLM Metric Summarizer":
                         metrics.append(priority_metric)
                         if len(metrics) >= 6:
                             break
-                
+
                 # If we don't have 6 metrics yet, add remaining ones (excluding cache config)
                 if len(metrics) < 6:
                     for metric_name in available_vllm_metrics.keys():
-                        if metric_name not in metrics and "Cache Config" not in metric_name:
+                        if (
+                            metric_name not in metrics
+                            and "Cache Config" not in metric_name
+                        ):
                             metrics.append(metric_name)
                             if len(metrics) >= 6:
                                 break
@@ -672,7 +718,7 @@ if page == "vLLM Metric Summarizer":
                 metrics = [
                     "GPU Temperature (°C)",
                     "GPU Power Usage (Watts)",
-                    "P95 Latency (s)", 
+                    "P95 Latency (s)",
                     "GPU Usage (%)",
                     "GPU Memory Usage (GB)",
                     "Output Tokens Created",
@@ -687,9 +733,9 @@ if page == "vLLM Metric Summarizer":
                             calc_data["avg"] is not None
                             and calc_data["max"] is not None
                         ):
-                            avg_val = calc_data['avg']
-                            max_val = calc_data['max']
-                            
+                            avg_val = calc_data["avg"]
+                            max_val = calc_data["max"]
+
                             # Enhanced unit formatting for vLLM metrics
                             if "Temperature" in label and "°C" in label:
                                 value_display = f"{avg_val:.1f}°C"
@@ -746,10 +792,16 @@ if page == "vLLM Metric Summarizer":
                             else:
                                 value_display = f"{avg_val:.2f}"
                                 delta_display = f"Max: {max_val:.2f}"
-                            
+
                             # Clean up label for display
-                            display_label = label.replace(" (°C)", "").replace(" (Watts)", "").replace(" (%)", "").replace(" (s)", "").replace(" (Joules)", "")
-                            
+                            display_label = (
+                                label.replace(" (°C)", "")
+                                .replace(" (Watts)", "")
+                                .replace(" (%)", "")
+                                .replace(" (s)", "")
+                                .replace(" (Joules)", "")
+                            )
+
                             st.metric(
                                 label=display_label,
                                 value=value_display,
@@ -773,65 +825,102 @@ elif page == "Chat with Prometheus":
     st.markdown("<h1>Chat with Prometheus</h1>", unsafe_allow_html=True)
     st.markdown(f"Currently selected namespace: **{selected_namespace}**")
     st.markdown(
-        "Ask questions like: `What's the P95 latency?`, `Is GPU usage stable?`, etc."
+        "Ask questions like: `What's the P95 latency?`, `Is GPU usage stable?`,`'What alerts were firing yesterday?` etc."
     )
-    user_question = st.text_input("Your question", key="prometheus_chat_question")
-    if st.button("Chat with Metrics"):
-        if not user_question.strip():
-            st.warning("Please enter a question.")
-        else:
-            with st.spinner("Querying and summarizing..."):
-                try:
-                    response = requests.post(
-                        f"{API_URL}/chat-metrics",
-                        json={
-                            "model_name": model_name,
-                            "question": user_question,
-                            "start_ts": selected_start,
-                            "end_ts": selected_end,
-                            "namespace": selected_namespace,  # Add namespace to the request
-                            "summarize_model_id": multi_model_name,
-                            "api_key": api_key,
-                        },
-                    )
-                    data = response.json()
-                    promql = data.get("promql", "")
-                    summary = data.get("summary", "")
-                    if not summary:
-                        st.error("Error: Missing summary in response from AI.")
+
+    # --- Chat history management ---
+    if "messages" not in st.session_state:
+        st.session_state.messages = []  # List to store chat messages
+
+    # Display previous chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    user_question = st.chat_input("Your question")
+    if user_question:
+        st.session_state.messages.append({"role": "user", "content": user_question})
+        with st.chat_message("user"):
+            st.markdown(user_question)
+
+        with st.spinner("Querying and summarizing..."):
+            try:
+                response = requests.post(
+                    f"{API_URL}/chat-prometheus",
+                    json={
+                        "model_name": model_name,
+                        "question": user_question,
+                        "start_ts": selected_start,
+                        "end_ts": selected_end,
+                        "namespace": selected_namespace,
+                        "summarize_model_id": multi_model_name,
+                        "api_key": api_key,
+                        "messages": st.session_state.messages,
+                    },
+                )
+                data = response.json()
+                promql_list = data.get("promql", [])
+                summary = data.get("summary", "")
+                if not summary:
+                    st.error("Error: Missing summary in response from AI.")
+                else:
+                    # Adding AI response to history ---
+                    ai_response_content = ""
+                    if promql_list:
+                        if isinstance(promql_list, str):
+                            promql_list = [promql_list]
+                        queries_str = "\n\n".join(promql_list)
+                        ai_response_content += (
+                            "**Generated PromQL:**\n```yaml\n" + queries_str + "\n```\n"
+                        )
                     else:
-                        st.markdown("**Generated PromQL:**")
-                        if promql:
-                            st.code(promql, language="yaml")
-                        else:
-                            st.info("No direct PromQL generated for this question.")
-                        st.markdown("**AI Summary:**")
-                        st.text(summary)
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                        ai_response_content += (
+                            "_No direct PromQL generated for this question._\n"
+                        )
+                    ai_response_content += "**AI Summary:**\n\n" + summary
+
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": ai_response_content}
+                    )
+                    with st.chat_message("assistant"):
+                        st.markdown(ai_response_content)
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+
 
 # --- 🔧 OpenShift Metrics Page ---
 elif page == "OpenShift Metrics":
     st.markdown("<h1>OpenShift Metrics Dashboard</h1>", unsafe_allow_html=True)
-    
+
     # Display current configuration
-    scope_display = scope_type + (f" ({selected_openshift_namespace})" if selected_openshift_namespace else "")
+    scope_display = scope_type + (
+        f" ({selected_openshift_namespace})" if selected_openshift_namespace else ""
+    )
     category_display = selected_metric_category
-    st.markdown(f"**Analysis Scope:** {scope_display} | **Category:** {category_display}")
-    
+    st.markdown(
+        f"**Analysis Scope:** {scope_display} | **Category:** {category_display}"
+    )
+
     # Fleet view indicator for cluster-wide
     if scope_type == "Cluster-wide":
-        st.info("🌐 **Fleet View**: Analyzing metrics across the entire OpenShift cluster")
-    
+        st.info(
+            "🌐 **Fleet View**: Analyzing metrics across the entire OpenShift cluster"
+        )
+
     # --- Analyze Button ---
     if st.button("🔍 Analyze OpenShift Metrics"):
-        analysis_type = "Fleet Analysis" if scope_type == "Cluster-wide" else "Namespace Analysis"
+        analysis_type = (
+            "Fleet Analysis" if scope_type == "Cluster-wide" else "Namespace Analysis"
+        )
         with st.spinner(f"Running {analysis_type}..."):
             try:
                 # Get parameters for OpenShift analysis
                 params = {
                     "metric_category": selected_metric_category,  # Specific category
-                    "scope": scope_type.lower().replace("-", "_").replace(" ", "_"),  # "cluster_wide" or "namespace_scoped"
+                    "scope": scope_type.lower()
+                    .replace("-", "_")
+                    .replace(" ", "_"),  # "cluster_wide" or "namespace_scoped"
                     "namespace": selected_openshift_namespace,  # None for cluster-wide
                     "start_ts": selected_start,
                     "end_ts": selected_end,
@@ -846,21 +935,23 @@ elif page == "OpenShift Metrics":
                 # Store results in session state
                 st.session_state["openshift_prompt"] = result["health_prompt"]
                 st.session_state["openshift_summary"] = result["llm_summary"]
-                st.session_state["openshift_metric_category"] = params["metric_category"]
+                st.session_state["openshift_metric_category"] = params[
+                    "metric_category"
+                ]
                 st.session_state["openshift_scope"] = params["scope"]
                 st.session_state["openshift_namespace"] = params["namespace"]
                 st.session_state["openshift_metric_data"] = result.get("metrics", {})
                 st.session_state["openshift_analysis_type"] = analysis_type
-                
+
                 # Store analysis parameters for report generation
                 st.session_state["analysis_params"] = params
-                
+
                 # Enable download button for OpenShift analysis
                 st.session_state["analysis_performed"] = True
-                
+
                 success_msg = f"✅ {analysis_type} completed successfully! Analyzed {len(result.get('metrics', {}))} metric types."
                 st.success(success_msg)
-                
+
                 # Force rerun to update the UI state (enable download button)
                 st.rerun()
             except requests.exceptions.HTTPError as http_err:
@@ -873,20 +964,24 @@ elif page == "OpenShift Metrics":
     # Display results if available
     if "openshift_summary" in st.session_state:
         col1, col2 = st.columns([1.3, 1.7])
-        
+
         with col1:
             st.markdown("### OpenShift Insights Summary")
             st.markdown(st.session_state["openshift_summary"])
-            
+
             st.markdown("### Ask About OpenShift")
-            openshift_question = st.text_input("Ask a question about OpenShift metrics", key="openshift_question")
+            openshift_question = st.text_input(
+                "Ask a question about OpenShift metrics", key="openshift_question"
+            )
             if st.button("Ask OpenShift Assistant"):
                 with st.spinner("OpenShift assistant is thinking..."):
                     try:
                         reply = requests.post(
                             f"{API_URL}/chat-openshift",
                             json={
-                                "metric_category": st.session_state["openshift_metric_category"],
+                                "metric_category": st.session_state[
+                                    "openshift_metric_category"
+                                ],
                                 "question": openshift_question,
                                 "scope": st.session_state["openshift_scope"],
                                 "namespace": st.session_state["openshift_namespace"],
@@ -913,43 +1008,63 @@ elif page == "OpenShift Metrics":
             analysis_type = st.session_state.get("openshift_analysis_type", "Analysis")
             metric_category = st.session_state.get("openshift_metric_category", "")
             scope = st.session_state.get("openshift_scope", "cluster_wide")
-            
+
             if analysis_type == "Fleet Analysis":
                 st.markdown("### 🌐 OpenShift Fleet Dashboard")
             else:
                 st.markdown("### 📊 OpenShift Metrics Dashboard")
-            
+
             metric_data = st.session_state.get("openshift_metric_data", {})
-            
+
             # Determine metrics to show based on category selection and scope
             scope = st.session_state.get("openshift_scope", "cluster_wide")
-            
+
             if scope == "namespace_scoped":
                 # Show namespace-specific metrics that actually have data
                 if metric_category == "Fleet Overview":
                     metrics_to_show = [
-                        "Pods Running", "Pods Failed", "Container CPU Usage",
-                        "Container Memory Usage", "Pod Restart Rate", "Deployment Replicas Ready"
+                        "Pods Running",
+                        "Pods Failed",
+                        "Container CPU Usage",
+                        "Container Memory Usage",
+                        "Pod Restart Rate",
+                        "Deployment Replicas Ready",
                     ]
                 elif metric_category == "Workloads & Pods":
                     metrics_to_show = [
-                        "Pods Running", "Pods Pending", "Pods Failed",
-                        "Pod Restarts (Rate)", "Container CPU Usage", "Container Memory Usage"
+                        "Pods Running",
+                        "Pods Pending",
+                        "Pods Failed",
+                        "Pod Restarts (Rate)",
+                        "Container CPU Usage",
+                        "Container Memory Usage",
                     ]
                 elif metric_category == "Compute & Resources":
                     metrics_to_show = [
-                        "Container CPU Throttling", "Container Memory Failures", "OOM Events",
-                        "Container Processes", "Container Threads", "Container File Descriptors"
+                        "Container CPU Throttling",
+                        "Container Memory Failures",
+                        "OOM Events",
+                        "Container Processes",
+                        "Container Threads",
+                        "Container File Descriptors",
                     ]
                 elif metric_category == "Storage & Networking":
                     metrics_to_show = [
-                        "PV Claims Bound", "PV Claims Pending", "Container Network Receive",
-                        "Container Network Transmit", "Network Errors", "Filesystem Usage"
+                        "PV Claims Bound",
+                        "PV Claims Pending",
+                        "Container Network Receive",
+                        "Container Network Transmit",
+                        "Network Errors",
+                        "Filesystem Usage",
                     ]
                 elif metric_category == "Application Services":
                     metrics_to_show = [
-                        "HTTP Request Rate", "HTTP Error Rate (%)", "Service Endpoints",
-                        "Container Processes", "Container File Descriptors", "Container Threads"
+                        "HTTP Request Rate",
+                        "HTTP Error Rate (%)",
+                        "Service Endpoints",
+                        "Container Processes",
+                        "Container File Descriptors",
+                        "Container Threads",
                     ]
                 else:
                     metrics_to_show = list(metric_data.keys())[:6]
@@ -957,32 +1072,52 @@ elif page == "OpenShift Metrics":
                 # Cluster-wide metrics (original)
                 if metric_category == "Fleet Overview":
                     metrics_to_show = [
-                        "Total Pods Running", "Total Pods Failed", "Cluster CPU Usage (%)",
-                        "Cluster Memory Usage (%)", "GPU Utilization (%)", "GPU Temperature (°C)"
+                        "Total Pods Running",
+                        "Total Pods Failed",
+                        "Cluster CPU Usage (%)",
+                        "Cluster Memory Usage (%)",
+                        "GPU Utilization (%)",
+                        "GPU Temperature (°C)",
                     ]
                 elif metric_category == "Workloads & Pods":
                     metrics_to_show = [
-                        "Pods Running", "Pods Pending", "Pods Failed",
-                        "Pod Restarts (Rate)", "Container CPU Usage", "Container Memory Usage"
+                        "Pods Running",
+                        "Pods Pending",
+                        "Pods Failed",
+                        "Pod Restarts (Rate)",
+                        "Container CPU Usage",
+                        "Container Memory Usage",
                     ]
                 elif metric_category == "GPU & Accelerators":
                     metrics_to_show = [
-                        "GPU Temperature (°C)", "GPU Power Usage (Watts)", "GPU Utilization (%)",
-                        "GPU Memory Usage (GB)", "GPU Energy Consumption (Joules)", "GPU Memory Temperature (°C)"
+                        "GPU Temperature (°C)",
+                        "GPU Power Usage (Watts)",
+                        "GPU Utilization (%)",
+                        "GPU Memory Usage (GB)",
+                        "GPU Energy Consumption (Joules)",
+                        "GPU Memory Temperature (°C)",
                     ]
                 elif metric_category == "Storage & Networking":
                     metrics_to_show = [
-                        "PV Available Space", "PVC Bound", "Storage I/O Rate",
-                        "Network Receive Rate", "Network Transmit Rate", "Network Errors"
+                        "PV Available Space",
+                        "PVC Bound",
+                        "Storage I/O Rate",
+                        "Network Receive Rate",
+                        "Network Transmit Rate",
+                        "Network Errors",
                     ]
                 elif metric_category == "Application Services":
                     metrics_to_show = [
-                        "HTTP Request Rate", "HTTP Error Rate (%)", "HTTP P95 Latency",
-                        "Services Available", "Ingress Request Rate", "Load Balancer Backends"
+                        "HTTP Request Rate",
+                        "HTTP Error Rate (%)",
+                        "HTTP P95 Latency",
+                        "Services Available",
+                        "Ingress Request Rate",
+                        "Load Balancer Backends",
                     ]
                 else:
                     metrics_to_show = list(metric_data.keys())[:6]  # Fallback
-            
+
             # Display metrics in a grid
             cols = st.columns(3)
             for i, label in enumerate(metrics_to_show):
@@ -1023,10 +1158,14 @@ elif page == "OpenShift Metrics":
                                     # Convert bytes to appropriate units
                                     if latest_val >= 1024**3:  # GB
                                         value_display = f"{latest_val/(1024**3):.1f}GB"
-                                        delta_display = f"Avg: {avg_val/(1024**3):.1f}GB"
+                                        delta_display = (
+                                            f"Avg: {avg_val/(1024**3):.1f}GB"
+                                        )
                                     elif latest_val >= 1024**2:  # MB
                                         value_display = f"{latest_val/(1024**2):.0f}MB"
-                                        delta_display = f"Avg: {avg_val/(1024**2):.0f}MB"
+                                        delta_display = (
+                                            f"Avg: {avg_val/(1024**2):.0f}MB"
+                                        )
                                     elif latest_val >= 1024:  # KB
                                         value_display = f"{latest_val/1024:.0f}KB"
                                         delta_display = f"Avg: {avg_val/1024:.0f}KB"
@@ -1037,25 +1176,39 @@ elif page == "OpenShift Metrics":
                                     # Storage metrics in bytes
                                     if latest_val >= 1024**4:  # TB
                                         value_display = f"{latest_val/(1024**4):.1f}TB"
-                                        delta_display = f"Avg: {avg_val/(1024**4):.1f}TB"
+                                        delta_display = (
+                                            f"Avg: {avg_val/(1024**4):.1f}TB"
+                                        )
                                     elif latest_val >= 1024**3:  # GB
                                         value_display = f"{latest_val/(1024**3):.0f}GB"
-                                        delta_display = f"Avg: {avg_val/(1024**3):.0f}GB"
+                                        delta_display = (
+                                            f"Avg: {avg_val/(1024**3):.0f}GB"
+                                        )
                                     else:
                                         value_display = f"{latest_val/(1024**2):.0f}MB"
-                                        delta_display = f"Avg: {avg_val/(1024**2):.0f}MB"
-                                elif "Network" in label and ("Receive" in label or "Transmit" in label):
+                                        delta_display = (
+                                            f"Avg: {avg_val/(1024**2):.0f}MB"
+                                        )
+                                elif "Network" in label and (
+                                    "Receive" in label or "Transmit" in label
+                                ):
                                     # Network metrics - bytes/sec
                                     if latest_val >= 1024**2:  # MB/s
-                                        value_display = f"{latest_val/(1024**2):.1f}MB/s"
-                                        delta_display = f"Avg: {avg_val/(1024**2):.1f}MB/s"
+                                        value_display = (
+                                            f"{latest_val/(1024**2):.1f}MB/s"
+                                        )
+                                        delta_display = (
+                                            f"Avg: {avg_val/(1024**2):.1f}MB/s"
+                                        )
                                     elif latest_val >= 1024:  # KB/s
                                         value_display = f"{latest_val/1024:.0f}KB/s"
                                         delta_display = f"Avg: {avg_val/1024:.0f}KB/s"
                                     else:
                                         value_display = f"{latest_val:.0f}B/s"
                                         delta_display = f"Avg: {avg_val:.0f}B/s"
-                                elif "Rate" in label and ("Request" in label or "HTTP" in label):
+                                elif "Rate" in label and (
+                                    "Request" in label or "HTTP" in label
+                                ):
                                     # Request rates
                                     if latest_val >= 1000:
                                         value_display = f"{latest_val/1000:.1f}k/s"
@@ -1086,11 +1239,19 @@ elif page == "OpenShift Metrics":
                                 elif "Error Rate" in label and "%" in label:
                                     value_display = f"{latest_val:.2f}%"
                                     delta_display = f"Avg: {avg_val:.2f}%"
-                                elif "Pods" in label or "Replicas" in label or "Nodes" in label:
+                                elif (
+                                    "Pods" in label
+                                    or "Replicas" in label
+                                    or "Nodes" in label
+                                ):
                                     # Count metrics
                                     value_display = f"{latest_val:.0f}"
                                     delta_display = f"Avg: {avg_val:.0f}"
-                                elif "Restarts" in label or "Errors" in label or "Events" in label:
+                                elif (
+                                    "Restarts" in label
+                                    or "Errors" in label
+                                    or "Events" in label
+                                ):
                                     # Rate metrics
                                     value_display = f"{latest_val:.2f}/s"
                                     delta_display = f"Avg: {avg_val:.2f}/s"
@@ -1105,9 +1266,15 @@ elif page == "OpenShift Metrics":
                                     else:
                                         value_display = f"{latest_val:.2f}"
                                         delta_display = f"Avg: {avg_val:.2f}"
-                                
+
                                 st.metric(
-                                    label=label.replace(" (bytes/sec)", "").replace(" (bytes)", "").replace(" (%)", "").replace(" (Watts)", "").replace(" (°C)", "").replace(" (Joules)", "").replace(" (MHz)", ""),
+                                    label=label.replace(" (bytes/sec)", "")
+                                    .replace(" (bytes)", "")
+                                    .replace(" (%)", "")
+                                    .replace(" (Watts)", "")
+                                    .replace(" (°C)", "")
+                                    .replace(" (Joules)", "")
+                                    .replace(" (MHz)", ""),
                                     value=value_display,
                                     delta=delta_display,
                                 )
@@ -1126,35 +1293,79 @@ elif page == "OpenShift Metrics":
                 st.markdown("### 📈 Fleet Trends Over Time")
             else:
                 st.markdown("### 📈 Trends Over Time")
-            
+
             # Determine chart metrics based on category and scope
             chart_metrics = []
             if scope == "namespace_scoped":
                 if metric_category == "Fleet Overview":
-                    chart_metrics = ["Namespace Pods Running", "Container CPU Usage", "Container Memory Usage"]
+                    chart_metrics = [
+                        "Namespace Pods Running",
+                        "Container CPU Usage",
+                        "Container Memory Usage",
+                    ]
                 elif metric_category == "Workloads & Pods":
-                    chart_metrics = ["Pods Running", "Container CPU Usage", "Pod Restarts (Rate)"]
+                    chart_metrics = [
+                        "Pods Running",
+                        "Container CPU Usage",
+                        "Pod Restarts (Rate)",
+                    ]
                 elif metric_category == "Compute & Resources":
-                    chart_metrics = ["Container CPU Throttling", "Container Memory Failures", "OOM Events"]
+                    chart_metrics = [
+                        "Container CPU Throttling",
+                        "Container Memory Failures",
+                        "OOM Events",
+                    ]
                 elif metric_category == "Storage & Networking":
-                    chart_metrics = ["Container Network Receive", "Container Network Transmit", "Filesystem Usage"]
+                    chart_metrics = [
+                        "Container Network Receive",
+                        "Container Network Transmit",
+                        "Filesystem Usage",
+                    ]
                 elif metric_category == "Application Services":
-                    chart_metrics = ["Container Processes", "Container File Descriptors", "Container Threads"]
+                    chart_metrics = [
+                        "Container Processes",
+                        "Container File Descriptors",
+                        "Container Threads",
+                    ]
             else:
                 if metric_category == "Fleet Overview":
-                    chart_metrics = ["Total Pods Running", "Cluster CPU Usage (%)", "GPU Utilization (%)", "GPU Temperature (°C)"]
+                    chart_metrics = [
+                        "Total Pods Running",
+                        "Cluster CPU Usage (%)",
+                        "GPU Utilization (%)",
+                        "GPU Temperature (°C)",
+                    ]
                 elif metric_category == "Workloads & Pods":
-                    chart_metrics = ["Pods Running", "Container CPU Usage", "Pod Restarts (Rate)"]
+                    chart_metrics = [
+                        "Pods Running",
+                        "Container CPU Usage",
+                        "Pod Restarts (Rate)",
+                    ]
                 elif metric_category == "GPU & Accelerators":
-                    chart_metrics = ["GPU Utilization (%)", "GPU Temperature (°C)", "GPU Power Usage (Watts)", "GPU Memory Usage (GB)"]
+                    chart_metrics = [
+                        "GPU Utilization (%)",
+                        "GPU Temperature (°C)",
+                        "GPU Power Usage (Watts)",
+                        "GPU Memory Usage (GB)",
+                    ]
                 elif metric_category == "Storage & Networking":
-                    chart_metrics = ["Network Receive Rate", "Network Transmit Rate", "Storage I/O Rate"]
+                    chart_metrics = [
+                        "Network Receive Rate",
+                        "Network Transmit Rate",
+                        "Storage I/O Rate",
+                    ]
                 elif metric_category == "Application Services":
-                    chart_metrics = ["HTTP Request Rate", "HTTP Error Rate (%)", "HTTP P95 Latency"]
-            
+                    chart_metrics = [
+                        "HTTP Request Rate",
+                        "HTTP Error Rate (%)",
+                        "HTTP P95 Latency",
+                    ]
+
             # Filter chart metrics to only include those with data
-            chart_metrics = [m for m in chart_metrics if m in metric_data and metric_data[m]]
-            
+            chart_metrics = [
+                m for m in chart_metrics if m in metric_data and metric_data[m]
+            ]
+
             dfs = []
             for label in chart_metrics:
                 raw_data = metric_data.get(label, [])
@@ -1168,38 +1379,57 @@ elif page == "OpenShift Metrics":
                         dfs.append(df)
                     except Exception as e:
                         st.warning(f"Chart error for {label}: {e}")
-            
+
             if dfs:
                 chart_df = pd.concat(dfs, axis=1).fillna(0)
                 st.line_chart(chart_df)
             else:
                 st.info(f"No time series data available for {metric_category} metrics.")
-            
+
             # Analysis scope information
             st.markdown(f"### ℹ️ Analysis Details")
-            scope_text = "Cluster-wide" if scope == "cluster_wide" else "Namespace scoped"
-            namespace_info = f" | **Namespace:** {st.session_state.get('openshift_namespace', 'N/A')}" if scope == "namespace_scoped" else ""
+            scope_text = (
+                "Cluster-wide" if scope == "cluster_wide" else "Namespace scoped"
+            )
+            namespace_info = (
+                f" | **Namespace:** {st.session_state.get('openshift_namespace', 'N/A')}"
+                if scope == "namespace_scoped"
+                else ""
+            )
             category_info = f" | **Category:** {metric_category}"
-            
+
             st.info(f"**Scope:** {scope_text}{namespace_info}{category_info}")
-            
+
             # Additional fleet view information
             if analysis_type == "Fleet Analysis":
                 total_metrics = len(metric_data)
-                st.info(f"🌐 **Fleet Analysis**: Monitoring {total_metrics} metric types across the entire OpenShift cluster")
-                
+                st.info(
+                    f"🌐 **Fleet Analysis**: Monitoring {total_metrics} metric types across the entire OpenShift cluster"
+                )
+
                 # GPU Fleet Information
-                if metric_category == "Fleet Overview" or metric_category == "GPU & Accelerators":
+                if (
+                    metric_category == "Fleet Overview"
+                    or metric_category == "GPU & Accelerators"
+                ):
                     gpu_info = get_gpu_info()
                     if gpu_info["total_gpus"] > 0:
-                        gpu_summary = f"🖥️ **GPU Fleet**: {gpu_info['total_gpus']} GPUs detected"
+                        gpu_summary = (
+                            f"🖥️ **GPU Fleet**: {gpu_info['total_gpus']} GPUs detected"
+                        )
                         if gpu_info["vendors"]:
-                            gpu_summary += f" | **Vendors**: {', '.join(gpu_info['vendors'])}"
+                            gpu_summary += (
+                                f" | **Vendors**: {', '.join(gpu_info['vendors'])}"
+                            )
                         if gpu_info["models"]:
                             gpu_summary += f" | **Models**: {', '.join(gpu_info['models'][:3])}"  # Show first 3 models
                         if gpu_info["temperatures"]:
-                            avg_temp = sum(gpu_info["temperatures"]) / len(gpu_info["temperatures"])
+                            avg_temp = sum(gpu_info["temperatures"]) / len(
+                                gpu_info["temperatures"]
+                            )
                             gpu_summary += f" | **Avg Temp**: {avg_temp:.1f}°C"
                         st.info(gpu_summary)
                     elif metric_category == "GPU & Accelerators":
-                        st.warning("⚠️ No GPU information detected. Check if DCGM metrics are available in your cluster.")
+                        st.warning(
+                            "⚠️ No GPU information detected. Check if DCGM metrics are available in your cluster."
+                        )
