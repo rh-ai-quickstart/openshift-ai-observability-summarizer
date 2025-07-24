@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: quay.io/ecosystem-appeng/metric-mcp
-  tag: ts19
+  tag: pz24
 
 service:
   type: ClusterIP

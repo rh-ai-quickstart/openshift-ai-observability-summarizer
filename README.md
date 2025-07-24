@@ -115,24 +115,24 @@ cd deploy/helm
 ```
 
 ### Install the AI Summarizer
-```
+```bash
 make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
 ```
 
 ### With GPU tolerations
-```
+```bash
 make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu"
 ```
 
 ### Multiple models with safety
-```
+```bash
 make install NAMESPACE=your-namespace \
   LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu" \
   SAFETY=llama-guard-3-8b SAFETY_TOLERATION="nvidia.com/gpu"
 ```
 
 ### With alerting
-```
+```bash
 make install NAMESPACE=your-namespace ALERTS=TRUE
 ```
 
@@ -230,24 +230,31 @@ In order to develop locally faster on the MCP/UI you can leverage port-forwardin
 ### Running script
 To perform local setup using the `./scripts/local-dev.sh` script, execute the following steps:
 1. **Make sure you are logged into the cluster and can execute `oc` commands against the cluster.**
-1. Install `uv` by following instructions on the [uv website](https://github.com/astral-sh/uv)
-1. Sync up the environment using the following command:
-   * `uv sync`
+2. Install `uv` by following instructions on the [uv website](https://github.com/astral-sh/uv)
+3. Sync up the environment and development dependencies using `uv` in the base directory:
+```bash
+uv sync --group dev
+```
+   The `uv sync` command performs the following tasks:
+   - Find or download an appropriate Python version
+   - Create a virtual environment in `.venv` folder
+   - Build complete dependency using `pyproject.toml` (and `uv.lock`) file(s)
+   - Sync up project dependencies in the virtual environment
+   
+4. Activate the virtual environment:
+```bash
+source .venv/bin/activate
+```
+5. Export the namespace where the kickstart is deployed:
+```sh
+export LLM_NAMESPACE=<DESIRED_NAMESPACE>
+```
+6. Run the script by executing the following command:
+```bash
+./scripts/local-dev.sh
+```
 
-      The `uv sync` command performs the following tasks:
-
-      1. Find or download an appropriate Python version
-      1. Creates a virtual environment in `.venv` folder
-      1. Build complete dependency using `pyproject.toml` (and `uv.lock`) file(s)
-      1. Sync up project dependencies in the virtual environment
-1. Activate the virtual environment using the following command:
-   * `source .venv/bin/activate`
-1. Export the namespace where the kickstart is deployed by running the following command:
-   * `export LLM_NAMESPACE=<DESIRED_NAMESPACE>`
-1. Run the script by executing the following command:
-   * `./scripts/local-dev.sh`
-
-      This script should perform the tasks shown in the following image:
+The output should look like this:
 ![Command Output](docs/img/local-dev-expected.png)
 
 #### Macos weasyprint install
@@ -263,32 +270,24 @@ In order to run the mcp locally you'll need to install weasyprint:
 
 The test suite is located in the `tests/` directory, with the tests for each service in their respective directories.
 
-1. Create a virtual environment and install the project with dev dependencies in the base directory. 
+1. Using `uv`, sync up the test dependencies listed in `pyproject.toml`:
 
 ```bash
 # Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate
-
-# Install development dependencies (includes formatting tools)
-pip install -e ".[dev]"
+uv sync --group test
 ```
-
-This will take the dependencies listed in `pyproject.toml` and install them.
 
 2. Use the `pytest` command go run all tests
 
 ```bash
 # Run all tests with verbose output and coverage
-pytest -v --cov=metric_ui --cov-report=html --cov-report=term
+uv run pytest -v --cov=metric_ui --cov-report=html --cov-report=term
 
 # Run only MCP tests
-pytest -v tests/mcp/
+uv run pytest -v tests/mcp/
 
 # Run specific test file
-pytest -v tests/mcp/test_api_endpoints.py
+uv run pytest -v tests/mcp/test_api_endpoints.py
 ```
 
 To view a detailed coverage report after generating, open `htmlcov/index.html`.

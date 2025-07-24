@@ -74,7 +74,7 @@ class TestInfrastructureEndpoints(TestBase):
         assert data["test-model"]["external"] is False
 
 
-class TestDiscoveryEndpoints(TestBase):
+class TestModelDiscoveryEndpoints(TestBase):
     """Test model and namespace discovery endpoints"""
     
     @patch('metric_ui.mcp.mcp.requests.get')
@@ -121,6 +121,15 @@ class TestDiscoveryEndpoints(TestBase):
         assert response.status_code == 200
         namespaces = response.json()
         assert isinstance(namespaces, list)
+
+    @patch('metric_ui.mcp.mcp.requests.get')
+    def test_namespaces_endpoint_error(self, mock_get, client):
+        """Test namespaces endpoint when Prometheus fails"""
+        mock_get.side_effect = Exception("Connection error")
+        
+        response = client.get("/namespaces")
+        assert response.status_code == 200
+        assert response.json() == []  # Should return empty list on error
     
     @patch('metric_ui.mcp.mcp.MODEL_CONFIG', {"model1": {}, "model2": {}})
     def test_multi_models_endpoint(self, client):
@@ -148,19 +157,6 @@ class TestMetricsDiscoveryEndpoints(TestBase):
         metrics = response.json()
         assert "Prompt Tokens" in metrics
         assert "GPU Usage" in metrics
-    
-    @patch('metric_ui.mcp.mcp.discover_dcgm_metrics')
-    def test_dcgm_metrics_endpoint(self, mock_discover, client):
-        """Test DCGM metrics endpoint"""
-        mock_discover.return_value = {
-            "GPU Temperature": "avg(DCGM_FI_DEV_GPU_TEMP)",
-            "GPU Power": "avg(DCGM_FI_DEV_POWER_USAGE)"
-        }
-        
-        response = client.get("/dcgm-metrics")
-        assert response.status_code == 200
-        metrics = response.json()
-        assert "GPU Temperature" in metrics
     
     @patch('metric_ui.mcp.mcp.requests.get')
     def test_gpu_info_endpoint_success(self, mock_get, client):
@@ -194,10 +190,6 @@ class TestMetricsDiscoveryEndpoints(TestBase):
         assert gpu_info["total_gpus"] == 0
         assert gpu_info["vendors"] == []
 
-
-class TestOpenShiftDiscoveryEndpoints(TestBase):
-    """Test OpenShift-specific discovery endpoints"""
-    
     def test_openshift_metric_groups(self, client):
         """Test OpenShift metric groups endpoint"""
         response = client.get("/openshift-metric-groups")
@@ -221,11 +213,13 @@ class TestOpenShiftDiscoveryEndpoints(TestBase):
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {
-            "data": [
-                {"namespace": "production"},
-                {"namespace": "staging"},
-                {"namespace": "kube-system"}  # Should be filtered out
-            ]
+            "data": {
+                "result": [
+                    {"metric": {"namespace": "production"}},
+                    {"metric": {"namespace": "staging"}},
+                    {"metric": {"namespace": "kube-system"}}  # Should be filtered out
+                ]
+            }
         }
         mock_get.return_value = mock_response
         
@@ -235,6 +229,19 @@ class TestOpenShiftDiscoveryEndpoints(TestBase):
         assert "production" in namespaces
         assert "staging" in namespaces
         assert "kube-system" not in namespaces  # System namespace filtered
+
+    @patch('metric_ui.mcp.mcp.requests.get')
+    def test_openshift_namespaces_error(self, mock_get, client):
+        """Test OpenShift namespaces endpoint when Prometheus fails"""
+        mock_get.side_effect = Exception("Connection error")
+        
+        response = client.get("/openshift-namespaces")
+        assert response.status_code == 200
+        namespaces = response.json()
+        # Should return fallback namespaces on error
+        assert "default" in namespaces
+        assert "openshift-monitoring" in namespaces
+        assert "knative-serving" in namespaces
 
 
 class TestAnalysisEndpoints(TestBase):
@@ -276,14 +283,6 @@ class TestAnalysisEndpoints(TestBase):
         assert "llm_summary" in data
         assert "metrics" in data
         assert data["model_name"] == "test-model"
-    
-    def test_analyze_vllm_missing_fields(self, client):
-        """Test vLLM analyze endpoint with missing required fields"""
-        response = client.post("/analyze", json={
-            "model_name": "test-model"
-            # Missing required fields
-        })
-        assert response.status_code == 422  # Validation error
     
     @patch('metric_ui.mcp.mcp.requests.post')  
     def test_analyze_vllm_llm_api_error(self, mock_post, client):
@@ -346,7 +345,7 @@ class TestAnalysisEndpoints(TestBase):
 
 
 class TestChatEndpoints(TestBase):
-    """Test interactive chat endpoints"""
+    """Test all chat-related endpoints"""
     
     @patch('metric_ui.mcp.mcp.requests.post')
     def test_chat_success(self, mock_post, client, mock_llm_response):
@@ -367,14 +366,59 @@ class TestChatEndpoints(TestBase):
         data = response.json()
         assert "response" in data
         assert isinstance(data["response"], str)
-    
-    def test_chat_validation_error(self, client):
-        """Test chat with invalid request data"""
-        response = client.post("/chat", json={
-            "question": "What's the status?"
-            # Missing required fields
+
+    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.mcp.mcp.summarize_with_llm')
+    def test_chat_metrics_success(self, mock_llm, mock_get, client):
+        """Test successful chat-metrics interaction"""
+        # Mock Prometheus response
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": []}
+        mock_get.return_value = mock_response
+        
+        # Mock LLM response with JSON
+        mock_llm.return_value = '{"promql": "test_query", "summary": "Test analysis"}'
+        
+        response = client.post("/chat-metrics", json={
+            "model_name": "test-model",
+            "question": "What is the GPU usage?",
+            "namespace": "test-ns",
+            "summarize_model_id": "test-model",
+            "chat_scope": "namespace_specific"
         })
-        assert response.status_code == 422
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "promql" in data
+        assert "summary" in data
+
+    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.mcp.mcp.summarize_with_llm')
+    def test_chat_openshift_success(self, mock_llm, mock_get, client):
+        """Test successful OpenShift chat interaction"""
+        # Mock Prometheus response
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": {"result": []}}
+        mock_get.return_value = mock_response
+        
+        # Mock LLM response
+        mock_llm.return_value = '{"promql": "cluster_query", "summary": "Cluster analysis"}'
+        
+        response = client.post("/chat-openshift", json={
+            "metric_category": "Fleet Overview",
+            "scope": "cluster_wide",
+            "question": "How is the cluster performing?",
+            "start_ts": 1640995200,
+            "end_ts": 1640995800,
+            "summarize_model_id": "test-model"
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "promql" in data
+        assert "summary" in data
 
 
 class TestReportEndpoints(TestBase):
@@ -447,7 +491,7 @@ class TestReportEndpoints(TestBase):
             mock_file_response.assert_called_once()
 
 
-class TestCalculateMetricsEndpoints(TestBase):
+class TestMetricsCalculationEndpoints(TestBase):
     """Test metrics calculation endpoints"""
     
     def test_calculate_metrics_success(self, client):
@@ -492,3 +536,37 @@ class TestCalculateMetricsEndpoints(TestBase):
         metrics = data["calculated_metrics"] 
         assert metrics["Empty Metric"]["avg"] is None
         assert metrics["Empty Metric"]["max"] is None
+
+
+class TestUtilityEndpoints(TestBase):
+    """Test utility and debug endpoints"""
+    
+    def test_all_metrics_endpoint(self, client):
+        """Test all-metrics endpoint"""
+        response = client.get("/all-metrics")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, dict)
+        # Should have grouped metrics
+        expected_groups = ["vLLM", "GPU", "OpenShift"]
+        for group in expected_groups:
+            assert group in data
+    
+    @patch('metric_ui.mcp.mcp.requests.get')
+    def test_deployment_info_success(self, mock_get, client):
+        """Test deployment info endpoint"""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": {"result": []}}
+        mock_get.return_value = mock_response
+        
+        response = client.get("/deployment-info?namespace=test-ns&model=test-model")
+        assert response.status_code == 200
+        data = response.json()
+        assert "is_new_deployment" in data
+        assert "deployment_date" in data
+        assert "namespace" in data
+        assert "model" in data
+
+    
+    

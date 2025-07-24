@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 
 from metric_ui.mcp.mcp import (
@@ -9,7 +8,12 @@ from metric_ui.mcp.mcp import (
     compute_health_score,
     _clean_llm_summary_string,
     calculate_metric_stats,
-    _validate_and_extract_response
+    _validate_and_extract_response,
+    extract_time_range_with_info,
+    extract_time_range,
+    add_namespace_filter,
+    fix_promql_syntax,
+    format_alerts_for_ui
 )
 
 
@@ -284,25 +288,121 @@ class TestValidateAndExtractResponse:
 class TestCleanLlmSummaryString:
     """Test LLM response text cleaning"""
     
-    def test_removes_non_printable_characters(self):
-        """Should remove non-printable ASCII characters"""
-        dirty_text = "Hello\x00\x01World🤖"
-        clean_text = _clean_llm_summary_string(dirty_text)
-        assert clean_text == "HelloWorld"
+    @pytest.mark.parametrize("input_text,expected_output,test_description", [
+        # Non-printable character removal
+        ("Hello\x00\x01World🤖", "HelloWorld", "removes non-printable ASCII characters"),
+        # Whitespace normalization
+        ("Hello     World\n\n\nTest\t\t\tText", "Hello World Test Text", "normalizes multiple spaces/newlines/tabs to single spaces"),
+        # Leading/trailing whitespace stripping
+        ("   Hello World   ", "Hello World", "strips leading and trailing whitespace"),
+        # Empty and whitespace-only strings
+        ("", "", "handles empty string"),
+        ("   \n\t   ", "", "handles whitespace-only string"),
+        # Complex combination
+        ("\x00  Hello\n\n\nWorld  \x01\t", "Hello World", "handles complex combination of issues"),
+        # Normal text (no changes needed)
+        ("Hello World", "Hello World", "preserves normal text unchanged")
+    ])
+    def test_clean_llm_summary_string(self, input_text, expected_output, test_description):
+        """Test LLM response text cleaning functionality"""
+        result = _clean_llm_summary_string(input_text)
+        assert result == expected_output, f"Failed: {test_description}"
+
+
+class TestTimeRangeParsing:
+    """Test time range parsing and extraction functions"""
     
-    def test_normalizes_whitespace(self):
-        """Should normalize multiple spaces/newlines/tabs to single spaces"""
-        messy_text = "Hello     World\n\n\nTest\t\t\tText"
-        clean_text = _clean_llm_summary_string(messy_text)
-        assert clean_text == "Hello World Test Text"
+    def test_extract_time_range_with_info_basic_parsing(self):
+        """Should parse common time expressions"""
+        query = "cpu usage in the past 30 minutes"
+        start_ts, end_ts, info = extract_time_range_with_info(query, None, None)
+        
+        assert isinstance(start_ts, int)
+        assert isinstance(end_ts, int)
+        assert end_ts > start_ts
+        assert info["duration_str"] == "past 30 minutes"
+        assert info["rate_syntax"] == "30m"
     
-    def test_strips_whitespace(self):
-        """Should strip leading and trailing whitespace"""
-        padded_text = "   Hello World   "
-        clean_text = _clean_llm_summary_string(padded_text)
-        assert clean_text == "Hello World"
+    def test_extract_time_range_with_info_with_provided_timestamps(self):
+        """Should use provided timestamps when no time in query"""
+        query = "cpu usage data"  # Simple query that won't trigger dateparser
+        start_ts = 1640995200
+        end_ts = 1640998800  # 1 hour later
+        
+        result_start, result_end, info = extract_time_range_with_info(query, start_ts, end_ts)
+        
+        assert result_start == start_ts
+        assert result_end == end_ts
+        assert info["duration_str"] == "past 1 hour"
     
-    def test_empty_string(self):
-        """Should handle empty and whitespace-only strings"""
-        assert _clean_llm_summary_string("") == ""
-        assert _clean_llm_summary_string("   \n\t   ") == ""
+    def test_extract_time_range_wrapper(self):
+        """extract_time_range should work as a simple wrapper"""
+        query = "metrics from past 2 hours"
+        start_ts, end_ts = extract_time_range(query, None, None)
+        
+        assert isinstance(start_ts, int)
+        assert isinstance(end_ts, int)
+        assert end_ts > start_ts
+
+
+class TestPromQLManipulation:
+    """Test PromQL query manipulation functions"""
+    
+    @pytest.mark.parametrize("promql,namespace,expected", [
+        # No existing labels - should add namespace
+        ("cpu_usage", "production", 'cpu_usage{namespace="production"}'),
+        # Existing labels - should insert namespace
+        ('cpu_usage{job="app"}', "production", 'cpu_usage{namespace="production", job="app"}'),
+        # Namespace already exists - should remain unchanged
+        ('cpu_usage{namespace="production", job="app"}', "production", 'cpu_usage{namespace="production", job="app"}'),
+        # Complex query with multiple labels
+        ('http_requests{method="GET", status="200"}', "staging", 'http_requests{namespace="staging", method="GET", status="200"}'),
+        # Different namespace values
+        ("memory_usage", "test-env", 'memory_usage{namespace="test-env"}')
+    ])
+    def test_add_namespace_filter(self, promql, namespace, expected):
+        """Should correctly add or preserve namespace filters in PromQL queries"""
+        result = add_namespace_filter(promql, namespace)
+        assert result == expected
+    
+    def test_fix_promql_syntax_trailing_commas(self):
+        """Should remove trailing commas in label selectors"""
+        promql = 'cpu_usage{job="app",}'
+        result = fix_promql_syntax(promql)
+        assert result == 'cpu_usage{job="app"}'
+    
+    def test_fix_promql_syntax_add_rate_time_range(self):
+        """Should add time range to rate functions"""
+        promql = 'rate(http_requests_total)'
+        result = fix_promql_syntax(promql, "10m")
+        assert result == 'rate(http_requests_total[10m])'
+
+
+class TestAlertFormatting:
+    """Test alert formatting for UI display"""
+    
+    def test_format_alerts_for_ui_empty_alerts(self):
+        """Should handle empty alerts list gracefully"""
+        result = format_alerts_for_ui("cpu_usage > 90", [])
+        
+        assert "PromQL Query for Alerts: `cpu_usage > 90`" in result
+        assert "No relevant alerts were firing" in result
+    
+    def test_format_alerts_for_ui_with_basic_alerts(self):
+        """Should format basic alerts correctly"""
+        alerts_data = [
+            {
+                "alertname": "HighCPU",
+                "severity": "warning",
+                "timestamp": "2023-01-01T12:00:00",
+                "labels": {"pod": "app-123", "namespace": "production"}
+            }
+        ]
+        
+        result = format_alerts_for_ui("cpu_usage > 90", alerts_data)
+        
+        assert "PromQL Query for Alerts: `cpu_usage > 90`" in result
+        assert "**HighCPU**" in result
+        assert "Severity: **warning**" in result
+        assert "Pod: `app-123`" in result
+        assert "Namespace: `production`" in result

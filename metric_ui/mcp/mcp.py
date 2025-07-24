@@ -2976,3 +2976,136 @@ def get_deployment_info(namespace: str, model: str):
             "namespace": namespace,
             "model": model
         }
+
+# --- Report Generation ---
+
+# helper functions for report generation
+def save_report(report_content, format: str) -> str:
+    report_id = str(uuid.uuid4())
+    reports_dir = "/tmp/reports"
+    os.makedirs(reports_dir, exist_ok=True)
+
+    report_path = os.path.join(reports_dir, f"{report_id}.{format.lower()}")
+
+    # Handle both string and bytes content
+    if isinstance(report_content, bytes):
+        with open(report_path, "wb") as f:
+            f.write(report_content)
+    else:
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(report_content)
+
+    return report_id
+
+
+def get_report_path(report_id: str) -> str:
+    """Get file path for report ID"""
+
+    reports_dir = "/tmp/reports"
+
+    # Try to find the file with any extension
+    for file in os.listdir(reports_dir):
+        if file.startswith(report_id):
+            return os.path.join(reports_dir, file)
+
+    raise FileNotFoundError(f"Report {report_id} not found")
+
+
+def calculate_metric_stats(metric_data):
+    """Calculate average and max values for metrics data"""
+    if not metric_data:
+        return None, None
+    try:
+        values = [point["value"] for point in metric_data]
+        avg_val = sum(values) / len(values) if values else None
+        max_val = max(values) if values else None
+        return avg_val, max_val
+    except Exception:
+        return None, None
+
+
+def build_report_schema(
+    metrics_data: Dict[str, Any],
+    summary: str,
+    model_name: str,
+    start_ts: int,
+    end_ts: int,
+    summarize_model_id: str,
+    trend_chart_image: Optional[str] = None,
+) -> ReportSchema:
+    from datetime import datetime
+
+    # Extract available metrics from the metrics_data dictionary
+    key_metrics = list(metrics_data.keys())
+    metric_cards = []
+    for metric_name in key_metrics:
+        data = metrics_data.get(metric_name, [])
+        avg_val, max_val = calculate_metric_stats(data)
+        metric_cards.append(
+            MetricCard(
+                name=metric_name,
+                avg=avg_val,
+                max=max_val,
+                values=data,
+            )
+        )
+    return ReportSchema(
+        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        model_name=model_name,
+        start_date=datetime.fromtimestamp(start_ts).strftime("%Y-%m-%d %H:%M:%S"),
+        end_date=datetime.fromtimestamp(end_ts).strftime("%Y-%m-%d %H:%M:%S"),
+        summarize_model_id=summarize_model_id,
+        summary=summary,
+        metrics=metric_cards,
+        trend_chart_image=trend_chart_image,
+    )
+
+
+@app.get("/download_report/{report_id}")
+def download_report(report_id: str):
+    """Download generated report"""
+    report_path = get_report_path(report_id)
+    return FileResponse(report_path)
+
+
+@app.post("/generate_report")
+def generate_report(request: ReportRequest):
+    """Generate report in requested format"""
+    # Check if we have analysis data from UI session
+    if (
+        request.health_prompt is None
+        or request.llm_summary is None
+        or request.metrics_data is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="No analysis data provided. Please run analysis first.",
+        )
+
+    # Build the unified report schema once
+    report_schema = build_report_schema(
+        request.metrics_data,
+        request.llm_summary,
+        request.model_name,
+        request.start_ts,
+        request.end_ts,
+        request.summarize_model_id,
+        request.trend_chart_image,
+    )
+
+    # Generate report content based on format
+    match request.format.lower():
+        case "html":
+            report_content = generate_html_report(report_schema)
+        case "pdf":
+            report_content = generate_pdf_report(report_schema)
+        case "markdown":
+            report_content = generate_markdown_report(report_schema)
+        case _:
+            raise HTTPException(
+                status_code=400, detail=f"Unsupported format: {request.format}"
+            )
+
+    # Save and send
+    report_id = save_report(report_content, request.format)
+    return {"report_id": report_id, "download_url": f"/download_report/{report_id}"}
