@@ -55,6 +55,130 @@ else:
 CA_BUNDLE_PATH = "/etc/pki/ca-trust/extracted/pem/ca-bundle.crt"
 verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 
+# Global cache for retention limits
+_thanos_retention_cache = None
+_retention_cache_timestamp = None
+RETENTION_CACHE_TTL = 3600  # 1 hour cache for retention info
+
+
+def query_thanos_retention_limits():
+    """Query Thanos to determine maximum data retention period"""
+    global _thanos_retention_cache, _retention_cache_timestamp
+    
+    current_time = datetime.now().timestamp()
+    
+    # Return cached value if still valid
+    if (_thanos_retention_cache is not None and 
+        _retention_cache_timestamp is not None and 
+        (current_time - _retention_cache_timestamp) < RETENTION_CACHE_TTL):
+        return _thanos_retention_cache
+    
+    try:
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        
+        # Test different time periods to find maximum retention
+        # Start with common retention periods and work backwards
+        test_periods = [
+            365 * 24 * 3600,  # 1 year
+            180 * 24 * 3600,  # 6 months  
+            90 * 24 * 3600,   # 3 months
+            30 * 24 * 3600,   # 1 month
+            14 * 24 * 3600,   # 2 weeks
+            7 * 24 * 3600,    # 1 week
+            24 * 3600,        # 1 day
+            3600              # 1 hour
+        ]
+        
+        # Use a simple, commonly available metric for testing
+        test_metric = "up"
+        current_timestamp = int(datetime.now().timestamp())
+        
+        max_retention_seconds = 3600  # Default fallback to 1 hour
+        
+        for period_seconds in test_periods:
+            try:
+                start_timestamp = current_timestamp - period_seconds
+                
+                response = requests.get(
+                    f"{PROMETHEUS_URL}/api/v1/query_range",
+                    headers=headers,
+                    params={
+                        "query": test_metric,
+                        "start": start_timestamp,
+                        "end": current_timestamp,
+                        "step": "1h"  # Use larger step for testing
+                    },
+                    verify=verify,
+                    timeout=10  # Add timeout to avoid hanging
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("status") == "success" and result.get("data", {}).get("result"):
+                        # Found data for this time period
+                        max_retention_seconds = period_seconds
+                        print(f"✅ Found data retention up to {period_seconds // (24 * 3600)} days")
+                        break
+                else:
+                    print(f"❌ No data available for {period_seconds // (24 * 3600)} days: HTTP {response.status_code}")
+                    
+            except Exception as e:
+                print(f"⚠️ Error testing {period_seconds // (24 * 3600)} day retention: {e}")
+                continue
+        
+        # Cache the result
+        _thanos_retention_cache = max_retention_seconds
+        _retention_cache_timestamp = current_time
+        
+        retention_days = max_retention_seconds // (24 * 3600)
+        print(f"🕐 Thanos retention limit determined: {retention_days} days ({max_retention_seconds} seconds)")
+        
+        return max_retention_seconds
+        
+    except Exception as e:
+        print(f"❌ Error querying Thanos retention limits: {e}")
+        # Return conservative fallback
+        _thanos_retention_cache = 7 * 24 * 3600  # 7 days fallback
+        _retention_cache_timestamp = current_time
+        return _thanos_retention_cache
+
+
+def get_optimal_time_windows():
+    """Get optimal time windows based on Thanos retention limits"""
+    max_retention = query_thanos_retention_limits()
+    
+    # Create time windows that don't exceed retention limits
+    # Use a progressive approach from max down to minimum viable windows
+    time_windows = []
+    
+    # Add the maximum retention as first option
+    time_windows.append(max_retention)
+    
+    # Add fractional windows if retention is significant
+    if max_retention >= 30 * 24 * 3600:  # If we have 30+ days
+        time_windows.extend([
+            max_retention // 2,    # Half of max retention
+            30 * 24 * 3600,       # 30 days
+            14 * 24 * 3600,       # 2 weeks  
+        ])
+    elif max_retention >= 7 * 24 * 3600:  # If we have 7+ days
+        time_windows.extend([
+            max_retention // 2,    # Half of max retention
+            7 * 24 * 3600,        # 1 week
+        ])
+    
+    # Always include these basic windows as fallbacks
+    time_windows.extend([
+        24 * 3600,  # 1 day
+        3600        # 1 hour (minimum viable)
+    ])
+    
+    # Remove duplicates and sort by descending duration
+    time_windows = sorted(list(set(time_windows)), reverse=True)
+    
+    return time_windows
+
+
 # --- Dynamic Metric Discovery Functions ---
 
 
@@ -856,8 +980,8 @@ def _get_models_helper():
 
         model_set = set()
 
-        # Try different time windows: 7 days, 24 hours, 1 hour
-        time_windows = [7 * 24 * 3600, 24 * 3600, 3600]  # 7 days  # 24 hours  # 1 hour
+        # Use optimal time windows based on Thanos retention limits
+        time_windows = get_optimal_time_windows()
 
         for time_window in time_windows:
             for metric_name in vllm_metrics_to_check:
@@ -918,8 +1042,8 @@ def list_namespaces():
 
         namespace_set = set()
 
-        # Try different time windows: 7 days, 24 hours, 1 hour
-        time_windows = [7 * 24 * 3600, 24 * 3600, 3600]  # 7 days  # 24 hours  # 1 hour
+        # Use optimal time windows based on Thanos retention limits
+        time_windows = get_optimal_time_windows()
 
         for time_window in time_windows:
             for metric_name in vllm_metrics_to_check:
@@ -973,11 +1097,36 @@ def get_model_config():
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
     try:
+        # Validate date range
+        from datetime import datetime
+        start_dt = datetime.fromtimestamp(req.start_ts)
+        end_dt = datetime.fromtimestamp(req.end_ts)
+        now = datetime.now()
+        
+        if start_dt > now:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Start date ({start_dt.strftime('%Y-%m-%d')}) cannot be in the future. Please select a past date."
+            )
+        
         vllm_metrics = get_vllm_metrics()
         metric_dfs = {
             label: fetch_metrics(query, req.model_name, req.start_ts, req.end_ts)
             for label, query in vllm_metrics.items()
         }
+        
+        # Check if we have ANY data at all
+        total_data_points = sum(len(df) for df in metric_dfs.values())
+        non_empty_metrics = [label for label, df in metric_dfs.items() if not df.empty]
+        
+        if total_data_points == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No metrics data found for model '{req.model_name}' between {start_dt.strftime('%Y-%m-%d %H:%M')} and {end_dt.strftime('%Y-%m-%d %H:%M')}. The model may not have been deployed or active during this time period."
+            )
+        
+        print(f"📊 Found {total_data_points} total data points across {len(non_empty_metrics)} metrics for {req.model_name}")
+        
         prompt = build_prompt(metric_dfs, req.model_name)
 
         summary = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
@@ -1000,10 +1149,21 @@ def analyze(req: AnalyzeRequest):
             "llm_summary": summary,
             "metrics": serialized_metrics,
         }
-    except Exception as e:
-        # Handle API key errors and other LLM-related errors
+    except HTTPException:
+        # Re-raise HTTP exceptions with specific messages
+        raise
+    except requests.exceptions.RequestException as e:
+        # Handle API/network errors  
         raise HTTPException(
-            status_code=500, detail="Please check your API Key or try again later."
+            status_code=500, detail="Failed to connect to LLM service. Please check your API Key or try again later."
+        )
+    except Exception as e:
+        # Handle unexpected errors with more detail
+        print(f"❌ Unexpected error in analyze: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Analysis failed: {str(e)}. Please try again or check the server logs."
         )
 
 
@@ -1961,6 +2121,31 @@ Provide a concise technical response focusing on operational insights and recomm
         )
 
 
+@app.get("/retention-info")
+def get_retention_info():
+    """Get Thanos data retention information"""
+    try:
+        max_retention_seconds = query_thanos_retention_limits()
+        retention_days = max_retention_seconds // (24 * 3600)
+        retention_hours = max_retention_seconds // 3600
+        
+        return {
+            "max_retention_seconds": max_retention_seconds,
+            "max_retention_days": retention_days,
+            "max_retention_hours": retention_hours,
+            "optimal_time_windows": get_optimal_time_windows(),
+            "status": "success"
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "max_retention_seconds": 7 * 24 * 3600,  # 7 days fallback
+            "max_retention_days": 7,
+            "max_retention_hours": 168,
+            "status": "error"
+        }
+
+
 @app.get("/debug-metrics")
 def debug_metrics():
     """Debug endpoint to check available metrics"""
@@ -1998,6 +2183,369 @@ def debug_metrics():
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/check-model-deployment-date")
+def check_model_deployment_date(model_name: str, namespace: str):
+    """Check when a specific model was first deployed/started generating metrics"""
+    from datetime import datetime
+    
+    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+    
+    # Parse model name properly
+    if "|" in model_name:
+        namespace_part, actual_model_name = map(str.strip, model_name.split("|", 1))
+        if namespace_part != namespace:
+            namespace = namespace_part  # Use the namespace from model name
+    else:
+        actual_model_name = model_name
+    
+    results = {
+        "model": actual_model_name,
+        "namespace": namespace,
+        "deployment_analysis": {}
+    }
+    
+    # Check key vLLM metrics to find earliest deployment
+    key_metrics = [
+        "vllm:request_prompt_tokens_created",
+        "vllm:num_requests_running",
+        "vllm:request_generation_tokens_created"
+    ]
+    
+    earliest_timestamps = []
+    
+    for metric in key_metrics:
+        try:
+            # Look back 60 days to find earliest data
+            query = f'{metric}{{model_name="{actual_model_name}", namespace="{namespace}"}}'
+            
+            response = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query_range",
+                headers=headers,
+                params={
+                    "query": query,
+                    "start": int(datetime.now().timestamp()) - (60 * 24 * 3600),  # 60 days back
+                    "end": int(datetime.now().timestamp()),
+                    "step": "6h"  # 6-hour steps for efficiency
+                },
+                verify=verify,
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json().get("data", {}).get("result", [])
+                if data:
+                    all_timestamps = []
+                    for series in data:
+                        all_timestamps.extend([float(v[0]) for v in series.get("values", [])])
+                    
+                    if all_timestamps:
+                        earliest = min(all_timestamps)
+                        latest = max(all_timestamps)
+                        earliest_timestamps.append(earliest)
+                        
+                        results["deployment_analysis"][metric] = {
+                            "earliest_timestamp": earliest,
+                            "latest_timestamp": latest,
+                            "earliest_date": datetime.fromtimestamp(earliest).isoformat(),
+                            "latest_date": datetime.fromtimestamp(latest).isoformat(),
+                            "data_points": len(all_timestamps)
+                        }
+                else:
+                    results["deployment_analysis"][metric] = {
+                        "status": "no_data",
+                        "message": f"No data found for {metric}"
+                    }
+            else:
+                results["deployment_analysis"][metric] = {
+                    "status": "query_failed",
+                    "http_code": response.status_code
+                }
+                
+        except Exception as e:
+            results["deployment_analysis"][metric] = {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    # Determine overall deployment date
+    if earliest_timestamps:
+        overall_earliest = min(earliest_timestamps)
+        deployment_date = datetime.fromtimestamp(overall_earliest)
+        
+        results["deployment_summary"] = {
+            "first_metric_timestamp": overall_earliest,
+            "estimated_deployment_date": deployment_date.isoformat(),
+            "deployment_date_human": deployment_date.strftime("%B %d, %Y at %H:%M UTC"),
+            "days_ago": (datetime.now() - deployment_date).days,
+            "data_available_from": deployment_date.strftime("%Y-%m-%d")
+        }
+    else:
+        results["deployment_summary"] = {
+            "status": "no_deployment_found",
+            "message": f"No vLLM metrics found for model {actual_model_name} in namespace {namespace}"
+        }
+    
+    return results
+
+
+@app.get("/debug-timestamps")
+def debug_timestamps(start_ts: int, end_ts: int):
+    """Debug endpoint to check timestamp conversion"""
+    from datetime import datetime
+    
+    start_dt = datetime.fromtimestamp(start_ts)
+    end_dt = datetime.fromtimestamp(end_ts)
+    
+    return {
+        "start_timestamp": start_ts,
+        "end_timestamp": end_ts,
+        "start_datetime": start_dt.isoformat(),
+        "end_datetime": end_dt.isoformat(),
+        "range_hours": (end_ts - start_ts) / 3600,
+        "range_days": (end_ts - start_ts) / (24 * 3600)
+    }
+
+
+@app.get("/debug-data-availability")
+def debug_data_availability(namespace: str, start_ts: int, end_ts: int):
+    """Debug endpoint to check what data is available for a specific time range and namespace"""
+    from datetime import datetime
+    
+    start_dt = datetime.fromtimestamp(start_ts)
+    end_dt = datetime.fromtimestamp(end_ts)
+    
+    results = {
+        "query_info": {
+            "namespace": namespace,
+            "start_timestamp": start_ts,
+            "end_timestamp": end_ts,
+            "start_datetime": start_dt.isoformat(),
+            "end_datetime": end_dt.isoformat(),
+            "range_days": (end_ts - start_ts) / (24 * 3600)
+        },
+        "data_checks": {}
+    }
+    
+    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+    
+    # Check different metrics to see what's available
+    test_metrics = [
+        "vllm:request_prompt_tokens_created",
+        "vllm:request_generation_tokens_created", 
+        "vllm:num_requests_running",
+        "up",  # Basic metric that should always exist
+        "kube_pod_info"  # Kubernetes metric
+    ]
+    
+    for metric in test_metrics:
+        try:
+            # Test with namespace filter
+            query_with_ns = f'{metric}{{namespace="{namespace}"}}'
+            response = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query_range",
+                headers=headers,
+                params={
+                    "query": query_with_ns,
+                    "start": start_ts,
+                    "end": end_ts,
+                    "step": "1h"
+                },
+                verify=verify,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                series_count = len(data.get("data", {}).get("result", []))
+                total_points = sum(len(series.get("values", [])) for series in data.get("data", {}).get("result", []))
+                
+                results["data_checks"][metric] = {
+                    "status": "success",
+                    "series_count": series_count,
+                    "total_data_points": total_points,
+                    "has_data": total_points > 0
+                }
+                
+                # If we found data, show sample timestamps
+                if total_points > 0:
+                    sample_timestamps = []
+                    for series in data.get("data", {}).get("result", []):
+                        if series.get("values"):
+                            sample_timestamps.extend([float(v[0]) for v in series["values"][:3]])
+                    
+                    if sample_timestamps:
+                        sample_datetimes = [datetime.fromtimestamp(ts).isoformat() for ts in sample_timestamps[:5]]
+                        results["data_checks"][metric]["sample_timestamps"] = sample_datetimes
+            else:
+                results["data_checks"][metric] = {
+                    "status": f"http_error_{response.status_code}",
+                    "error": response.text[:200] if response.text else "No response text"
+                }
+                
+        except Exception as e:
+            results["data_checks"][metric] = {
+                "status": "exception",
+                "error": str(e)
+            }
+    
+    # Also check what namespaces existed during this time period
+    try:
+        response = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/query_range",
+            headers=headers,
+            params={
+                "query": "kube_pod_info",
+                "start": start_ts,
+                "end": end_ts,
+                "step": "6h"
+            },
+            verify=verify,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            namespaces_found = set()
+            for series in data.get("data", {}).get("result", []):
+                ns = series.get("metric", {}).get("namespace")
+                if ns:
+                    namespaces_found.add(ns)
+            
+            results["namespaces_in_period"] = sorted(list(namespaces_found))
+            results["target_namespace_existed"] = namespace in namespaces_found
+        else:
+            results["namespaces_in_period"] = f"Error: {response.status_code}"
+            
+    except Exception as e:
+        results["namespaces_in_period"] = f"Exception: {str(e)}"
+    
+    return results
+
+
+@app.get("/debug-namespace-data-ranges") 
+def debug_namespace_data_ranges(namespace: str):
+    """Debug endpoint to find the actual data range available for a namespace"""
+    from datetime import datetime
+    
+    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+    results = {
+        "namespace": namespace,
+        "data_ranges": {}
+    }
+    
+    # Test key vLLM metrics to find data ranges
+    test_metrics = [
+        "vllm:request_prompt_tokens_created",
+        "vllm:request_generation_tokens_created",
+        "vllm:num_requests_running"
+    ]
+    
+    for metric in test_metrics:
+        try:
+            # Query for all time series of this metric in the namespace
+            response = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/series",
+                headers=headers,
+                params={
+                    "match[]": f'{metric}{{namespace="{namespace}"}}',
+                    # Query last 30 days to find any data
+                    "start": int(datetime.now().timestamp()) - (30 * 24 * 3600),
+                    "end": int(datetime.now().timestamp())
+                },
+                verify=verify,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                series_data = response.json().get("data", [])
+                if series_data:
+                    results["data_ranges"][metric] = {
+                        "status": "found_series",
+                        "series_count": len(series_data),
+                        "sample_series": series_data[:2]  # Show first 2 series as examples
+                    }
+                    
+                    # Now try to find the actual earliest data point
+                    # Query a wide range to find the beginning of data
+                    early_response = requests.get(
+                        f"{PROMETHEUS_URL}/api/v1/query_range",
+                        headers=headers,
+                        params={
+                            "query": f'{metric}{{namespace="{namespace}"}}',
+                            "start": int(datetime.now().timestamp()) - (90 * 24 * 3600),  # 90 days back
+                            "end": int(datetime.now().timestamp()),
+                            "step": "1d"  # Daily steps to find range efficiently
+                        },
+                        verify=verify,
+                        timeout=10
+                    )
+                    
+                    if early_response.status_code == 200:
+                        range_data = early_response.json().get("data", {}).get("result", [])
+                        if range_data:
+                            all_timestamps = []
+                            for series in range_data:
+                                all_timestamps.extend([float(v[0]) for v in series.get("values", [])])
+                            
+                            if all_timestamps:
+                                earliest_ts = min(all_timestamps)
+                                latest_ts = max(all_timestamps)
+                                results["data_ranges"][metric].update({
+                                    "earliest_timestamp": earliest_ts,
+                                    "latest_timestamp": latest_ts,
+                                    "earliest_datetime": datetime.fromtimestamp(earliest_ts).isoformat(),
+                                    "latest_datetime": datetime.fromtimestamp(latest_ts).isoformat(),
+                                    "data_span_days": (latest_ts - earliest_ts) / (24 * 3600)
+                                })
+                else:
+                    results["data_ranges"][metric] = {
+                        "status": "no_series_found",
+                        "message": f"No time series found for {metric} in namespace {namespace}"
+                    }
+            else:
+                results["data_ranges"][metric] = {
+                    "status": f"http_error_{response.status_code}",
+                    "error": response.text[:200] if response.text else "No response text"
+                }
+                
+        except Exception as e:
+            results["data_ranges"][metric] = {
+                "status": "exception", 
+                "error": str(e)
+            }
+    
+    return results
+
+
+@app.get("/test-retention")
+def test_retention():
+    """Test endpoint to validate Thanos retention detection"""
+    try:
+        # Force a fresh retention check (bypass cache)
+        global _thanos_retention_cache, _retention_cache_timestamp
+        _thanos_retention_cache = None
+        _retention_cache_timestamp = None
+        
+        max_retention = query_thanos_retention_limits()
+        optimal_windows = get_optimal_time_windows()
+        
+        return {
+            "status": "success",
+            "max_retention_seconds": max_retention,
+            "max_retention_days": max_retention // (24 * 3600),
+            "max_retention_hours": max_retention // 3600,
+            "optimal_time_windows": optimal_windows,
+            "optimal_windows_days": [w // (24 * 3600) for w in optimal_windows],
+            "cache_refreshed": True
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "fallback_retention_days": 7
+        }
 
 
 @app.post("/debug-query")

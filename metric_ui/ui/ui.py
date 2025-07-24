@@ -266,26 +266,71 @@ def process_chart_data(metric_data, chart_metrics=None):
     return dfs
 
 
-def create_trend_chart_image(metric_data, chart_metrics=None):
-    """Create trend chart image for reports"""
+def create_trend_chart_image(metric_data, chart_metrics=None, start_ts=None, end_ts=None):
+    """Create trend chart image for reports with optional time range filtering"""
     dfs = process_chart_data(metric_data, chart_metrics)
     if not dfs:
         return None
 
     try:
         chart_df = pd.concat(dfs, axis=1).fillna(0)
+        
+        # Debug: Log original data range
+        if not chart_df.empty:
+            print(f"📊 Original data range: {chart_df.index.min()} to {chart_df.index.max()}")
+        
+        # Filter data to user's selected time range if provided
+        if start_ts is not None and end_ts is not None:
+            start_datetime = datetime.fromtimestamp(start_ts)
+            end_datetime = datetime.fromtimestamp(end_ts)
+            
+            print(f"🎯 User selected range: {start_datetime} to {end_datetime}")
+            print(f"🔍 Filtering data between timestamps {start_ts} and {end_ts}")
+            
+            # Debug: Show how much data we have before filtering
+            print(f"📈 Data points before filtering: {len(chart_df)}")
+            if not chart_df.empty:
+                print(f"📊 Available data time range: {chart_df.index.min()} to {chart_df.index.max()}")
+                
+                # Show if user's selected range overlaps with available data
+                data_start = chart_df.index.min()
+                data_end = chart_df.index.max()
+                
+                if start_datetime < data_start:
+                    print(f"⚠️ User selected start ({start_datetime}) is BEFORE available data starts ({data_start})")
+                if end_datetime > data_end:
+                    print(f"ℹ️ User selected end ({end_datetime}) is AFTER available data ends ({data_end})")
+            
+            # IMPORTANT: Instead of filtering OUT data, we need to extend the chart range
+            # but show all available data, and set axis limits to user selection
+            
+            # Don't filter the data - show all available data but set chart limits
+            print(f"📊 Keeping all {len(chart_df)} data points but setting chart limits to user range")
+            
+            # We'll set the axis limits later, but don't filter the data here
+            # This way the chart shows the data that exists, but zoomed to user's range
+        
         fig, ax = plt.subplots(figsize=(8, 4))
         chart_df.plot(ax=ax)
         ax.set_title("Trend Over Time")
         ax.set_xlabel("Timestamp")
         ax.set_ylabel("Value")
+        
+        # Set x-axis limits to the filtered range if specified
+        if start_ts is not None and end_ts is not None:
+            ax.set_xlim(datetime.fromtimestamp(start_ts), datetime.fromtimestamp(end_ts))
+            print(f"🎨 Chart x-axis set to: {datetime.fromtimestamp(start_ts)} - {datetime.fromtimestamp(end_ts)}")
+        
         plt.tight_layout()
         buf = io.BytesIO()
         plt.savefig(buf, format="png")
         plt.close(fig)
         buf.seek(0)
         return base64.b64encode(buf.read()).decode("utf-8")
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Error creating trend chart: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -304,7 +349,11 @@ def generate_report_and_download(report_format: str):
             model_name = f"OpenShift-{analysis_params.get('scope', 'cluster')}-{analysis_params.get('metric_category', 'analysis')}"
 
             # Create trend chart for OpenShift metrics
-            trend_chart_image_b64 = create_trend_chart_image(metric_data)
+            trend_chart_image_b64 = create_trend_chart_image(
+                metric_data, 
+                start_ts=analysis_params["start_ts"], 
+                end_ts=analysis_params["end_ts"]
+            )
 
             payload = {
                 "model_name": model_name,
@@ -329,7 +378,11 @@ def generate_report_and_download(report_format: str):
                 if metric_name in metric_data:
                     filtered_metrics_data[metric_name] = metric_data[metric_name]
 
-            trend_chart_image_b64 = create_trend_chart_image(filtered_metrics_data)
+            trend_chart_image_b64 = create_trend_chart_image(
+                filtered_metrics_data,
+                start_ts=analysis_params["start_ts"], 
+                end_ts=analysis_params["end_ts"]
+            )
 
             payload = {
                 "model_name": analysis_params["model_name"],
@@ -439,8 +492,15 @@ if page == "OpenShift Metrics":
     if selected_datetime > now:
         st.sidebar.warning("Please select a valid timestamp before current time.")
         st.stop()
+    
+    # Convert to UTC timestamps to ensure consistency with Prometheus data
     selected_start = int(selected_datetime.timestamp())
     selected_end = int(now.timestamp())
+    
+    # Debug: Show the calculated timestamps
+    print(f"🗓️ OpenShift - User selected: {selected_datetime} -> timestamp: {selected_start}")
+    print(f"🕐 OpenShift - Current time: {now} -> timestamp: {selected_end}")
+    print(f"📅 OpenShift - Date range: {datetime.fromtimestamp(selected_start)} to {datetime.fromtimestamp(selected_end)}")
 
     st.sidebar.markdown("---")
 
@@ -521,8 +581,15 @@ else:
     if selected_datetime > now:
         st.sidebar.warning("Please select a valid timestamp before current time.")
         st.stop()
+    
+    # Convert to UTC timestamps to ensure consistency with Prometheus data
     selected_start = int(selected_datetime.timestamp())
     selected_end = int(now.timestamp())
+    
+    # Debug: Show the calculated timestamps
+    print(f"🗓️ vLLM - User selected: {selected_datetime} -> timestamp: {selected_start}")
+    print(f"🕐 vLLM - Current time: {now} -> timestamp: {selected_end}")
+    print(f"📅 vLLM - Date range: {datetime.fromtimestamp(selected_start)} to {datetime.fromtimestamp(selected_end)}")
 
     st.sidebar.markdown("---")
 
