@@ -14,7 +14,7 @@ import sys
 from collections import defaultdict
 from dateparser.search import search_dates
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from report_assets.report_renderer import (
     generate_html_report,
@@ -22,6 +22,20 @@ from report_assets.report_renderer import (
     generate_pdf_report,
     ReportSchema,
     MetricCard,
+)
+
+# Import from core business logic
+from core.metrics import get_models_helper
+from core.llm_client import (
+    summarize_with_llm,
+    build_prompt,
+    build_chat_prompt, 
+    build_openshift_prompt,
+    build_openshift_chat_prompt,
+    build_flexible_llm_prompt,
+    _make_api_request,
+    _validate_and_extract_response,
+    _clean_llm_summary_string
 )
 
 
@@ -894,137 +908,10 @@ Now provide a concise, technical summary that answers it.
 """.strip()
 
 
-def _make_api_request(
-    url: str, headers: dict, payload: dict, verify_ssl: bool = True
-) -> dict:
-    """Make API request with consistent error handling"""
-    response = requests.post(url, headers=headers, json=payload, verify=verify_ssl)
-    response.raise_for_status()
-    return response.json()
 
 
-def _validate_and_extract_response(
-    response_json: dict, is_external: bool, provider: str = "LLM"
-) -> str:
-    """Validate response format and extract content"""
-    if is_external:
-        if provider == "google":
-            # Google Gemini response format
-            if "candidates" not in response_json or not response_json["candidates"]:
-                raise ValueError(f"Invalid {provider} response format")
-
-            candidate = response_json["candidates"][0]
-            if "content" not in candidate or "parts" not in candidate["content"]:
-                raise ValueError(f"Invalid {provider} response structure")
-
-            parts = candidate["content"]["parts"]
-            if not parts or "text" not in parts[0]:
-                raise ValueError(f"Invalid {provider} response content")
-
-            return parts[0]["text"].strip()
-        else:
-            # OpenAI and other providers using "choices" format
-            if "choices" not in response_json or not response_json["choices"]:
-                raise ValueError(f"Invalid {provider} response format")
-
-            return response_json["choices"][0]["message"]["content"].strip()
-    else:
-        # Local model response format
-        if "choices" not in response_json or not response_json["choices"]:
-            raise ValueError(f"Invalid {provider} response format")
-        return response_json["choices"][0]["text"].strip()
 
 
-# New helper function to aggressively clean LLM summary strings
-def _clean_llm_summary_string(text: str) -> str:
-    # Remove any non-printable ASCII characters (except common whitespace like space, tab, newline)
-    cleaned_text = re.sub(r"[^\x20-\x7E\n\t]", "", text)
-    # Replace multiple spaces/newlines/tabs with single spaces, then strip leading/trailing whitespace
-    cleaned_text = re.sub(r"\s+", " ", cleaned_text).strip()
-    return cleaned_text
-
-
-def summarize_with_llm(
-    prompt: str,
-    summarize_model_id: str,
-    api_key: Optional[str] = None,
-    messages: Optional[List[Dict[str, str]]] = None,
-) -> str:
-    headers = {"Content-Type": "application/json"}
-
-    # Get model configuration
-    model_info = MODEL_CONFIG.get(summarize_model_id, {})
-    is_external = model_info.get("external", False)
-
-    # Building LLM messages array
-    llm_messages = []
-    if messages:
-        llm_messages.extend(messages)
-    # Ensure the new prompt is always added as the last user message
-    llm_messages.append({"role": "user", "content": prompt})
-
-    if is_external:
-        # External model (like OpenAI, Anthropic, etc.)
-        if not api_key:
-            raise ValueError(
-                f"API key required for external model {summarize_model_id}"
-            )
-
-        # Get provider-specific configuration
-        provider = model_info.get("provider", "openai")
-        api_url = model_info.get("apiUrl", "https://api.openai.com/v1/chat/completions")
-        model_name = model_info.get("modelName")
-
-        # Provider-specific authentication and payload
-        if provider == "google":
-            # Google Gemini API format
-            headers["x-goog-api-key"] = api_key
-
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-            }
-        else:
-            # OpenAI and compatible APIs
-            headers["Authorization"] = f"Bearer {api_key}"
-
-            payload = {
-                "model": model_name,
-                "messages": llm_messages,
-                "temperature": 0.5,
-                "max_tokens": 1000,
-            }
-
-        response_json = _make_api_request(api_url, headers, payload, verify_ssl=True)
-        return _validate_and_extract_response(
-            response_json, is_external=True, provider=provider
-        )
-
-    else:
-        # Local model (deployed in cluster)
-        if LLM_API_TOKEN:
-            headers["Authorization"] = f"Bearer {LLM_API_TOKEN}"
-
-        # Combine all messages into a single prompt
-        prompt_text = ""
-        if messages:
-            for msg in messages:
-                prompt_text += f"{msg['role']}: {msg['content']}\n"
-        prompt_text += prompt  # Add the current prompt
-
-        payload = {
-            "model": summarize_model_id,
-            "prompt": prompt_text,
-            "temperature": 0.5,
-            "max_tokens": 1000,
-        }
-
-        response_json = _make_api_request(
-            f"{LLAMA_STACK_URL}/completions", headers, payload, verify_ssl=verify
-        )
-
-        return _validate_and_extract_response(
-            response_json, is_external=False, provider="LLM"
-        )
 
 
 # helper functions for Chat with Prometheus
@@ -1522,66 +1409,12 @@ def health():
     return {"status": "ok"}
 
 
-# Helper to get models (extracted from list_models endpoint)
-def _get_models_helper():
-    try:
-        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
 
-        # Try multiple vLLM metrics with longer time windows
-        vllm_metrics_to_check = [
-            "vllm:request_prompt_tokens_created",
-            "vllm:request_prompt_tokens_total",
-            "vllm:avg_generation_throughput_toks_per_s",
-            "vllm:num_requests_running",
-            "vllm:gpu_cache_usage_perc",
-        ]
-
-        model_set = set()
-
-        # Try different time windows: 7 days, 24 hours, 1 hour
-        time_windows = [7 * 24 * 3600, 24 * 3600, 3600]  # 7 days  # 24 hours  # 1 hour
-
-        for time_window in time_windows:
-            for metric_name in vllm_metrics_to_check:
-                try:
-                    response = requests.get(
-                        f"{PROMETHEUS_URL}/api/v1/series",
-                        headers=headers,
-                        params={
-                            "match[]": metric_name,
-                            "start": int((datetime.now().timestamp()) - time_window),
-                            "end": int(datetime.now().timestamp()),
-                        },
-                        verify=verify,
-                    )
-                    response.raise_for_status()
-                    series = response.json()["data"]
-
-                    for entry in series:
-                        model = entry.get("model_name", "").strip()
-                        namespace = entry.get("namespace", "").strip()
-                        if model and namespace:
-                            model_set.add(f"{namespace} | {model}")
-
-                    # If we found models, return them
-                    if model_set:
-                        return sorted(list(model_set))
-
-                except Exception as e:
-                    print(
-                        f"Error checking {metric_name} with {time_window}s window: {e}"
-                    )
-                    continue
-
-        return sorted(list(model_set))
-    except Exception as e:
-        print("Error getting models:", e)
-        return []
 
 
 @app.get("/models")
 def list_models():
-    return _get_models_helper()
+    return get_models_helper()
 
 
 @app.get("/namespaces")
