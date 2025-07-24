@@ -71,4 +71,29 @@ def get_models_helper() -> List[str]:
         return sorted(list(model_set))
     except Exception as e:
         print("Error getting models:", e)
-        return [] 
+        return []
+
+
+def calculate_metric_stats(data):
+    """
+    Calculate basic statistics (average and max) from metric data.
+    
+    Args:
+        data: List of dictionaries with 'value' and 'timestamp' keys
+        
+    Returns:
+        Tuple of (average, max) or (None, None) for invalid data
+    """
+    if not data or data is None:
+        return (None, None)
+    
+    try:
+        values = [item.get("value") for item in data if "value" in item]
+        if not values:
+            return (None, None)
+            
+        avg = sum(values) / len(values)
+        max_val = max(values)
+        return (float(avg), float(max_val))
+    except (TypeError, ValueError, KeyError):
+        return (None, None) 

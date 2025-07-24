@@ -15,6 +15,7 @@ from collections import defaultdict
 from dateparser.search import search_dates
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from report_assets.report_renderer import (
     generate_html_report,
