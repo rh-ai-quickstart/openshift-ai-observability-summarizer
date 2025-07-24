@@ -52,14 +52,10 @@ def get_models():
 
 @st.cache_data(ttl=300)
 def get_namespaces():
+    """Fetch available namespaces from API"""
     try:
-        res = requests.get(f"{API_URL}/models")
-        models = res.json()
-        # Extract unique namespaces from model names (format: "namespace | model")
-        namespaces = sorted(
-            list(set(model.split(" | ")[0] for model in models if " | " in model))
-        )
-        return namespaces
+        res = requests.get(f"{API_URL}/namespaces")
+        return res.json()
     except Exception as e:
         st.sidebar.error(f"Error fetching namespaces: {e}")
         return []
@@ -72,7 +68,7 @@ def get_multi_models():
         res = requests.get(f"{API_URL}/multi_models")
         return res.json()
     except Exception as e:
-        st.sidebar.error(f"Error fetching multi-models: {e}")
+        st.sidebar.error(f"Error fetching multi models: {e}")
         return []
 
 
@@ -117,7 +113,7 @@ def get_openshift_namespaces():
         return res.json()
     except Exception as e:
         st.sidebar.error(f"Error fetching OpenShift namespaces: {e}")
-        return []
+        return ["default"]
 
 
 @st.cache_data(ttl=300)
@@ -146,6 +142,72 @@ def get_gpu_info():
             "temperatures": [],
             "power_usage": [],
         }
+
+
+@st.cache_data(ttl=300)
+def get_deployment_info(model_name):
+    """Get deployment information for a model/namespace"""
+    try:
+        if "|" in model_name:
+            namespace, actual_model = model_name.split("|", 1)
+            namespace = namespace.strip()
+            actual_model = actual_model.strip()
+        else:
+            return {"is_new_deployment": False, "deployment_date": None, "message": None}
+        
+        # Try to get deployment info from the backend
+        res = requests.get(f"{API_URL}/deployment-info?namespace={namespace}&model={actual_model}")
+        if res.status_code == 200:
+            return res.json()
+        else:
+            # Fallback: assume it's a new deployment if we can't get info
+            return {
+                "is_new_deployment": True,
+                "deployment_date": datetime.now().strftime("%Y-%m-%d"),
+                "message": f"This appears to be a new deployment in namespace '{namespace}'. Metrics may take some time to appear."
+            }
+    except Exception as e:
+        return {"is_new_deployment": False, "deployment_date": None, "message": None}
+
+
+def check_if_new_deployment(calculated_metrics, model_name):
+    """Check if this appears to be a new deployment with no data"""
+    if not calculated_metrics:
+        return True
+    
+    # Check if all metrics are None/empty
+    all_empty = True
+    for metric_name, data in calculated_metrics.items():
+        if data and data.get("avg") is not None and data.get("count", 0) > 0:
+            all_empty = False
+            break
+    
+    return all_empty
+
+
+def display_new_deployment_info(model_name):
+    """Display helpful information for new deployments"""
+    deployment_info = get_deployment_info(model_name)
+    
+    if deployment_info.get("is_new_deployment", False):
+        deployment_date = deployment_info.get("deployment_date")
+        message = deployment_info.get("message")
+        
+        if deployment_date:
+            st.info(
+                f"🚀 **New Deployment Detected** | Deployed: {deployment_date}\n\n"
+                f"This model was recently deployed and metrics may not be available yet. "
+                f"Metrics typically start appearing within 5-10 minutes after the first request is processed."
+            )
+        elif message:
+            st.info(f"🚀 **New Deployment** | {message}")
+        else:
+            if "|" in model_name:
+                namespace = model_name.split("|")[0].strip()
+                st.info(
+                    f"🚀 **New Deployment Detected** | Namespace: {namespace}\n\n"
+                    f"This appears to be a newly deployed model. Metrics will appear once the model starts processing requests."
+                )
 
 
 def model_requires_api_key(model_id, model_config):
@@ -266,71 +328,26 @@ def process_chart_data(metric_data, chart_metrics=None):
     return dfs
 
 
-def create_trend_chart_image(metric_data, chart_metrics=None, start_ts=None, end_ts=None):
-    """Create trend chart image for reports with optional time range filtering"""
+def create_trend_chart_image(metric_data, chart_metrics=None):
+    """Create trend chart image for reports"""
     dfs = process_chart_data(metric_data, chart_metrics)
     if not dfs:
         return None
 
     try:
         chart_df = pd.concat(dfs, axis=1).fillna(0)
-        
-        # Debug: Log original data range
-        if not chart_df.empty:
-            print(f"📊 Original data range: {chart_df.index.min()} to {chart_df.index.max()}")
-        
-        # Filter data to user's selected time range if provided
-        if start_ts is not None and end_ts is not None:
-            start_datetime = datetime.fromtimestamp(start_ts)
-            end_datetime = datetime.fromtimestamp(end_ts)
-            
-            print(f"🎯 User selected range: {start_datetime} to {end_datetime}")
-            print(f"🔍 Filtering data between timestamps {start_ts} and {end_ts}")
-            
-            # Debug: Show how much data we have before filtering
-            print(f"📈 Data points before filtering: {len(chart_df)}")
-            if not chart_df.empty:
-                print(f"📊 Available data time range: {chart_df.index.min()} to {chart_df.index.max()}")
-                
-                # Show if user's selected range overlaps with available data
-                data_start = chart_df.index.min()
-                data_end = chart_df.index.max()
-                
-                if start_datetime < data_start:
-                    print(f"⚠️ User selected start ({start_datetime}) is BEFORE available data starts ({data_start})")
-                if end_datetime > data_end:
-                    print(f"ℹ️ User selected end ({end_datetime}) is AFTER available data ends ({data_end})")
-            
-            # IMPORTANT: Instead of filtering OUT data, we need to extend the chart range
-            # but show all available data, and set axis limits to user selection
-            
-            # Don't filter the data - show all available data but set chart limits
-            print(f"📊 Keeping all {len(chart_df)} data points but setting chart limits to user range")
-            
-            # We'll set the axis limits later, but don't filter the data here
-            # This way the chart shows the data that exists, but zoomed to user's range
-        
         fig, ax = plt.subplots(figsize=(8, 4))
         chart_df.plot(ax=ax)
         ax.set_title("Trend Over Time")
         ax.set_xlabel("Timestamp")
         ax.set_ylabel("Value")
-        
-        # Set x-axis limits to the filtered range if specified
-        if start_ts is not None and end_ts is not None:
-            ax.set_xlim(datetime.fromtimestamp(start_ts), datetime.fromtimestamp(end_ts))
-            print(f"🎨 Chart x-axis set to: {datetime.fromtimestamp(start_ts)} - {datetime.fromtimestamp(end_ts)}")
-        
         plt.tight_layout()
         buf = io.BytesIO()
         plt.savefig(buf, format="png")
         plt.close(fig)
         buf.seek(0)
         return base64.b64encode(buf.read()).decode("utf-8")
-    except Exception as e:
-        print(f"⚠️ Error creating trend chart: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
         return None
 
 
@@ -349,11 +366,7 @@ def generate_report_and_download(report_format: str):
             model_name = f"OpenShift-{analysis_params.get('scope', 'cluster')}-{analysis_params.get('metric_category', 'analysis')}"
 
             # Create trend chart for OpenShift metrics
-            trend_chart_image_b64 = create_trend_chart_image(
-                metric_data, 
-                start_ts=analysis_params["start_ts"], 
-                end_ts=analysis_params["end_ts"]
-            )
+            trend_chart_image_b64 = create_trend_chart_image(metric_data)
 
             payload = {
                 "model_name": model_name,
@@ -378,11 +391,7 @@ def generate_report_and_download(report_format: str):
                 if metric_name in metric_data:
                     filtered_metrics_data[metric_name] = metric_data[metric_name]
 
-            trend_chart_image_b64 = create_trend_chart_image(
-                filtered_metrics_data,
-                start_ts=analysis_params["start_ts"], 
-                end_ts=analysis_params["end_ts"]
-            )
+            trend_chart_image_b64 = create_trend_chart_image(filtered_metrics_data)
 
             payload = {
                 "model_name": analysis_params["model_name"],
@@ -477,30 +486,53 @@ if page == "OpenShift Metrics":
 
     # Common elements for OpenShift page
     st.sidebar.markdown("### Select Timestamp Range")
-    if "selected_date" not in st.session_state:
-        st.session_state["selected_date"] = datetime.now().date()
-    if "selected_time" not in st.session_state:
-        st.session_state["selected_time"] = datetime.now().time()
-    selected_date = st.sidebar.date_input(
-        "Date", value=st.session_state["selected_date"], key="openshift_date_input"
+    
+    # Start time selection
+    if "selected_start_date" not in st.session_state:
+        st.session_state["selected_start_date"] = (datetime.now() - pd.Timedelta(hours=1)).date()
+    if "selected_start_time" not in st.session_state:
+        st.session_state["selected_start_time"] = (datetime.now() - pd.Timedelta(hours=1)).time()
+    
+    selected_start_date = st.sidebar.date_input(
+        "Start Date", value=st.session_state["selected_start_date"], key="openshift_start_date_input"
     )
-    selected_time = st.sidebar.time_input(
-        "Time", value=st.session_state["selected_time"], key="openshift_time_input"
+    selected_start_time = st.sidebar.time_input(
+        "Start Time", value=st.session_state["selected_start_time"], key="openshift_start_time_input"
     )
-    selected_datetime = datetime.combine(selected_date, selected_time)
+    selected_start_datetime = datetime.combine(selected_start_date, selected_start_time)
+    
+    # End time selection
+    if "selected_end_date" not in st.session_state:
+        st.session_state["selected_end_date"] = datetime.now().date()
+    if "selected_end_time" not in st.session_state:
+        st.session_state["selected_end_time"] = datetime.now().time()
+    
+    selected_end_date = st.sidebar.date_input(
+        "End Date", value=st.session_state["selected_end_date"], key="openshift_end_date_input"
+    )
+    selected_end_time = st.sidebar.time_input(
+        "End Time", value=st.session_state["selected_end_time"], key="openshift_end_time_input"
+    )
+    selected_end_datetime = datetime.combine(selected_end_date, selected_end_time)
+    
+    # Validation
     now = datetime.now()
-    if selected_datetime > now:
-        st.sidebar.warning("Please select a valid timestamp before current time.")
+    if selected_start_datetime > now:
+        st.sidebar.warning("Start time cannot be in the future.")
+        st.stop()
+    if selected_end_datetime > now:
+        st.sidebar.warning("End time cannot be in the future.")
+        st.stop()
+    if selected_start_datetime >= selected_end_datetime:
+        st.sidebar.warning("Start time must be before end time.")
         st.stop()
     
-    # Convert to UTC timestamps to ensure consistency with Prometheus data
-    selected_start = int(selected_datetime.timestamp())
-    selected_end = int(now.timestamp())
+    selected_start = int(selected_start_datetime.timestamp())
+    selected_end = int(selected_end_datetime.timestamp())
     
-    # Debug: Show the calculated timestamps
-    print(f"🗓️ OpenShift - User selected: {selected_datetime} -> timestamp: {selected_start}")
-    print(f"🕐 OpenShift - Current time: {now} -> timestamp: {selected_end}")
-    print(f"📅 OpenShift - Date range: {datetime.fromtimestamp(selected_start)} to {datetime.fromtimestamp(selected_end)}")
+    # Show selected time range
+    duration = selected_end_datetime - selected_start_datetime
+    st.sidebar.info(f"📅 Time Range: {duration}")
 
     st.sidebar.markdown("---")
 
@@ -545,6 +577,95 @@ if page == "OpenShift Metrics":
     selected_namespace = None
     model_name = None
 
+elif page == "Chat with Prometheus":
+    # Chat with Prometheus-specific sidebar controls
+    st.sidebar.markdown("### Chat Scope")
+    
+    # Chat scope selection
+    chat_scope = st.sidebar.radio(
+        "Select Chat Scope",
+        ["Namespace-specific", "Fleet-wide"],
+        help="Choose whether to analyze a specific namespace or the entire cluster",
+        key="chat_scope_selector"
+    )
+    
+    # Namespace selection (conditional based on scope)
+    if chat_scope == "Namespace-specific":
+        namespaces = get_namespaces()
+        selected_namespace = st.sidebar.selectbox(
+            "Select Namespace", 
+            namespaces, 
+            key="chat_namespace_selector"
+        )
+    else:
+        # Fleet-wide: show disabled dropdown
+        selected_namespace = None
+        st.sidebar.selectbox(
+            "Select Namespace",
+            ["All Namespaces (Fleet-wide)"],
+            disabled=True,
+            help="Namespace selection is disabled for fleet-wide analysis",
+            key="chat_namespace_disabled",
+        )
+    
+    # Model selection (always needed for some model-specific queries)
+    model_list = get_models()
+    if chat_scope == "Namespace-specific" and selected_namespace:
+        # Filter models by selected namespace
+        filtered_models = [
+            model for model in model_list if model.startswith(f"{selected_namespace} | ")
+        ]
+        if filtered_models:
+            model_name = st.sidebar.selectbox(
+                "Select Model", filtered_models, key="chat_model_selector"
+            )
+        else:
+            model_name = None
+            st.sidebar.warning(f"No models found in namespace {selected_namespace}")
+    else:
+        # Fleet-wide: use first available model as default
+        model_name = model_list[0] if model_list else None
+    
+    st.sidebar.markdown("---")
+    
+    # --- Select LLM ---
+    st.sidebar.markdown("### Select LLM for summarization")
+
+    # --- Multi-model support ---
+    multi_model_list = get_multi_models()
+    multi_model_name = st.sidebar.selectbox(
+        "Select LLM for summarization",
+        multi_model_list,
+        key="chat_multi_model_selector",
+    )
+
+    # --- Define model key requirements ---
+    model_config = get_model_config()
+    current_model_requires_api_key = model_requires_api_key(
+        multi_model_name, model_config
+    )
+
+    # --- API Key Input ---
+    api_key = st.sidebar.text_input(
+        label="🔑 API Key",
+        type="password",
+        value=st.session_state.get("api_key", ""),
+        help="Enter your API key if required by the selected model",
+        disabled=not current_model_requires_api_key,
+        key="chat_api_key",
+    )
+
+    # Caption to show key requirement status
+    if current_model_requires_api_key:
+        st.sidebar.caption("⚠️ This model requires an API key.")
+    else:
+        st.sidebar.caption("✅ No API key is required for this model.")
+    
+    # Set default timestamp range (not displayed to user since we have dynamic parsing)
+    now = datetime.now()
+    selected_start = int((now - pd.Timedelta(hours=1)).timestamp())  # Default to 1 hour ago
+    selected_end = int(now.timestamp())
+
 else:
     # vLLM-specific sidebar controls (for vLLM pages)
     st.sidebar.markdown("### vLLM Configuration")
@@ -566,30 +687,53 @@ else:
     )
 
     st.sidebar.markdown("### Select Timestamp Range")
-    if "selected_date" not in st.session_state:
-        st.session_state["selected_date"] = datetime.now().date()
-    if "selected_time" not in st.session_state:
-        st.session_state["selected_time"] = datetime.now().time()
-    selected_date = st.sidebar.date_input(
-        "Date", value=st.session_state["selected_date"], key="vllm_date_input"
+    
+    # Start time selection
+    if "selected_start_date" not in st.session_state:
+        st.session_state["selected_start_date"] = (datetime.now() - pd.Timedelta(hours=1)).date()
+    if "selected_start_time" not in st.session_state:
+        st.session_state["selected_start_time"] = (datetime.now() - pd.Timedelta(hours=1)).time()
+    
+    selected_start_date = st.sidebar.date_input(
+        "Start Date", value=st.session_state["selected_start_date"], key="vllm_start_date_input"
     )
-    selected_time = st.sidebar.time_input(
-        "Time", value=st.session_state["selected_time"], key="vllm_time_input"
+    selected_start_time = st.sidebar.time_input(
+        "Start Time", value=st.session_state["selected_start_time"], key="vllm_start_time_input"
     )
-    selected_datetime = datetime.combine(selected_date, selected_time)
+    selected_start_datetime = datetime.combine(selected_start_date, selected_start_time)
+    
+    # End time selection
+    if "selected_end_date" not in st.session_state:
+        st.session_state["selected_end_date"] = datetime.now().date()
+    if "selected_end_time" not in st.session_state:
+        st.session_state["selected_end_time"] = datetime.now().time()
+    
+    selected_end_date = st.sidebar.date_input(
+        "End Date", value=st.session_state["selected_end_date"], key="vllm_end_date_input"
+    )
+    selected_end_time = st.sidebar.time_input(
+        "End Time", value=st.session_state["selected_end_time"], key="vllm_end_time_input"
+    )
+    selected_end_datetime = datetime.combine(selected_end_date, selected_end_time)
+    
+    # Validation
     now = datetime.now()
-    if selected_datetime > now:
-        st.sidebar.warning("Please select a valid timestamp before current time.")
+    if selected_start_datetime > now:
+        st.sidebar.warning("Start time cannot be in the future.")
+        st.stop()
+    if selected_end_datetime > now:
+        st.sidebar.warning("End time cannot be in the future.")
+        st.stop()
+    if selected_start_datetime >= selected_end_datetime:
+        st.sidebar.warning("Start time must be before end time.")
         st.stop()
     
-    # Convert to UTC timestamps to ensure consistency with Prometheus data
-    selected_start = int(selected_datetime.timestamp())
-    selected_end = int(now.timestamp())
+    selected_start = int(selected_start_datetime.timestamp())
+    selected_end = int(selected_end_datetime.timestamp())
     
-    # Debug: Show the calculated timestamps
-    print(f"🗓️ vLLM - User selected: {selected_datetime} -> timestamp: {selected_start}")
-    print(f"🕐 vLLM - Current time: {now} -> timestamp: {selected_end}")
-    print(f"📅 vLLM - Date range: {datetime.fromtimestamp(selected_start)} to {datetime.fromtimestamp(selected_end)}")
+    # Show selected time range
+    duration = selected_end_datetime - selected_start_datetime
+    st.sidebar.info(f"📅 Time Range: {duration}")
 
     st.sidebar.markdown("---")
 
@@ -625,6 +769,9 @@ else:
         st.sidebar.caption("⚠️ This model requires an API key.")
     else:
         st.sidebar.caption("✅ No API key is required for this model.")
+    
+    # Set chat_scope to None for non-chat pages
+    chat_scope = None
 
 
 # --- Report Generation ---
@@ -791,6 +938,13 @@ if page == "vLLM Metric Summarizer":
                     "Output Tokens Created",
                 ]
 
+            # Check if this is a new deployment with no data
+            is_new_deployment = check_if_new_deployment(calculated_metrics, model_name)
+            
+            # Display deployment info banner if new deployment detected
+            if is_new_deployment:
+                display_new_deployment_info(model_name)
+
             cols = st.columns(3)
             for i, label in enumerate(metrics):
                 with cols[i % 3]:
@@ -875,9 +1029,17 @@ if page == "vLLM Metric Summarizer":
                                 delta=delta_display,
                             )
                         else:
-                            st.metric(label=label, value="N/A", delta="No data")
+                            # Show deployment-aware message for no data
+                            if is_new_deployment:
+                                st.metric(label=label, value="🚀 New", delta="Awaiting data")
+                            else:
+                                st.metric(label=label, value="N/A", delta="No data")
                     else:
-                        st.metric(label=label, value="N/A", delta="No data")
+                        # Show deployment-aware message for no data
+                        if is_new_deployment:
+                            st.metric(label=label, value="🚀 New", delta="Awaiting data")
+                        else:
+                            st.metric(label=label, value="N/A", delta="No data")
 
             st.markdown("### 📈 Trend Over Time")
             dfs = process_chart_data(metric_data)
@@ -890,9 +1052,23 @@ if page == "vLLM Metric Summarizer":
 # --- 🤖 Chat with Prometheus Page ---
 elif page == "Chat with Prometheus":
     st.markdown("<h1>Chat with Prometheus</h1>", unsafe_allow_html=True)
-    st.markdown(f"Currently selected namespace: **{selected_namespace}**")
-    st.markdown(
-        "Ask questions like: `What's the P95 latency?`, `Is GPU usage stable?`,`'What alerts were firing yesterday?` etc."
+    
+    # Display current scope configuration
+    if chat_scope == "Fleet-wide":
+        st.markdown("🌐 **Fleet-wide analysis** - Querying metrics across all namespaces")
+        st.markdown(
+            "Ask questions like: `Total GPU usage across all namespaces?`, `Which namespace has highest latency?`, `What alerts were firing cluster-wide yesterday?` etc."
+        )
+    else:
+        st.markdown(f"🏷️ **Namespace-specific analysis** - Currently selected namespace: **{selected_namespace}**")
+        st.markdown(
+            "Ask questions like: `What's the P95 latency in past 1 hour?`, `Is GPU usage stable in my namespace?`, `What alerts were firing in my namespace yesterday?` etc."
+        )
+    
+    # Helpful hint about dynamic time parsing
+    st.info(
+        "💡 **Smart Time Parsing**: Just mention time naturally in your question! "
+        "Examples: *'past 15 minutes'*, *'last 3 hours'*, *'yesterday'*, *'past 2 weeks'*"
     )
 
     # --- Chat history management ---
@@ -912,39 +1088,53 @@ elif page == "Chat with Prometheus":
 
         with st.spinner("Querying and summarizing..."):
             try:
+                # Convert chat scope to backend format
+                backend_chat_scope = "fleet_wide" if chat_scope == "Fleet-wide" else "namespace_specific"
+                
                 response = requests.post(
-                    f"{API_URL}/chat-prometheus",
+                    f"{API_URL}/chat-metrics",
                     json={
-                        "model_name": model_name,
+                        "model_name": model_name or "default",  # Provide default if None
                         "question": user_question,
                         "start_ts": selected_start,
                         "end_ts": selected_end,
-                        "namespace": selected_namespace,
+                        "namespace": selected_namespace or "",  # Provide empty string if None
                         "summarize_model_id": multi_model_name,
                         "api_key": api_key,
-                        "messages": st.session_state.messages,
+                        "chat_scope": backend_chat_scope,
                     },
                 )
                 data = response.json()
-                promql_list = data.get("promql", [])
+                promql = data.get("promql", "")
                 summary = data.get("summary", "")
+                chat_scope_response = data.get("chat_scope", "namespace_specific")
+                time_range = data.get("time_range", "")
+                
                 if not summary:
                     st.error("Error: Missing summary in response from AI.")
                 else:
                     # Adding AI response to history ---
                     ai_response_content = ""
-                    if promql_list:
-                        if isinstance(promql_list, str):
-                            promql_list = [promql_list]
-                        queries_str = "\n\n".join(promql_list)
+                    
+                    # Show generated PromQL
+                    if promql:
                         ai_response_content += (
-                            "**Generated PromQL:**\n```yaml\n" + queries_str + "\n```\n"
+                            "**Generated PromQL:**\n```promql\n" + promql + "\n```\n\n"
                         )
                     else:
                         ai_response_content += (
-                            "_No direct PromQL generated for this question._\n"
+                            "_No direct PromQL generated for this question._\n\n"
                         )
+                    
+                    # Show AI Summary
                     ai_response_content += "**AI Summary:**\n\n" + summary
+                    
+                    # Show additional context if available
+                    if time_range:
+                        ai_response_content += f"\n\n📅 **Time Range:** {time_range}"
+                    
+                    scope_display = "Fleet-wide" if chat_scope_response == "fleet_wide" else "Namespace-specific"
+                    ai_response_content += f"\n🔍 **Scope:** {scope_display}"
 
                     st.session_state.messages.append(
                         {"role": "assistant", "content": ai_response_content}
@@ -1198,141 +1388,135 @@ elif page == "OpenShift Metrics":
                             with cols[i % 3]:
                                 # Comprehensive unit formatting for OpenShift metrics
                                 if "Power Usage" in label and "Watts" in label:
-                                    value_display = f"{latest_val:.1f}W"
-                                    delta_display = f"Avg: {avg_val:.1f}W"
+                                    value_display = f"{avg_val:.1f}W"
+                                    delta_display = f"Latest: {latest_val:.1f}W"
                                 elif "Temperature" in label and "°C" in label:
-                                    value_display = f"{latest_val:.1f}°C"
-                                    delta_display = f"Avg: {avg_val:.1f}°C"
+                                    value_display = f"{avg_val:.1f}°C"
+                                    delta_display = f"Latest: {latest_val:.1f}°C"
                                 elif "Energy" in label and "Joules" in label:
-                                    if latest_val >= 1000:
-                                        value_display = f"{latest_val/1000:.1f}kJ"
-                                        delta_display = f"Avg: {avg_val/1000:.1f}kJ"
+                                    if avg_val >= 1000:
+                                        value_display = f"{avg_val/1000:.1f}kJ"
+                                        delta_display = f"Latest: {latest_val/1000:.1f}kJ" if latest_val >= 1000 else f"Latest: {latest_val:.0f}J"
                                     else:
-                                        value_display = f"{latest_val:.0f}J"
-                                        delta_display = f"Avg: {avg_val:.0f}J"
+                                        value_display = f"{avg_val:.0f}J"
+                                        delta_display = f"Latest: {latest_val:.0f}J"
                                 elif "Clock" in label and "MHz" in label:
-                                    if latest_val >= 1000:
-                                        value_display = f"{latest_val/1000:.1f}GHz"
-                                        delta_display = f"Avg: {avg_val/1000:.1f}GHz"
+                                    if avg_val >= 1000:
+                                        value_display = f"{avg_val/1000:.1f}GHz"
+                                        delta_display = f"Latest: {latest_val/1000:.1f}GHz" if latest_val >= 1000 else f"Latest: {latest_val:.0f}MHz"
                                     else:
-                                        value_display = f"{latest_val:.0f}MHz"
-                                        delta_display = f"Avg: {avg_val:.0f}MHz"
+                                        value_display = f"{avg_val:.0f}MHz"
+                                        delta_display = f"Latest: {latest_val:.0f}MHz"
                                 elif "Memory Usage" in label and "GB" in label:
                                     # GPU Memory in GB
-                                    value_display = f"{latest_val:.1f}GB"
-                                    delta_display = f"Avg: {avg_val:.1f}GB"
+                                    value_display = f"{avg_val:.1f}GB"
+                                    delta_display = f"Latest: {latest_val:.1f}GB"
                                 elif "Memory Usage" in label and "bytes" in label:
                                     # Convert bytes to appropriate units
-                                    if latest_val >= 1024**3:  # GB
-                                        value_display = f"{latest_val/(1024**3):.1f}GB"
-                                        delta_display = (
-                                            f"Avg: {avg_val/(1024**3):.1f}GB"
-                                        )
-                                    elif latest_val >= 1024**2:  # MB
-                                        value_display = f"{latest_val/(1024**2):.0f}MB"
-                                        delta_display = (
-                                            f"Avg: {avg_val/(1024**2):.0f}MB"
-                                        )
-                                    elif latest_val >= 1024:  # KB
-                                        value_display = f"{latest_val/1024:.0f}KB"
-                                        delta_display = f"Avg: {avg_val/1024:.0f}KB"
+                                    if avg_val >= 1024**3:  # GB
+                                        value_display = f"{avg_val/(1024**3):.1f}GB"
+                                        if latest_val >= 1024**3:
+                                            delta_display = f"Latest: {latest_val/(1024**3):.1f}GB"
+                                        elif latest_val >= 1024**2:
+                                            delta_display = f"Latest: {latest_val/(1024**2):.0f}MB"
+                                        else:
+                                            delta_display = f"Latest: {latest_val/1024:.0f}KB"
+                                    elif avg_val >= 1024**2:  # MB
+                                        value_display = f"{avg_val/(1024**2):.0f}MB"
+                                        if latest_val >= 1024**2:
+                                            delta_display = f"Latest: {latest_val/(1024**2):.0f}MB"
+                                        else:
+                                            delta_display = f"Latest: {latest_val/1024:.0f}KB"
+                                    elif avg_val >= 1024:  # KB
+                                        value_display = f"{avg_val/1024:.0f}KB"
+                                        delta_display = f"Latest: {latest_val/1024:.0f}KB"
                                     else:
-                                        value_display = f"{latest_val:.0f}B"
-                                        delta_display = f"Avg: {avg_val:.0f}B"
+                                        value_display = f"{avg_val:.0f}B"
+                                        delta_display = f"Latest: {latest_val:.0f}B"
                                 elif "Available Space" in label or "Space" in label:
                                     # Storage metrics in bytes
-                                    if latest_val >= 1024**4:  # TB
-                                        value_display = f"{latest_val/(1024**4):.1f}TB"
-                                        delta_display = (
-                                            f"Avg: {avg_val/(1024**4):.1f}TB"
-                                        )
-                                    elif latest_val >= 1024**3:  # GB
-                                        value_display = f"{latest_val/(1024**3):.0f}GB"
-                                        delta_display = (
-                                            f"Avg: {avg_val/(1024**3):.0f}GB"
-                                        )
+                                    if avg_val >= 1024**4:  # TB
+                                        value_display = f"{avg_val/(1024**4):.1f}TB"
+                                        delta_display = f"Latest: {latest_val/(1024**4):.1f}TB" if latest_val >= 1024**4 else f"Latest: {latest_val/(1024**3):.0f}GB"
+                                    elif avg_val >= 1024**3:  # GB
+                                        value_display = f"{avg_val/(1024**3):.0f}GB"
+                                        delta_display = f"Latest: {latest_val/(1024**3):.0f}GB" if latest_val >= 1024**3 else f"Latest: {latest_val/(1024**2):.0f}MB"
                                     else:
-                                        value_display = f"{latest_val/(1024**2):.0f}MB"
-                                        delta_display = (
-                                            f"Avg: {avg_val/(1024**2):.0f}MB"
-                                        )
+                                        value_display = f"{avg_val/(1024**2):.0f}MB"
+                                        delta_display = f"Latest: {latest_val/(1024**2):.0f}MB"
                                 elif "Network" in label and (
                                     "Receive" in label or "Transmit" in label
                                 ):
                                     # Network metrics - bytes/sec
-                                    if latest_val >= 1024**2:  # MB/s
-                                        value_display = (
-                                            f"{latest_val/(1024**2):.1f}MB/s"
-                                        )
-                                        delta_display = (
-                                            f"Avg: {avg_val/(1024**2):.1f}MB/s"
-                                        )
-                                    elif latest_val >= 1024:  # KB/s
-                                        value_display = f"{latest_val/1024:.0f}KB/s"
-                                        delta_display = f"Avg: {avg_val/1024:.0f}KB/s"
+                                    if avg_val >= 1024**2:  # MB/s
+                                        value_display = f"{avg_val/(1024**2):.1f}MB/s"
+                                        delta_display = f"Latest: {latest_val/(1024**2):.1f}MB/s" if latest_val >= 1024**2 else f"Latest: {latest_val/1024:.0f}KB/s"
+                                    elif avg_val >= 1024:  # KB/s
+                                        value_display = f"{avg_val/1024:.0f}KB/s"
+                                        delta_display = f"Latest: {latest_val/1024:.0f}KB/s"
                                     else:
-                                        value_display = f"{latest_val:.0f}B/s"
-                                        delta_display = f"Avg: {avg_val:.0f}B/s"
+                                        value_display = f"{avg_val:.0f}B/s"
+                                        delta_display = f"Latest: {latest_val:.0f}B/s"
                                 elif "Rate" in label and (
                                     "Request" in label or "HTTP" in label
                                 ):
                                     # Request rates
-                                    if latest_val >= 1000:
-                                        value_display = f"{latest_val/1000:.1f}k/s"
-                                        delta_display = f"Avg: {avg_val/1000:.1f}k/s"
+                                    if avg_val >= 1000:
+                                        value_display = f"{avg_val/1000:.1f}k/s"
+                                        delta_display = f"Latest: {latest_val/1000:.1f}k/s" if latest_val >= 1000 else f"Latest: {latest_val:.1f}/s"
                                     else:
-                                        value_display = f"{latest_val:.1f}/s"
-                                        delta_display = f"Avg: {avg_val:.1f}/s"
+                                        value_display = f"{avg_val:.1f}/s"
+                                        delta_display = f"Latest: {latest_val:.1f}/s"
                                 elif "Latency" in label:
                                     # Latency metrics
-                                    if latest_val >= 1:
-                                        value_display = f"{latest_val:.2f}s"
-                                        delta_display = f"Avg: {avg_val:.2f}s"
+                                    if avg_val >= 1:
+                                        value_display = f"{avg_val:.2f}s"
+                                        delta_display = f"Latest: {latest_val:.2f}s" if latest_val >= 1 else f"Latest: {latest_val*1000:.0f}ms"
                                     else:
-                                        value_display = f"{latest_val*1000:.0f}ms"
-                                        delta_display = f"Avg: {avg_val*1000:.0f}ms"
+                                        value_display = f"{avg_val*1000:.0f}ms"
+                                        delta_display = f"Latest: {latest_val*1000:.0f}ms"
                                 elif "Usage" in label and "%" in label:
-                                    value_display = f"{latest_val:.1f}%"
-                                    delta_display = f"Avg: {avg_val:.1f}%"
+                                    value_display = f"{avg_val:.1f}%"
+                                    delta_display = f"Latest: {latest_val:.1f}%"
                                 elif "Utilization" in label and "%" in label:
-                                    value_display = f"{latest_val:.1f}%"
-                                    delta_display = f"Avg: {avg_val:.1f}%"
+                                    value_display = f"{avg_val:.1f}%"
+                                    delta_display = f"Latest: {latest_val:.1f}%"
                                 elif "CPU" in label and "%" in label:
-                                    value_display = f"{latest_val:.1f}%"
-                                    delta_display = f"Avg: {avg_val:.1f}%"
+                                    value_display = f"{avg_val:.1f}%"
+                                    delta_display = f"Latest: {latest_val:.1f}%"
                                 elif "Memory" in label and "%" in label:
-                                    value_display = f"{latest_val:.1f}%"
-                                    delta_display = f"Avg: {avg_val:.1f}%"
+                                    value_display = f"{avg_val:.1f}%"
+                                    delta_display = f"Latest: {latest_val:.1f}%"
                                 elif "Error Rate" in label and "%" in label:
-                                    value_display = f"{latest_val:.2f}%"
-                                    delta_display = f"Avg: {avg_val:.2f}%"
+                                    value_display = f"{avg_val:.2f}%"
+                                    delta_display = f"Latest: {latest_val:.2f}%"
                                 elif (
                                     "Pods" in label
                                     or "Replicas" in label
                                     or "Nodes" in label
                                 ):
                                     # Count metrics
-                                    value_display = f"{latest_val:.0f}"
-                                    delta_display = f"Avg: {avg_val:.0f}"
+                                    value_display = f"{avg_val:.0f}"
+                                    delta_display = f"Latest: {latest_val:.0f}"
                                 elif (
                                     "Restarts" in label
                                     or "Errors" in label
                                     or "Events" in label
                                 ):
                                     # Rate metrics
-                                    value_display = f"{latest_val:.2f}/s"
-                                    delta_display = f"Avg: {avg_val:.2f}/s"
+                                    value_display = f"{avg_val:.2f}/s"
+                                    delta_display = f"Latest: {latest_val:.2f}/s"
                                 else:
                                     # Default formatting
-                                    if latest_val >= 1000000:
-                                        value_display = f"{latest_val/1000000:.1f}M"
-                                        delta_display = f"Avg: {avg_val/1000000:.1f}M"
-                                    elif latest_val >= 1000:
-                                        value_display = f"{latest_val/1000:.1f}k"
-                                        delta_display = f"Avg: {avg_val/1000:.1f}k"
+                                    if avg_val >= 1000000:
+                                        value_display = f"{avg_val/1000000:.1f}M"
+                                        delta_display = f"Latest: {latest_val/1000000:.1f}M" if latest_val >= 1000000 else f"Latest: {latest_val/1000:.1f}k" if latest_val >= 1000 else f"Latest: {latest_val:.2f}"
+                                    elif avg_val >= 1000:
+                                        value_display = f"{avg_val/1000:.1f}k"
+                                        delta_display = f"Latest: {latest_val/1000:.1f}k" if latest_val >= 1000 else f"Latest: {latest_val:.2f}"
                                     else:
-                                        value_display = f"{latest_val:.2f}"
-                                        delta_display = f"Avg: {avg_val:.2f}"
+                                        value_display = f"{avg_val:.2f}"
+                                        delta_display = f"Latest: {latest_val:.2f}"
 
                                 st.metric(
                                     label=label.replace(" (bytes/sec)", "")
