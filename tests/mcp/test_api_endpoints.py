@@ -122,7 +122,7 @@ class TestModelDiscoveryEndpoints(TestBase):
         namespaces = response.json()
         assert isinstance(namespaces, list)
 
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_namespaces_endpoint_error(self, mock_get, client):
         """Test namespaces endpoint when Prometheus fails"""
         mock_get.side_effect = Exception("Connection error")
@@ -230,7 +230,7 @@ class TestMetricsDiscoveryEndpoints(TestBase):
         assert "staging" in namespaces
         assert "kube-system" not in namespaces  # System namespace filtered
 
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_openshift_namespaces_error(self, mock_get, client):
         """Test OpenShift namespaces endpoint when Prometheus fails"""
         mock_get.side_effect = Exception("Connection error")
@@ -367,8 +367,8 @@ class TestChatEndpoints(TestBase):
         assert "response" in data
         assert isinstance(data["response"], str)
 
-    @patch('metric_ui.mcp.mcp.requests.get')
-    @patch('metric_ui.mcp.mcp.summarize_with_llm')
+    @patch('metric_ui.api.mcp.requests.get')
+    @patch('metric_ui.api.mcp.summarize_with_llm')
     def test_chat_metrics_success(self, mock_llm, mock_get, client):
         """Test successful chat-metrics interaction"""
         # Mock Prometheus response
@@ -393,8 +393,8 @@ class TestChatEndpoints(TestBase):
         assert "promql" in data
         assert "summary" in data
 
-    @patch('metric_ui.mcp.mcp.requests.get')
-    @patch('metric_ui.mcp.mcp.summarize_with_llm')
+    @patch('metric_ui.api.mcp.requests.get')
+    @patch('metric_ui.api.mcp.summarize_with_llm')
     def test_chat_openshift_success(self, mock_llm, mock_get, client):
         """Test successful OpenShift chat interaction"""
         # Mock Prometheus response
@@ -552,7 +552,7 @@ class TestUtilityEndpoints(TestBase):
         for group in expected_groups:
             assert group in data
 
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_deployment_info_success(self, mock_get, client):
         """Test deployment info endpoint"""
         mock_response = MagicMock()
