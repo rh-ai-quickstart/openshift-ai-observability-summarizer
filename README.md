@@ -95,28 +95,41 @@ Monitor GPU health across your entire OpenShift cluster:
 - OpenShift cluster with **GPU nodes** (for DCGM metrics)
 - `oc` CLI configured with cluster-admin permissions
 - `helm` v3.x installed
-- `yq` for YAML processing
+- `yq` for YAML processing (`brew install yq`)
 - **Prometheus/Thanos** deployed for metrics collection
 - **DCGM exporter** for GPU monitoring (optional but recommended)
 - Slack Webhook URL for optional alerting ([How to create a Webhook for your Slack Workspace](https://api.slack.com/messaging/webhooks))
 
 ---
 
-## Installation
+
+## Installing the OpenShift AI Observability Summarizer
 
 Use the included `Makefile` to install everything:
-
-```bash
-brew install yq
-```
-
 ```bash
 cd deploy/helm
+make install NAMESPACE=your-namespace
 ```
+This will install the project with the default LLM deployment, `llama-3-2-3b-instruct`.
 
-### Install the AI Summarizer
+### Choosing different models
+To see all available models:
 ```bash
-make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
+make list-models
+```
+```
+(Output)
+model: llama-3-1-8b-instruct (meta-llama/Llama-3.1-8B-Instruct)
+model: llama-3-2-1b-instruct (meta-llama/Llama-3.2-1B-Instruct)
+model: llama-3-2-1b-instruct-quantized (RedHatAI/Llama-3.2-1B-Instruct-quantized.w8a8)
+model: llama-3-2-3b-instruct (meta-llama/Llama-3.2-3B-Instruct)
+model: llama-3-3-70b-instruct (meta-llama/Llama-3.3-70B-Instruct)
+model: llama-guard-3-1b (meta-llama/Llama-Guard-3-1B)
+model: llama-guard-3-8b (meta-llama/Llama-Guard-3-8B)
+```
+You can use the `LLM` flag during installation to set a model from this list for deployment:
+```
+make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct 
 ```
 
 ### With GPU tolerations
@@ -124,7 +137,7 @@ make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
 make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu"
 ```
 
-### Multiple models with safety
+### With safety models
 ```bash
 make install NAMESPACE=your-namespace \
   LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu" \
@@ -135,6 +148,8 @@ make install NAMESPACE=your-namespace \
 ```bash
 make install NAMESPACE=your-namespace ALERTS=TRUE
 ```
+
+### 
 
 This deploys:
 - **llm-service** - LLM inference 
