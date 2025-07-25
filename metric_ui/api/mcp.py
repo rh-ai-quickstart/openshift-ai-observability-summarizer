@@ -14,8 +14,11 @@ import sys
 from collections import defaultdict
 from dateparser.search import search_dates
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add current directory and parent directory to Python path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)  # For local development (metric_ui/)
+sys.path.insert(0, current_dir)  # For container deployment (/app/)
 
 from report_assets.report_renderer import (
     generate_html_report,
