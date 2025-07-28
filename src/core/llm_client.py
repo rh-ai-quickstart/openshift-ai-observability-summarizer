@@ -123,8 +123,10 @@ def summarize_with_llm(
             payload = {
                 "model": model_name,
                 "messages": llm_messages,
-                "temperature": 0.5,
-                "max_tokens": max_tokens,
+                "temperature": 0,  # Deterministic output
+                "topK": 1,  # Most deterministic setting
+                "topP": 0.1,  # Additional control
+                "max_tokens": 6000,
             }
 
         response_json = _make_api_request(api_url, headers, payload, verify_ssl=True)
@@ -147,8 +149,10 @@ def summarize_with_llm(
         payload = {
             "model": summarize_model_id,
             "prompt": prompt_text,
-            "temperature": 0.5,
-            "max_tokens": max_tokens,
+            "temperature": 0,  # Deterministic output
+            "topK": 1,  # Most deterministic setting
+            "topP": 0.1,  # Additional control
+            "max_tokens": 6000,
         }
 
         response_json = _make_api_request(
@@ -185,7 +189,7 @@ def build_prompt(metric_dfs, model_name: str) -> str:
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     prompt = f"""
-You are an expert AI model performance analyst. Please analyze the following vLLM metrics for model '{model_name}' and provide a comprehensive summary.
+You are a machine learning model performance analysis expert. Please analyze the following vLLM metrics for model '{model_name}' and provide a comprehensive summary.
 
 Current Analysis Time: {current_time}
 
@@ -209,8 +213,11 @@ ANALYSIS REQUIREMENTS:
 2. **Key Metrics Analysis**: Interpret the most important metrics
 3. **Trends and Patterns**: Identify any concerning trends
 4. **Recommendations**: Actionable suggestions for optimization
-5. **Alerting**: Any metrics that warrant immediate attention
+5. **Alerting**: Summarize top 3 issues that are happening and need attention
 
+In your response, do not add or ask additional questions. 
+Answer each requirement above concisely as a summary in less than 150 words. 
+Stop after you have answered requirement 5 and do not add explainations or notes.
 Please provide a clear, structured analysis that would be useful for both technical teams and stakeholders.
 """
     
@@ -231,7 +238,7 @@ def build_openshift_prompt(
     else:
         scope = f"namespace **{namespace}**" if namespace else "cluster-wide"
 
-    header = f"You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n📊 **Metrics**:\n"
+    header = f"You are an expert in OpenShift platform monitoring and operations. You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n📊 **Metrics**:\n"
     analysis_focus = f"{metric_category.lower()} performance and health"
 
     lines = []
@@ -254,8 +261,13 @@ def build_openshift_prompt(
 1. What's the current state of {analysis_focus}?
 2. Are there any performance or reliability concerns?
 3. What actions should be taken?
-4. Any optimization recommendations?"""
+4. Any optimization recommendations?
 
+In your response, do not add or ask additional questions. Your response should only include the questions and answers for the above questions.
+Stop after you have answered question 4 and do not add explainations or notes.
+If there is no direct answer to a question, say so and do not speculate or add additional information. 
+For each question, state the question in bold font, and then answer each question concisely and directly with maximum 150 words.
+"""
     return f"""{header}
 {chr(10).join(lines)}
 
