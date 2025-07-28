@@ -52,6 +52,10 @@ from core.reports import (
     get_report_path,
     build_report_schema,
 )
+from core.alerts import (
+    fetch_alerts_from_prometheus,
+    fetch_all_rule_definitions as _fetch_all_rule_definitions,
+)
 from core.llm_client import (
     summarize_with_llm,
     build_prompt,
@@ -111,27 +115,13 @@ else:
 CA_BUNDLE_PATH = "/etc/pki/ca-trust/extracted/pem/ca-bundle.crt"
 verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 
-# --- Dynamic Metric Discovery Functions (moved to core/metrics.py) ---
-
-# NOTE: All discovery and fetch functions have been moved to core/metrics.py
-# Functions moved: discover_vllm_metrics, discover_dcgm_metrics, discover_openshift_metrics,
-# get_vllm_metrics, get_openshift_metrics, discover_cluster_metrics_dynamically,
-# get_all_metrics, get_namespace_specific_metrics, fetch_metrics, fetch_openshift_metrics
-
-
 # --- Helpers ---
 
 
-# Analysis functions moved to core/analysis.py:
-# - detect_anomalies()
-# - describe_trend() 
-# - compute_health_score()
 
 
-# build_prompt() function moved to core/llm_client.py
 
 
-# build_chat_prompt() function moved to core/llm_client.py
 
 
 
@@ -149,100 +139,7 @@ verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 
 
 
-def fetch_alerts_from_prometheus(
-    start_ts: int, end_ts: int, namespace: Optional[str] = None
-):
-    """
-    Fetches active alerts for a time range and enriches them with their
-    full rule definitions for maximum context.
-    """
 
-    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
-    promql_query = f'ALERTS{{namespace="{namespace}"}}' if namespace else "ALERTS"
-    params = {
-        "query": promql_query,
-        "start": start_ts,
-        "end": end_ts,
-        "step": "30s",
-    }
-    try:
-        response = requests.get(
-            f"{PROMETHEUS_URL}/api/v1/query_range",
-            headers=headers,
-            params=params,
-            verify=verify,
-            timeout=30,  # Add timeout
-        )
-        response.raise_for_status()
-        result = response.json()["data"]["result"]
-    except requests.exceptions.ConnectionError as e:
-        print(f"⚠️ Prometheus connection error for alerts query '{promql_query}': {e}")
-        return promql_query, []  # Return empty alerts on connection error
-    except requests.exceptions.Timeout as e:
-        print(f"⚠️ Prometheus timeout for alerts query '{promql_query}': {e}")
-        return promql_query, []  # Return empty alerts on timeout
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Prometheus request error for alerts query '{promql_query}': {e}")
-        return promql_query, []  # Return empty alerts on other request errors
-
-    alerts_data = []
-    for series in result:
-        alertname = series["metric"].get("alertname")
-        severity = series["metric"].get("severity")
-        alertstate = series["metric"].get("alertstate")  # "firing" or "inactive"
-        for_duration = series["metric"].get("for")
-        labels = series["metric"]
-        for val in series["values"]:
-            timestamp = datetime.fromtimestamp(float(val[0]))
-            is_firing = int(float(val[1]))
-            alerts_data.append(
-                {
-                    "alertname": alertname,
-                    "severity": severity,
-                    "alertstate": alertstate,
-                    "timestamp": timestamp.isoformat(),
-                    "is_firing": is_firing,
-                    "for_duration": for_duration,
-                    "labels": labels,
-                }
-            )
-    return promql_query, alerts_data
-
-
-
-
-
-
-
-
-
-
-
-# This is a helper function to get all rule definitions
-def _fetch_all_rule_definitions() -> Dict[str, Dict[str, Any]]:
-    """
-    Fetches all rule definitions from the Prometheus API and returns them
-    as a dictionary keyed by alert name.
-    """
-    definitions = {}
-    try:
-        response = requests.get(f"{PROMETHEUS_URL}/api/v1/rules", verify=verify)
-        response.raise_for_status()
-        groups = response.json()["data"]["groups"]
-        for group in groups:
-            for rule in group.get("rules", []):
-                alert_name = rule.get("alert") or rule.get("name")
-                if alert_name:
-                    # Store the entire rule object for full context
-                    definitions[alert_name] = {
-                        "name": alert_name,
-                        "expression": rule.get("expr", "N/A"),
-                        "duration": rule.get("for", "0s"),
-                        "labels": rule.get("labels", {}),
-                    }
-    except Exception as e:
-        print(f"Error fetching rule definitions: {e}")
-    return definitions
 
 
 @app.get("/health")
@@ -827,10 +724,10 @@ def chat_metrics(req: ChatMetricsRequest):
         )
 
 
-# build_openshift_chat_prompt() function moved to core/llm_client.py
 
 
-# build_flexible_llm_prompt() function moved to core/llm_client.py
+
+
 
 
 @app.post("/chat-openshift")
@@ -1465,12 +1362,6 @@ def get_deployment_info(namespace: str, model: str):
         }
 
 # --- Report Generation ---
-
-# Report utility functions moved to core/reports.py:
-# - save_report()
-# - get_report_path()  
-# - build_report_schema()
-# - calculate_metric_stats() (now in core/metrics.py)
 
 
 @app.get("/download_report/{report_id}")
