@@ -238,7 +238,7 @@ To generate a report:
 
 ### Building the Container Images
 
-The application consists of multiple services that need to be built as container images for Kubernetes deployment.
+The application consists of multiple services that need to be built as container images for openshift deployment.
 
 #### **Build FastAPI Backend (metric-mcp)**
 
@@ -296,7 +296,7 @@ podman buildx build --platform linux/amd64 \
 podman push quay.io/ecosystem-appeng/metric-alerting:your-tag
 ```
 
-### Deploy to Kubernetes
+### Deploy to OpenShift
 
 After building and pushing the images:
 
@@ -311,7 +311,7 @@ After building and pushing the images:
 2. **Deploy using Helm**:
    ```bash
    cd deploy/helm
-   make install-metric-mcp NAMESPACE=your-namespace
+   make install NAMESPACE=your-namespace
    ```
 
 ### Automated CI/CD Build
