@@ -2,8 +2,8 @@ import pytest
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Import functions still in API module
-from metric_ui.api.mcp import (
+# Import functions moved to core analysis module
+from metric_ui.core.analysis import (
     detect_anomalies,
     describe_trend,
     compute_health_score

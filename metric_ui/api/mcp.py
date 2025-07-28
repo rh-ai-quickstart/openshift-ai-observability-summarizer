@@ -42,6 +42,11 @@ from core.metrics import (
     fetch_metrics,
     fetch_openshift_metrics,
 )
+from core.analysis import (
+    detect_anomalies,
+    describe_trend,
+    compute_health_score,
+)
 from core.llm_client import (
     summarize_with_llm,
     build_prompt,
@@ -112,54 +117,10 @@ verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 # --- Helpers ---
 
 
-def detect_anomalies(df, label):
-    if df.empty:
-        return "No data"
-    mean = df["value"].mean()
-    std = df["value"].std()
-    p90 = df["value"].quantile(0.9)
-    latest_val = df["value"].iloc[-1]
-    if latest_val > p90:
-        return f"⚠️ {label} spike (latest={latest_val:.2f}, >90th pct)"
-    elif latest_val < (mean - std):
-        return f"⚠️ {label} unusually low (latest={latest_val:.2f}, mean={mean:.2f})"
-    return f"{label} stable (latest={latest_val:.2f}, mean={mean:.2f})"
-
-
-def describe_trend(df):
-    if df.empty or len(df) < 2:
-        return "not enough data"
-    df = df.sort_values("timestamp")
-    x = (df["timestamp"] - df["timestamp"].min()).dt.total_seconds()
-    y = df["value"]
-    if x.nunique() <= 1:
-        return "flat"
-    slope, *_ = linregress(x, y)
-    if slope > 0.01:
-        return "increasing"
-    elif slope < -0.01:
-        return "decreasing"
-    return "stable"
-
-
-def compute_health_score(metric_dfs):
-    score, reasons = 0, []
-    if "P95 Latency (s)" in metric_dfs and not metric_dfs["P95 Latency (s)"].empty:
-        mean = metric_dfs["P95 Latency (s)"]["value"].mean()
-        if mean > 2:
-            score -= 2
-            reasons.append(f"High Latency (avg={mean:.2f}s)")
-    if "GPU Usage (%)" in metric_dfs and not metric_dfs["GPU Usage (%)"].empty:
-        mean = metric_dfs["GPU Usage (%)"]["value"].mean()
-        if mean < 10:
-            score -= 1
-            reasons.append(f"Low GPU Utilization (avg={mean:.2f}%)")
-    if "Requests Running" in metric_dfs and not metric_dfs["Requests Running"].empty:
-        mean = metric_dfs["Requests Running"]["value"].mean()
-        if mean > 10:
-            score -= 1
-            reasons.append(f"Too many requests (avg={mean:.2f})")
-    return score, reasons
+# Analysis functions moved to core/analysis.py:
+# - detect_anomalies()
+# - describe_trend() 
+# - compute_health_score()
 
 
 def build_prompt(metric_dfs, model_name):
