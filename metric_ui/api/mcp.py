@@ -46,6 +46,17 @@ from core.llm_client import (
     fix_promql_syntax,
     format_alerts_for_ui
 )
+from core.models import (
+    AnalyzeRequest,
+    ChatRequest,
+    ChatPrometheusRequest,
+    ChatMetricsRequest,
+    OpenShiftAnalyzeRequest,
+    OpenShiftChatRequest,
+    ReportRequest,
+    MetricsCalculationRequest,
+    MetricsCalculationResponse,
+)
 
 
 app = FastAPI()
@@ -619,85 +630,7 @@ def build_openshift_prompt(
 """.strip()
 
 
-# --- Request Models ---
-class AnalyzeRequest(BaseModel):
-    model_name: str
-    start_ts: int
-    end_ts: int
-    summarize_model_id: str
-    api_key: Optional[str] = None
 
-
-class ChatRequest(BaseModel):
-    model_name: str
-    prompt_summary: str
-    question: str
-    summarize_model_id: str
-    api_key: Optional[str] = None
-
-
-class ChatPrometheusRequest(BaseModel):
-    model_name: str
-    question: str
-    start_ts: Optional[int] = None
-    end_ts: Optional[int] = None
-    namespace: str
-    summarize_model_id: str
-    api_key: Optional[str] = None
-    messages: Optional[List[Dict[str, str]]] = None
-
-
-class ChatMetricsRequest(BaseModel):
-    model_name: str
-    question: str
-    start_ts: Optional[int] = None
-    end_ts: Optional[int] = None
-    namespace: str
-    summarize_model_id: str
-    api_key: Optional[str] = None
-    chat_scope: Optional[str] = "namespace_specific"  # "fleet_wide" or "namespace_specific"
-
-
-class OpenShiftAnalyzeRequest(BaseModel):
-    metric_category: str  # Specific category
-    scope: str  # "cluster_wide" or "namespace_scoped"
-    namespace: Optional[str] = None  # Required if scope is "namespace_scoped"
-    start_ts: int
-    end_ts: int
-    summarize_model_id: str
-    api_key: Optional[str] = None
-
-
-class OpenShiftChatRequest(BaseModel):
-    metric_category: str  # Specific category
-    scope: str  # "cluster_wide" or "namespace_scoped"
-    question: str
-    namespace: Optional[str] = None  # Required if scope is "namespace_scoped"
-    start_ts: int
-    end_ts: int
-    summarize_model_id: str
-    api_key: Optional[str] = None
-
-
-class ReportRequest(BaseModel):
-    model_name: str
-    start_ts: int
-    end_ts: int
-    summarize_model_id: str
-    format: str
-    api_key: Optional[str] = None
-    health_prompt: Optional[str] = None
-    llm_summary: Optional[str] = None
-    metrics_data: Optional[Dict[str, Any]] = None
-    trend_chart_image: Optional[str] = None
-
-
-class MetricsCalculationRequest(BaseModel):
-    metrics_data: Dict[str, List[Dict[str, Any]]]
-
-
-class MetricsCalculationResponse(BaseModel):
-    calculated_metrics: Dict[str, Dict[str, Optional[float]]]
 
 
 # --- Helpers ---
