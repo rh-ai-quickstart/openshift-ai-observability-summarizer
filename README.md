@@ -244,8 +244,8 @@ The application consists of multiple services that need to be built as container
 
 **Using Podman:**
 ```bash
-# Navigate to the metric_ui directory (important for build context)
-cd metric_ui
+# Navigate to the src directory (important for build context)
+cd src
 
 # Build for linux/amd64 platform (required for most K8s clusters)
 podman buildx build --platform linux/amd64 \
@@ -258,8 +258,8 @@ podman push quay.io/ecosystem-appeng/metric-mcp:your-tag
 
 **Using Docker:**
 ```bash
-# Navigate to the metric_ui directory (important for build context)
-cd metric_ui
+# Navigate to the src directory (important for build context)
+cd src
 
 # Build for linux/amd64 platform
 docker buildx build --platform linux/amd64 \
@@ -274,9 +274,9 @@ docker push quay.io/ecosystem-appeng/metric-mcp:your-tag
 
 ```bash
 # Build UI container
-cd metric_ui
+cd src/ui
 podman buildx build --platform linux/amd64 \
-  -f ui/Dockerfile \
+  -f Dockerfile \
   -t quay.io/ecosystem-appeng/metric-ui:your-tag .
 
 # Push to registry
@@ -287,9 +287,9 @@ podman push quay.io/ecosystem-appeng/metric-ui:your-tag
 
 ```bash
 # Build alerting container
-cd metric_ui
+cd src/alerting
 podman buildx build --platform linux/amd64 \
-  -f alerting/Dockerfile \
+  -f Dockerfile \
   -t quay.io/ecosystem-appeng/metric-alerting:your-tag .
 
 # Push to registry
@@ -384,7 +384,7 @@ uv sync --group test
 
 ```bash
 # Run all tests with verbose output and coverage
-uv run pytest -v --cov=metric_ui --cov-report=html --cov-report=term
+uv run pytest -v --cov=src --cov-report=html --cov-report=term
 
 # Run only MCP tests
 uv run pytest -v tests/mcp/

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  MCP_DIR: metric_ui/api
+  MCP_DIR: src/api
 
 jobs:
   build-image:
@@ -17,13 +17,13 @@ jobs:
       matrix:
         include:
           - name: metric-mcp
-            context: metric_ui
+            context: src
             image-name: metric-mcp
           - name: metric-ui
-            context: metric_ui/ui
+            context: src/ui
             image-name: metric-ui
           - name: metric-alerting
-            context: metric_ui/alerting
+            context: src/alerting
             image-name: metric-alerting
     defaults:
       run:
