@@ -112,7 +112,7 @@ start_local_services() {
     
     # Start MCP service
     echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
-    (cd metric_ui/api && python3 -m uvicorn mcp:app --host 0.0.0.0 --port $MCP_PORT --reload) &
+    (cd src/api && python3 -m uvicorn mcp:app --host 0.0.0.0 --port $MCP_PORT --reload) &
     MCP_PID=$!
     
     # Wait for MCP to start
@@ -128,7 +128,7 @@ start_local_services() {
     
     # Start Streamlit UI
     echo -e "${BLUE}🎨 Starting Streamlit UI...${NC}"
-    (cd metric_ui/ui && streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true) &
+    (cd src/ui && streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true) &
     UI_PID=$!
     
     # Wait for UI to start

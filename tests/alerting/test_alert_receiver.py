@@ -1,4 +1,4 @@
-from metric_ui.alerting.alert_receiver import (
+from src.alerting.alert_receiver import (
     is_new_vllm_alert,
     format_slack_message,
     send_slack_message,
@@ -80,7 +80,7 @@ class TestIsNewVllmAlert(TestAlertReceiver):
 class TestFormatSlackMessage(TestAlertReceiver):
     """Test the format_slack_message function"""
 
-    @patch('metric_ui.alerting.alert_receiver.generate_description')
+    @patch('src.alerting.alert_receiver.generate_description')
     def test_formats_alert_severity(self, mock_generate, alert):
         """Test formatting of critical severity alert"""
         alert["labels"]["severity"] = "critical"
@@ -93,7 +93,7 @@ class TestFormatSlackMessage(TestAlertReceiver):
         assert "Test description for critical alert" in result["text"]
         assert result["mrkdwn"] == True
         
-    @patch('metric_ui.alerting.alert_receiver.generate_description')
+    @patch('src.alerting.alert_receiver.generate_description')
     def test_handles_missing_generator_url(self, mock_generate, alert):
         """Test handling of missing generatorURL"""
         del alert["generatorURL"]
@@ -103,7 +103,7 @@ class TestFormatSlackMessage(TestAlertReceiver):
         
         assert "No generator URL" in result["text"]
 
-    @patch('metric_ui.alerting.alert_receiver.generate_description')
+    @patch('src.alerting.alert_receiver.generate_description')
     def test_timestamp_formatting(self, mock_generate, alert):
         """Test that timestamps are formatted correctly"""
         alert["startsAt"] = "2025-01-15T10:30:45.123Z"
@@ -113,7 +113,7 @@ class TestFormatSlackMessage(TestAlertReceiver):
         
         assert "2025-01-15 10:30:45 UTC" in result["text"]
 
-    @patch('metric_ui.alerting.alert_receiver.generate_description')
+    @patch('src.alerting.alert_receiver.generate_description')
     def test_invalid_timestamp_handling(self, mock_generate, alert):
         """Test handling of invalid timestamps"""
         alert["startsAt"] = "invalid-timestamp"
@@ -127,7 +127,7 @@ class TestFormatSlackMessage(TestAlertReceiver):
 class TestSendSlackMessage:
     """Test the send_slack_message function"""
 
-    @patch('metric_ui.alerting.alert_receiver.SLACK_WEBHOOK_URL', 'https://hooks.slack.com/test')
+    @patch('src.alerting.alert_receiver.SLACK_WEBHOOK_URL', 'https://hooks.slack.com/test')
     @patch('requests.post')
     def test_successful_slack_message_send(self, mock_post):
         """Test successful Slack message sending"""
@@ -142,7 +142,7 @@ class TestSendSlackMessage:
         mock_post.assert_called_once()
         assert mock_post.call_args[1]['headers']['Content-Type'] == 'application/json'
 
-    @patch('metric_ui.alerting.alert_receiver.SLACK_WEBHOOK_URL', '')
+    @patch('src.alerting.alert_receiver.SLACK_WEBHOOK_URL', '')
     def test_no_slack_url_returns_false(self):
         """Test that missing Slack URL returns False"""
         payload = {"text": "Test message"}
@@ -150,7 +150,7 @@ class TestSendSlackMessage:
         
         assert result == False
 
-    @patch('metric_ui.alerting.alert_receiver.SLACK_WEBHOOK_URL', 'https://hooks.slack.com/test')
+    @patch('src.alerting.alert_receiver.SLACK_WEBHOOK_URL', 'https://hooks.slack.com/test')
     @patch('requests.post')
     def test_slack_request_exception_handling(self, mock_post):
         """Test handling of request exceptions"""
@@ -161,7 +161,7 @@ class TestSendSlackMessage:
         
         assert result == False
 
-    @patch('metric_ui.alerting.alert_receiver.SLACK_WEBHOOK_URL', 'https://hooks.slack.com/test')
+    @patch('src.alerting.alert_receiver.SLACK_WEBHOOK_URL', 'https://hooks.slack.com/test')
     @patch('requests.post')
     def test_slack_http_error_handling(self, mock_post):
         """Test handling of HTTP errors"""
@@ -178,8 +178,8 @@ class TestSendSlackMessage:
 class TestGetActiveAlerts:
     """Test the get_active_alerts function"""
 
-    @patch('metric_ui.alerting.alert_receiver.AUTH_TOKEN', 'test-token')
-    @patch('metric_ui.alerting.alert_receiver.ALERTMANAGER_URL', 'http://alertmanager:9093')
+    @patch('src.alerting.alert_receiver.AUTH_TOKEN', 'test-token')
+    @patch('src.alerting.alert_receiver.ALERTMANAGER_URL', 'http://alertmanager:9093')
     @patch('requests.get')
     def test_successful_alerts_retrieval(self, mock_get):
         """Test successful retrieval of alerts from Alertmanager"""
@@ -219,8 +219,8 @@ class TestGetActiveAlerts:
 class TestProcessVllmAlertsAndNotify(TestAlertReceiver):
     """Test the process_vllm_alerts_and_notify function"""
 
-    @patch('metric_ui.alerting.alert_receiver.send_slack_message')
-    @patch('metric_ui.alerting.alert_receiver.format_slack_message')
+    @patch('src.alerting.alert_receiver.send_slack_message')
+    @patch('src.alerting.alert_receiver.format_slack_message')
     def test_processes_new_vllm_alerts(self, mock_format, mock_send, recent_alert):
         """Test processing of new VLLM alerts"""
         mock_format.return_value = {"text": "Formatted message"}
@@ -232,7 +232,7 @@ class TestProcessVllmAlertsAndNotify(TestAlertReceiver):
         mock_format.assert_called_once_with(recent_alert)
         mock_send.assert_called_once_with({"text": "Formatted message"})
 
-    @patch('metric_ui.alerting.alert_receiver.send_slack_message')
+    @patch('src.alerting.alert_receiver.send_slack_message')
     def test_ignores_old_alerts(self, mock_send, alert):
         """Test that old alerts are ignored"""
         alerts = [alert]  # This alert is old by default
@@ -240,7 +240,7 @@ class TestProcessVllmAlertsAndNotify(TestAlertReceiver):
         
         mock_send.assert_not_called()
 
-    @patch('metric_ui.alerting.alert_receiver.send_slack_message')
+    @patch('src.alerting.alert_receiver.send_slack_message')
     def test_ignores_non_vllm_alerts(self, mock_send, recent_alert):
         """Test that non-VLLM alerts are ignored"""
         recent_alert["labels"]["alertname"] = "KubernetesAlert"
@@ -249,8 +249,8 @@ class TestProcessVllmAlertsAndNotify(TestAlertReceiver):
         
         mock_send.assert_not_called()
 
-    @patch('metric_ui.alerting.alert_receiver.send_slack_message')
-    @patch('metric_ui.alerting.alert_receiver.format_slack_message')
+    @patch('src.alerting.alert_receiver.send_slack_message')
+    @patch('src.alerting.alert_receiver.format_slack_message')
     def test_processes_multiple_alerts(self, mock_format, mock_send, recent_alert):
         """Test processing multiple alerts"""
         mock_format.return_value = {"text": "Formatted message"}
@@ -267,7 +267,7 @@ class TestProcessVllmAlertsAndNotify(TestAlertReceiver):
         assert mock_format.call_count == 2
         assert mock_send.call_count == 2
 
-    @patch('metric_ui.alerting.alert_receiver.send_slack_message')
+    @patch('src.alerting.alert_receiver.send_slack_message')
     def test_handles_empty_alert_list(self, mock_send):
         """Test handling of empty alert list"""
         # Should not raise any exceptions
@@ -278,7 +278,7 @@ class TestProcessVllmAlertsAndNotify(TestAlertReceiver):
 class TestGenerateDescription:
     """Test the generate_description function"""
 
-    @patch('metric_ui.alerting.alert_receiver.LlamaStackClient')
+    @patch('src.alerting.alert_receiver.LlamaStackClient')
     def test_generates_description_successfully(self, mock_client_class):
         """Test successful description generation"""
         # Mock the LlamaStack client and response
@@ -300,7 +300,7 @@ class TestGenerateDescription:
         assert result == "Generated alert description"
         mock_client.inference.chat_completion.assert_called_once()
 
-    @patch('metric_ui.alerting.alert_receiver.LlamaStackClient')
+    @patch('src.alerting.alert_receiver.LlamaStackClient')
     def test_handles_llm_service_failure(self, mock_client_class):
         """Test handling of LLM service failures"""
         mock_client_class.side_effect = Exception("LLM service unavailable")

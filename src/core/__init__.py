@@ -2,9 +2,9 @@
 OpenShift AI Observability - Core Business Logic
 
 This package contains shared business logic that can be used by:
-- FastAPI service (metric_ui/api/)  
-- Streamlit UI (metric_ui/ui/)
-- MCP server (metric_ui/mcp-server/)
+- FastAPI service (src/api/)
+- Streamlit UI (src/ui/)
+- MCP server (src/mcp-server/)
 
 Modules:
 - metrics: Prometheus/Thanos data collection and processing

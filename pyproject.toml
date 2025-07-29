@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "metric_ui"
+name = "openshift-ai-observability-summarizer"
 version = "0.1.0"
 description = "AI Observability Metric Summarizer"
 requires-python = ">=3.11"
@@ -19,6 +19,7 @@ dependencies = [
     "dateparser>=1.2.2",
     "llama-stack-client>=0.2.12",
     "fire>=0.7.0",
+    "pytest>=8.4.1",
 ]
 
 [dependency-groups]
@@ -37,16 +38,19 @@ dev = [
     "weasyprint>=65.1",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
 [tool.coverage.run]
-source = ["metric_ui"]
+source = ["src"]
 omit = [
     "*/tests/*",
     "*/test_*",
     "*/__pycache__/*",
     "*/__init__.py",
-    "metric_ui/api/report_assets/report_config.py",
-    "metric_ui/api/report_assets/report_renderer.py",
-    "metric_ui/ui/ui.py",
+    "src/api/report_assets/report_config.py",
+    "src/api/report_assets/report_renderer.py",
+    "src/ui/ui.py",
 ]
 
 [tool.coverage.report]

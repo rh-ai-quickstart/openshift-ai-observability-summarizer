@@ -3,14 +3,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 # Import functions moved to core analysis module
-from metric_ui.core.analysis import (
+from src.core.analysis import (
     detect_anomalies,
     describe_trend,
     compute_health_score
 )
 
 # Import functions moved to core modules
-from metric_ui.core.llm_client import (
+from src.core.llm_client import (
     _clean_llm_summary_string,
     _validate_and_extract_response,
     extract_time_range_with_info,
@@ -20,7 +20,7 @@ from metric_ui.core.llm_client import (
     format_alerts_for_ui
 )
 
-from metric_ui.core.metrics import (
+from src.core.metrics import (
     calculate_metric_stats
 )
 
