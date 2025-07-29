@@ -1,0 +1,9 @@
+fastapi
+pydantic
+requests
+scipy
+pandas
+uvicorn
+markdown
+weasyprint
+dateparser
