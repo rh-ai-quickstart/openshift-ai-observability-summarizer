@@ -38,6 +38,9 @@ dev = [
     "weasyprint>=65.1",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
 [tool.coverage.run]
 source = ["src"]
 omit = [
