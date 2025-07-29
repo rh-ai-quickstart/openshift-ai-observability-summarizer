@@ -14,8 +14,9 @@ spec:
     spec:
       serviceAccountName: metric-analyzer
       containers:
-        - name: metric-mcp
+        - name: metrics-api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:

@@ -1,8 +1,8 @@
 replicaCount: 1
 
 image:
-  repository: quay.io/ecosystem-appeng/metric-mcp
-  tag: ah25
+  repository: quay.io/ecosystem-appeng/metrics-api
+  tag: ah29
 
 service:
   type: ClusterIP
@@ -22,6 +22,7 @@ llm:
 
 # Contains all model details: external/internal, API key requirements, service mappings
 modelConfig: {}
+
 
 rbac:
   createGrafanaRole: true # User sets this to false if role already exists

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  MCP_DIR: src/api
+  METRICS_API_DIR: src/api
 
 jobs:
   build-image:
@@ -16,9 +16,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: metric-mcp
-            context: src
-            image-name: metric-mcp
+                      - name: metrics-api
+              context: src
+              image-name: metrics-api
           - name: metric-ui
             context: src/ui
             image-name: metric-ui
@@ -27,7 +27,7 @@ jobs:
             image-name: metric-alerting
     defaults:
       run:
-        working-directory: ${{ env.MCP_DIR }}
+        working-directory: ${{ env.METRICS_API_DIR }}
 
     steps:
       - name: Checkout repository

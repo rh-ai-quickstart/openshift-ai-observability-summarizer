@@ -115,45 +115,15 @@ else:
 CA_BUNDLE_PATH = "/etc/pki/ca-trust/extracted/pem/ca-bundle.crt"
 verify = CA_BUNDLE_PATH if os.path.exists(CA_BUNDLE_PATH) else True
 
-# --- Helpers ---
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# helper functions for Chat with Prometheus
-
-
-
-
-
-
-
-
-
-
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
-
-
-
 @app.get("/models")
 def list_models():
     return get_models_helper()
-
 
 @app.get("/namespaces")
 def list_namespaces():
@@ -722,12 +692,6 @@ def chat_metrics(req: ChatMetricsRequest):
         raise HTTPException(
             status_code=500, detail="Please check your API Key or try again later."
         )
-
-
-
-
-
-
 
 
 @app.post("/chat-openshift")

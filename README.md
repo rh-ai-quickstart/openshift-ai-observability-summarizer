@@ -240,7 +240,7 @@ To generate a report:
 
 The application consists of multiple services that need to be built as container images for openshift deployment.
 
-#### **Build FastAPI Backend (metric-mcp)**
+#### **Build FastAPI Backend (metrics-api)**
 
 **Using Podman:**
 ```bash
@@ -250,10 +250,10 @@ cd src
 # Build for linux/amd64 platform (required for most K8s clusters)
 podman buildx build --platform linux/amd64 \
   -f api/Dockerfile \
-  -t quay.io/ecosystem-appeng/metric-mcp:your-tag .
+  -t quay.io/ecosystem-appeng/metrics-api:your-tag .
 
 # Push to container registry
-podman push quay.io/ecosystem-appeng/metric-mcp:your-tag
+podman push quay.io/ecosystem-appeng/metrics-api:your-tag
 ```
 
 **Using Docker:**
@@ -264,10 +264,10 @@ cd src
 # Build for linux/amd64 platform
 docker buildx build --platform linux/amd64 \
   -f api/Dockerfile \
-  -t quay.io/ecosystem-appeng/metric-mcp:your-tag .
+  -t quay.io/ecosystem-appeng/metrics-api:your-tag .
 
 # Push to container registry
-docker push quay.io/ecosystem-appeng/metric-mcp:your-tag
+docker push quay.io/ecosystem-appeng/metrics-api:your-tag
 ```
 
 #### **Build Streamlit UI (metric-ui)**
@@ -324,7 +324,7 @@ The project includes GitHub Actions workflow (`.github/workflows/build-and-push.
 
 ## Local Development via Port-Forwarding
 
-In order to develop locally faster on the MCP/UI you can leverage port-forwarding to Llamastack, llm-service and Thanos by making use of `scripts/local-dev.sh` script.
+In order to develop locally faster on the metrics API/UI you can leverage port-forwarding to Llamastack, llm-service and Thanos by making use of `scripts/local-dev.sh` script.
 
 **Pre-requisites**:
 1. You have a deployment on the cluster already.
@@ -364,7 +364,7 @@ The output should look like this:
 
 **Still verifying whether we need this setup or not as weasyprint is installed using `uv` in previous step.**
 
-In order to run the mcp locally you'll need to install weasyprint:
+In order to run the metrics API locally you'll need to install weasyprint:
 1. Install via brew `brew install weasyprint`
 2. Ensure installation `weasyprint --version`
 3. Set **DYLD_FALLBACK_LIBRARY_PATH** `export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH`

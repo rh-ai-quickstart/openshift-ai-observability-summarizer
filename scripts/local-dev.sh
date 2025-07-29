@@ -111,8 +111,8 @@ start_local_services() {
     export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
     
     # Start MCP service
-    echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
-    (cd src/api && python3 -m uvicorn mcp:app --host 0.0.0.0 --port $MCP_PORT --reload) &
+echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
+(cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $MCP_PORT --reload) &
     MCP_PID=$!
     
     # Wait for MCP to start

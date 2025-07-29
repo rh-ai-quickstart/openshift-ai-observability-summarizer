@@ -1,6 +1,6 @@
 image:
   repository: quay.io/ecosystem-appeng/metric-ui
-  tag: ts19
+  tag: ah29
   pullPolicy: IfNotPresent
 
 service:
@@ -11,4 +11,4 @@ env:
   PROMETHEUS_URL: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
   LLM_URL: "http://llm-service:8012"
   LLM_API_TOKEN: ""
-  MCP_API_URL: "http://metric-mcp-svc.{{ .Release.Namespace }}.svc.cluster.local:8000"
+  METRICS_API_URL: "http://metrics-api-svc.{{ .Release.Namespace }}.svc.cluster.local:8000"
