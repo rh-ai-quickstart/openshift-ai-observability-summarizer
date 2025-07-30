@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  MCP_DIR: src/api
+  METRICS_API_DIR: src/api
 
 jobs:
   build-image:
@@ -16,18 +16,19 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: metric-mcp
+          - name: metrics-api
             context: src
-            image-name: metric-mcp
+            dockerfile: src/api/Dockerfile
+            image-name: metrics-api
           - name: metric-ui
             context: src/ui
+            dockerfile: src/ui/Dockerfile
             image-name: metric-ui
           - name: metric-alerting
             context: src/alerting
+            dockerfile: src/alerting/Dockerfile
             image-name: metric-alerting
-    defaults:
-      run:
-        working-directory: ${{ env.MCP_DIR }}
+
 
     steps:
       - name: Checkout repository
@@ -52,7 +53,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: quay.io/ecosystem-appeng/${{ matrix.image-name }}:${{ steps.version.outputs.tag }}
           build-args: |

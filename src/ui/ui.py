@@ -11,7 +11,7 @@ import io
 import time
 
 # --- Config ---
-API_URL = os.getenv("MCP_API_URL", "http://localhost:8000")
+API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
 PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
 
 # --- Page Setup ---

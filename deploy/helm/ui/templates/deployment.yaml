@@ -20,5 +20,5 @@ spec:
           ports:
             - containerPort: 8501
           env:
-            - name: MCP_API_URL
-              value: "http://metric-mcp-svc.{{ .Release.Namespace }}.svc.cluster.local:8000"
+            - name: METRICS_API_URL
+              value: "http://metrics-api-svc.{{ .Release.Namespace }}.svc.cluster.local:8000"
