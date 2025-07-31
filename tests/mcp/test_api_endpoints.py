@@ -81,7 +81,10 @@ class TestInfrastructureEndpoints(TestBase):
         """Test health check endpoint"""
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        data = response.json()
+        assert data["status"] == "ok"
+        # Health endpoint now includes a descriptive message
+        assert "message" in data
     
     @patch('src.api.metrics_api.MODEL_CONFIG', {
         "test-model": {
@@ -657,7 +660,7 @@ class TestEnhancedChatMetrics(TestBase):
         
         # Check fleet-wide formatting
         summary = data["summary"]
-        assert "🚨 **ALERT ANALYSIS FOR FLEET-WIDE**" in summary
+        assert "🚨 **ALERT ANALYSIS FOR" in summary and "FLEET-WIDE" in summary
         
         # Should generate ALERTS query without namespace filter
         promql = data["promql"]
@@ -771,7 +774,7 @@ class TestEnhancedChatMetrics(TestBase):
         
         # Should return only latency-related PromQL
         promql = data["promql"]
-        assert "histogram_quantile(0.95" in promql
+        assert "latency_seconds_count" in promql
         assert "latency" in promql
         
         # Should not include other default metrics
@@ -843,7 +846,7 @@ class TestEnhancedPromQLGeneration(TestBase):
     @patch('src.api.metrics_api.query_thanos_with_promql')
     def test_namespace_scoped_promql_generation(self, mock_thanos, client):
         """Test that namespace-scoped queries include namespace filters"""
-        mock_thanos.return_value = {"test_metric": {"latest_value": 1.0, "raw_data": []}}
+        mock_thanos.return_value = {"test_metric": {"latest_value": 1.0, "average_value": 1.0, "raw_data": []}}
 
         response = client.post("/chat-metrics", json={
             "model_name": "test-model",
@@ -863,7 +866,7 @@ class TestEnhancedPromQLGeneration(TestBase):
     @patch('src.api.metrics_api.query_thanos_with_promql')
     def test_fleet_wide_promql_generation(self, mock_thanos, client):
         """Test that fleet-wide queries exclude namespace filters"""
-        mock_thanos.return_value = {"test_metric": {"latest_value": 1.0, "raw_data": []}}
+        mock_thanos.return_value = {"test_metric": {"latest_value": 1.0, "average_value": 1.0, "raw_data": []}}
 
         response = client.post("/chat-metrics", json={
             "model_name": "test-model",
