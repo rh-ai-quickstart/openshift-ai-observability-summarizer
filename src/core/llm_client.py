@@ -13,6 +13,18 @@ from dateparser.search import search_dates
 
 from .config import MODEL_CONFIG, LLM_API_TOKEN, LLAMA_STACK_URL, VERIFY_SSL
 
+# LLM Generation Configuration Constants
+DETERMINISTIC_TEMPERATURE = 0  # Zero temperature for consistent, deterministic output
+DETERMINISTIC_TOP_K = 1  # Most restrictive top-K setting for deterministic responses
+DETERMINISTIC_TOP_P = 0.1  # Low top-P for minimal randomness in token selection
+MAX_RESPONSE_TOKENS = 6000  # Maximum tokens allowed in LLM responses
+DEFAULT_SSL_VERIFICATION = True  # Enable SSL verification for external API calls
+
+# Time Range Configuration Constants
+DEFAULT_TIME_RANGE_HOURS = 1  # Default lookback period when no time specified
+DEFAULT_RATE_SYNTAX = "1h"  # Default PromQL time range syntax
+FALLBACK_RATE_SYNTAX = "5m"  # Fallback PromQL time range for shorter queries
+
 
 def _make_api_request(
     url: str, headers: dict, payload: dict, verify_ssl: bool = True
@@ -123,13 +135,13 @@ def summarize_with_llm(
             payload = {
                 "model": model_name,
                 "messages": llm_messages,
-                "temperature": 0,  # Deterministic output
-                "topK": 1,  # Most deterministic setting
-                "topP": 0.1,  # Additional control
-                "max_tokens": 6000,
+                "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
+                "topK": DETERMINISTIC_TOP_K,  # Most deterministic setting
+                "topP": DETERMINISTIC_TOP_P,  # Additional control
+                "max_tokens": MAX_RESPONSE_TOKENS,
             }
 
-        response_json = _make_api_request(api_url, headers, payload, verify_ssl=True)
+        response_json = _make_api_request(api_url, headers, payload, verify_ssl=DEFAULT_SSL_VERIFICATION)
         return _validate_and_extract_response(
             response_json, is_external=True, provider=provider
         )
@@ -149,10 +161,10 @@ def summarize_with_llm(
         payload = {
             "model": summarize_model_id,
             "prompt": prompt_text,
-            "temperature": 0,  # Deterministic output
-            "topK": 1,  # Most deterministic setting
-            "topP": 0.1,  # Additional control
-            "max_tokens": 6000,
+            "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
+            "topK": DETERMINISTIC_TOP_K,  # Most deterministic setting
+            "topP": DETERMINISTIC_TOP_P,  # Additional control
+            "max_tokens": MAX_RESPONSE_TOKENS,
         }
 
         response_json = _make_api_request(
@@ -294,10 +306,10 @@ def build_openshift_chat_prompt(
     
     # Build time range context
     time_context = ""
-    time_range_syntax = "5m"  # default
+    time_range_syntax = FALLBACK_RATE_SYNTAX  # default
     if time_range_info:
         time_duration = time_range_info.get("duration_str", "")
-        time_range_syntax = time_range_info.get("rate_syntax", "5m")
+        time_range_syntax = time_range_info.get("rate_syntax", FALLBACK_RATE_SYNTAX)
         time_context = f"""**🕐 TIME RANGE CONTEXT:**
 The user asked about: **{time_duration}**
 Use time range syntax `[{time_range_syntax}]` in PromQL queries where appropriate.
@@ -377,10 +389,10 @@ def build_flexible_llm_prompt(
     
     # Build time range context for the LLM
     time_context = ""
-    time_range_syntax = "5m"  # default
+    time_range_syntax = FALLBACK_RATE_SYNTAX  # default
     if time_range_info:
         time_duration = time_range_info.get("duration_str", "")
-        time_range_syntax = time_range_info.get("rate_syntax", "5m")
+        time_range_syntax = time_range_info.get("rate_syntax", FALLBACK_RATE_SYNTAX)
         time_context = f"""**🕐 CRITICAL TIME RANGE REQUIREMENTS:**
 The user asked about: **{time_duration}**
 
@@ -612,10 +624,10 @@ def extract_time_range_with_info(
         end_time_utc = end_time_naive.replace(tzinfo=timezone.utc)
 
         time_range_info = {
-            "duration_str": f"on {target_date.strftime('%Y-%m-%d')}",
-            "rate_syntax": "5m",
-            "hours": 24
-        }
+                "duration_str": f"on {target_date.strftime('%Y-%m-%d')}",
+                "rate_syntax": FALLBACK_RATE_SYNTAX,
+                "hours": 24
+            }
 
         return int(start_time_utc.timestamp()), int(end_time_utc.timestamp()), time_range_info
 
@@ -655,12 +667,12 @@ def extract_time_range_with_info(
     print("No time in query or request, defaulting to the last 1 hour.")
     now = datetime.now()
     end_time = now
-    start_time = end_time - timedelta(hours=1)
+    start_time = end_time - timedelta(hours=DEFAULT_TIME_RANGE_HOURS)
     
     time_range_info = {
         "duration_str": "past 1 hour",
-        "rate_syntax": "1h",  # Use exact 1 hour, not 5m
-        "hours": 1
+        "rate_syntax": DEFAULT_RATE_SYNTAX,  # Use default rate syntax for fallback
+        "hours": DEFAULT_TIME_RANGE_HOURS
     }
     
     return int(start_time.timestamp()), int(end_time.timestamp()), time_range_info
@@ -691,7 +703,7 @@ def add_namespace_filter(promql: str, namespace: str) -> str:
         return f'{promql}{{namespace="{namespace}"}}'
 
 
-def fix_promql_syntax(promql: str, time_range_syntax: str = "5m") -> str:
+def fix_promql_syntax(promql: str, time_range_syntax: str = FALLBACK_RATE_SYNTAX) -> str:
     """
     Post-process PromQL to fix common syntax issues and ensure proper time range syntax
     """
