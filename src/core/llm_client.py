@@ -68,6 +68,7 @@ def summarize_with_llm(
     summarize_model_id: str,
     api_key: Optional[str] = None,
     messages: Optional[List[Dict[str, str]]] = None,
+    max_tokens: int = 1000,
 ) -> str:
     """
     Summarize content using an LLM (local or external).
@@ -77,6 +78,7 @@ def summarize_with_llm(
         summarize_model_id: Model identifier from MODEL_CONFIG
         api_key: API key for external models (optional for local models)
         messages: Previous conversation messages (optional)
+        max_tokens: Maximum number of tokens to generate (default: 1000)
         
     Returns:
         LLM-generated summary text
@@ -122,7 +124,7 @@ def summarize_with_llm(
                 "model": model_name,
                 "messages": llm_messages,
                 "temperature": 0.5,
-                "max_tokens": 1000,
+                "max_tokens": max_tokens,
             }
 
         response_json = _make_api_request(api_url, headers, payload, verify_ssl=True)
@@ -146,7 +148,7 @@ def summarize_with_llm(
             "model": summarize_model_id,
             "prompt": prompt_text,
             "temperature": 0.5,
-            "max_tokens": 1000,
+            "max_tokens": max_tokens,
         }
 
         response_json = _make_api_request(
@@ -267,6 +269,7 @@ def build_openshift_chat_prompt(
     time_range_info: Optional[Dict[str, Any]] = None,
     chat_scope: str = "namespace_specific",
     target_namespace: str = None,
+    alerts_context: str = "",
 ) -> str:
     """Build specialized prompt for OpenShift/Kubernetes queries"""
     # Build scope context
@@ -313,23 +316,13 @@ You are a Senior Site Reliability Engineer (SRE) expert in OpenShift/Kubernetes 
 **Current Metrics Status:**
 {metrics_context.strip()}
 
-**Your Task:**
-Provide a concise, technical response that directly answers the user's question based on the metrics data provided.
+**Current Alert Status:**
+{alerts_context.strip()}
 
-**JSON Output Schema:**
-- "promqls" (list of strings, optional): 1-2 relevant PromQL queries that support your answer. Use correct OpenShift/Kubernetes metric names and proper time ranges [{time_range_syntax}].
-- "summary" (string, required): A direct, technical answer (2-3 sentences) explaining the current state and any recommendations.
-
-**Rules:**
-- Use double quotes for all JSON keys and string values
-- No trailing commas
-- Base your answer ONLY on the provided metrics data
-- If no data is available, state that clearly
-- For pod counts, use `kube_pod_status_phase` metrics
-- For cluster-wide queries, avoid namespace filters
-- Be specific with numbers when available
-
-**User Question:** {question}
+{{
+  "promqls": ["ALERTS"],
+  "summary": "Answer to: {question}"
+}}
 """.strip()
 
 
@@ -409,30 +402,10 @@ You are a world-class Senior Production Engineer, an expert in observability and
 
 {summary_tokens_generated.strip()}
 
-**Your Task:**
-Analyze the complete operational context provided above to give a concise, insightful, and actionable answer to the user's question.
-- **Correlate data:** If a metric is abnormal, check if any alerts or other data could explain why.
-- **Handling Insufficient Data:** If the context does not contain the information needed to answer the user's question, you MUST state that clearly and directly in the summary. Do not try to guess or hallucinate an answer.
-- **Respond in JSON:** Your entire response must be a single, complete JSON object.
-
-**JSON Output Schema:**
-- "promqls" (list of strings, optional): A list of 1-2 (not more) relevant PromQL query strings that support your summary. You MUST use valid PromQL queries with proper time ranges [{time_range_syntax}]. Do not use the friendly name. Include alert query or metric query or both based on the context.
-- "summary" (string, required): A thoughtful paragraph (2-4 sentences) that directly answers the user's question. Explain the meaning of the metric value or alert, what it implies for the system, and recommend an action if needed. Connect different pieces of context where possible. Sound like a senior engineer.
-
-# Rules for JSON output:
-# - Use double quotes for all keys and string values.
-# - No trailing commas.
-# - No line breaks within string values.
-# - No comments.
-# - Use only the context provided.
-# - If appropriate, briefly recommend one action or area to investigate.
-# - The summary field in the JSON should contain a single plain-text paragraph
-# - Do NOT restate the question.
-# - Do NOT copy the example, only learn how to answer the question.
-# - If the context indicates there are no alerts, the 'summary' MUST explicitly state that no alerts were found.
-# - MANDATORY: All PromQL queries MUST include proper time range syntax like [{time_range_syntax}]
-
-**User Question:** {question}
+{{
+  "promqls": ["ALERTS"],
+  "summary": "Answer to: {question}"
+}}
 """.strip()
 
 
@@ -792,45 +765,52 @@ def format_alerts_for_ui(
         )
         return "\n".join(summary_lines)
 
-    # Use a dictionary to show each unique alert only once
-    unique_alerts = {
-        (alert["alertname"], alert["labels"].get("pod")): alert for alert in alerts_data
-    }.values()
+    # Group alerts by name and count instances
+    from collections import defaultdict
+    alert_groups = defaultdict(lambda: {"count": 0, "severity": "unknown", "example": None})
+    
+    for alert in alerts_data:
+        alert_name = alert.get("alertname", "UnknownAlert")
+        alert_groups[alert_name]["count"] += 1
+        
+        # Keep the highest severity and first example
+        if alert_groups[alert_name]["example"] is None:
+            alert_groups[alert_name]["example"] = alert
+            alert_groups[alert_name]["severity"] = alert.get("severity", "unknown")
+        elif alert.get("severity") in ["critical", "warning"] and alert_groups[alert_name]["severity"] not in ["critical", "warning"]:
+            alert_groups[alert_name]["severity"] = alert.get("severity", "unknown")
 
-    # Sort alerts by severity (critical first), then by name
-    sorted_alerts = sorted(
-        unique_alerts, key=lambda x: (x.get("severity", "z"), x["alertname"])
+    # Sort by severity (critical first), then by count (highest first)
+    def severity_priority(sev):
+        return {"critical": 0, "warning": 1, "info": 2}.get(sev, 3)
+    
+    sorted_alert_items = sorted(
+        alert_groups.items(), 
+        key=lambda x: (severity_priority(x[1]["severity"]), -x[1]["count"])
     )
 
-    # Try to get the date from the first alert for the headline
-    try:
-        first_alert_date = datetime.fromisoformat(
-            sorted_alerts[0]["timestamp"]
-        ).strftime("%B %dth, %Y")
-        summary_lines.append(
-            f"On {first_alert_date}, the following alerts were firing:"
-        )
-    except (ValueError, IndexError):
-        summary_lines.append(
-            "During the selected time range, the following alerts were firing:"
-        )
+    # Limit to top 15 alert types to avoid overwhelming the LLM
+    limited_alerts = sorted_alert_items[:15]
+    
+    summary_lines.append(f"Found {len(alerts_data)} total alerts of {len(alert_groups)} different types. Showing top {len(limited_alerts)} alert types:")
 
-    # Create a bulleted list for the UI
-    for alert in sorted_alerts:
-        alert_name = alert.get("alertname", "UnknownAlert")
-        severity = alert.get("severity", "unknown")
-        timestamp = alert.get("timestamp", "unknown time")
-        pod = alert["labels"].get("pod", "")
-        namespace = alert["labels"].get("namespace", "")
-        # Always include the alert definition if available
-        meaning = None
-        if alert_definitions and alert_name in alert_definitions:
-            meaning = alert_definitions[alert_name]
+    # Create a concise summary
+    for alert_name, alert_info in limited_alerts:
+        count = alert_info["count"]
+        severity = alert_info["severity"]
+        example_alert = alert_info["example"]
+        
+        namespace = example_alert["labels"].get("namespace", "")
+        timestamp = example_alert.get("timestamp", "")
+        
+        count_text = f"{count} instance{'s' if count > 1 else ''}"
         summary_lines.append(
-            f"- **{alert_name}**: Severity: **{severity}**, Time: `{timestamp}`"
-            + (f", Pod: `{pod}`" if pod else "")
-            + (f", Namespace: `{namespace}`" if namespace else "")
-            + (f", Meaning: {meaning}" if meaning else "")
+            f"- **{alert_name}** ({count_text}): Severity **{severity}**"
+            + (f", Example from: `{namespace}`" if namespace else "")
+            + (f" at `{timestamp}`" if timestamp else "")
         )
+    
+    if len(alert_groups) > 15:
+        summary_lines.append(f"... and {len(alert_groups) - 15} more alert types")
 
     return "\n".join(summary_lines) 
