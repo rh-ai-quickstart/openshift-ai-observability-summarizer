@@ -276,9 +276,9 @@ def build_openshift_prompt(
 4. Any optimization recommendations?
 
 In your response, do not add or ask additional questions. Your response should only include the questions and answers for the above questions.
-Stop after you have answered question 4 and do not add explainations or notes.
+For each question, state the question in bold font, and then answer each question concisely and directly with maximum of 150 words.
 If there is no direct answer to a question, say so and do not speculate or add additional information. 
-For each question, state the question in bold font, and then answer each question concisely and directly with maximum 150 words.
+Stop after you have answered question 4 and do not add explainations or notes.
 """
     return f"""{header}
 {chr(10).join(lines)}
