@@ -1,13 +1,37 @@
-# AI Observability Metrics Summarizer
+# OpenShift AI Observability Summarizer
 
-<img src="docs/img/logo.png" alt="UI" style="width:200px; height:200px;"/>
+[![CNCF Compatible](https://img.shields.io/badge/CNCF%20Compatible-Yes-blue.svg)](https://www.cncf.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Build Status](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions)
+
+<img src="docs/img/logo.png" alt="OpenShift AI Observability Summarizer" width="200"/>
 
 
 [Design Document](https://docs.google.com/document/d/1bXBCL4fbPlRqQxwhGX1p12CS_E6-9oOyFnYSpbQskyI/edit?usp=sharing)
 
-This application provides an interactive multi-dashboard interface to **analyze AI model performance metrics and OpenShift cluster metrics** collected from Prometheus and generate **human-like summaries using LLM models** deployed on OpenShift AI.
+## Overview
 
-It helps teams **monitor vLLM deployments, OpenShift fleet health, and GPU utilization** with **actionable AI-powered insights** — all automatically.
+OpenShift AI Observability Summarizer is an **open source, CNCF-style project** for advanced monitoring and automated summarization of AI model and OpenShift cluster metrics. It provides an interactive dashboard for analyzing metrics collected from Prometheus and generating human-readable, AI-powered insights and reports.
+
+- **Monitors vLLM deployments, OpenShift fleet health, and GPU utilization**
+- **Generates actionable summaries using LLMs**
+- **Supports alerting, notifications, and exportable reports**
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [GPU Monitoring](#gpu-monitoring)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+- [Usage](#usage)
+- [Build & Deploy](#build--deploy)
+- [Local Development](#local-development-via-port-forwarding)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [Community](#community)
+- [License](#license)
 
 ---
 
@@ -41,7 +65,7 @@ It helps teams **monitor vLLM deployments, OpenShift fleet health, and GPU utili
 
 ---
 
-## GPU Monitoring
+### GPU Monitoring
 
 ### **DCGM Metrics Support**
 Automatically discovers and monitors:
@@ -62,23 +86,16 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ## Architecture
 
-### **Core backend components**
-- **llm-service**: LLM inference services (Llama models)
-- **llama-stack**: LlamaStack backend API
-- **vLLM**: vLLM fronts the model and makes metrics available at the /metrics endpoint which Prometheus can coveniently scrape.
+### Core Components
 
-### **Monitoring Stack**
-- **Prometheus**: Prometheus scrapes the /metrics endpoint offered by vLLM. It can store metrics itself in its own time-series database on a local disk which is
-                  highly optimized for fast queries on recent data. This is perfect for real-time monitoring and alerting but is not
-                  ideal for long term and multi-year storage. This is where Thanos Querier comes in.
-- **Thanos Querier**: Extends Prometheus by solving the problem of long-term retention. Thanos is capable of taking data blocks that Prometheus saves to
-                      its local disk and uploading them to inexpensive and durable object storage, like Amazon S3, Google Cloud Storage, or Azure Blob Storage.
-                      Querier gives you a cost-effective way of retaining years of metrics data available for historical analysis and trend reporting.
-                      Querier sidecars run alongside your Prometheus servers, providing access to real-time and recent metrics.                  
-- **DCGM**: GPU monitoring and telemetry
-- **Streamlit UI**: Multi-dashboard interface (vLLM, OpenShift, Chat)
-- **MCP (Metric Collection & Processing)**: Backend API for metric analysis
-- **Report Generator**: PDF/HTML/Markdown export capabilities
+- **llm-service:** LLM inference (Llama models)
+- **llama-stack:** Backend API
+- **vLLM:** Model serving, exports Prometheus /metrics
+- **Prometheus/Thanos:** Metrics scraping, long-term storage
+- **DCGM:** GPU monitoring
+- **Streamlit UI:** Multi-dashboard frontend
+- **MCP:** Metric Collection & Processing backend
+- **Report Generator:** PDF/HTML/Markdown export
 
 ![Architecture](docs/img/arch-2.jpg)
 
@@ -90,20 +107,20 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ---
 
-## Prerequisites
+## Getting Started
 
-- OpenShift cluster with **GPU nodes** (for DCGM metrics)
-- `oc` CLI configured with cluster-admin permissions
-- `helm` v3.x installed
-- `yq` for YAML processing (`brew install yq`)
-- **Prometheus/Thanos** deployed for metrics collection
-- **DCGM exporter** for GPU monitoring (optional but recommended)
-- Slack Webhook URL for optional alerting ([How to create a Webhook for your Slack Workspace](https://api.slack.com/messaging/webhooks))
+### Prerequisites
 
----
+- OpenShift cluster with GPU nodes (for DCGM metrics)
+- `oc` CLI with cluster-admin permissions
+- `helm` v3.x
+- `yq` (YAML processor)
+- Deployed Prometheus/Thanos
+- (Optional) DCGM exporter for GPU monitoring
+- (Optional) Slack Webhook URL for alerting ([How to create a Webhook for your Slack Workspace](https://api.slack.com/messaging/webhooks))
 
 
-## Installing the OpenShift AI Observability Summarizer
+### Installing the OpenShift AI Observability Summarizer
 
 Use the included `Makefile` to install everything:
 ```bash
@@ -113,6 +130,7 @@ make install NAMESPACE=your-namespace
 This will install the project with the default LLM deployment, `llama-3-2-3b-instruct`.
 
 ### Choosing different models
+
 To see all available models:
 ```bash
 make list-models
@@ -148,8 +166,6 @@ make install NAMESPACE=your-namespace \
 ```bash
 make install NAMESPACE=your-namespace ALERTS=TRUE
 ```
-
-### 
 
 This deploys:
 - **llm-service** - LLM inference 
@@ -190,7 +206,7 @@ make uninstall NAMESPACE=metric-summarizer
 
 ---
 
-## Using the App
+## Usage
 
 ### **Multi-Dashboard Interface**
 Access via the OpenShift route: `oc get route ui`
@@ -234,7 +250,7 @@ To generate a report:
 
 ---
 
-## Container Build & Deployment
+## Build & Deploy
 
 ### Building the Container Images
 
@@ -397,17 +413,27 @@ To view a detailed coverage report after generating, open `htmlcov/index.html`.
 
 ---
 
-## Powered By
+## Contributing
 
+We welcome contributions and feedback! Please open issues or submit PRs to improve this dashboard or expand model compatibility.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full contribution guidelines.
+
+---
+
+## Community
+
+- [GitHub Discussions](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/discussions)
+- [CNCF Landscape](https://landscape.cncf.io/)
 - [OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)
 - [Prometheus](https://prometheus.io/)
 - [Streamlit](https://streamlit.io/)
 
 ---
 
-## Feedback & Contributions
+## License
 
-We welcome contributions and feedback!  
-Please open issues or submit PRs to improve this dashboard or expand model compatibility.
+Licensed under the [MIT License](LICENSE).
 
 ---
+
