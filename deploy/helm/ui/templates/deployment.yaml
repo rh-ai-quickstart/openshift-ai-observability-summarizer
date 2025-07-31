@@ -27,4 +27,4 @@ spec:
             - name: LLM_API_TOKEN
               value: "{{ .Values.env.LLM_API_TOKEN }}"
             - name: METRICS_API_URL
-              value: "http://metric-mcp-svc.{{ .Release.Namespace }}.svc.cluster.local:8000"
+              value: "http://{{ .Values.metricsApi.serviceName }}.{{ .Release.Namespace }}.svc.cluster.local:8000"
