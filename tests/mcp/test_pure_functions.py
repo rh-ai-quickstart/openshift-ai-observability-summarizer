@@ -422,8 +422,8 @@ class TestAlertFormatting:
         assert "PromQL Query for Alerts: `cpu_usage > 90`" in result
         assert "**HighCPU**" in result
         assert "Severity **warning**" in result
-        assert "Pod: `app-123`" in result
-        assert "Namespace: `production`" in result
+        assert "Example from: `production`" in result
+        assert "2023-01-01T12:00:00" in result
 
 
 class TestAlertAnalysisFunctions:
