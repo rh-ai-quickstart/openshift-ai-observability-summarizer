@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ai-observability": {
+      "command": "/Users/ahameed/projects/ai/kickstart/openshift-ai-observability-summarizer/.venv/bin/obs-mcp-stdio",
+      "env": {
+        "PYTHONPATH": "/Users/ahameed/projects/ai/kickstart/openshift-ai-observability-summarizer/src",
+        "PROMETHEUS_URL": "http://localhost:9090",
+        "LLAMA_STACK_URL": "http://localhost:8321/v1/openai/v1",
+        "MODEL_CONFIG": "{\"claude-3-sonnet\": {\"external\": false, \"modelName\": \"meta-llama/Llama-3.2-3B-Instruct\"}}"
+      },
+      "disabled": false
+    }
+  }
+}

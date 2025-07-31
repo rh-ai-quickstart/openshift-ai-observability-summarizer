@@ -1,0 +1,79 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/ecosystem-appeng/obs-mcp-server
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8080
+
+config:
+  prometheusUrl: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+  logLevel: "INFO"
+  timeout: "30"
+
+monitoring:
+  enabled: false  # Set to true to enable ServiceMonitor for Prometheus
+  interval: "30s"
+  path: "/metrics"
+  scrapeTimeout: "10s"
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+healthChecks:
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Horizontal Pod Autoscaler configuration
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Pod security context (OpenShift auto-assigns user/group IDs)
+securityContext: {}
+  # OpenShift automatically assigns:
+  # - runAsUser: random UID in allowed range (e.g., 1001360000-1001369999)  
+  # - fsGroup: matching GID
+  # - runAsNonRoot: true (enforced by restricted-v2 SCC)
+
+# Container security context (OpenShift restricted-v2 SCC compatible)
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# Node selector for scheduling
+nodeSelector: {}
+
+# Tolerations for pod scheduling
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+rbac:
+  createGrafanaRole: false  # Reuse existing role from metrics-api 

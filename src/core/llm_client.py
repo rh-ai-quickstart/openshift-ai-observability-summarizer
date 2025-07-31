@@ -6,6 +6,7 @@ building prompts, and processing LLM responses.
 """
 
 import re
+import sys
 import requests
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta, timezone, time
@@ -94,7 +95,7 @@ def summarize_with_llm(
         messages: Previous conversation messages (optional)
         max_tokens: Maximum number of tokens to generate (default: 6000)
         enable_validation: Whether to enable response validation and cleanup (default: True)
-        
+
     Returns:
         LLM-generated summary text (cleaned if validation enabled)
     """
@@ -146,7 +147,7 @@ def summarize_with_llm(
         raw_response = _validate_and_extract_response(
             response_json, is_external=True, provider=provider
         )
-        
+
         # For external models, no need to do response validation and cleanup
         return raw_response
 
@@ -162,8 +163,11 @@ def summarize_with_llm(
                 prompt_text += f"{msg['role']}: {msg['content']}\n"
         prompt_text += prompt  # Add the current prompt
 
+        # Use mapped model name if available, otherwise fall back to original
+        actual_model_name = model_info.get("modelName", summarize_model_id)
+
         payload = {
-            "model": summarize_model_id,
+            "model": actual_model_name,
             "prompt": prompt_text,
             "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
             "max_tokens": max_tokens,
@@ -174,7 +178,7 @@ def summarize_with_llm(
         raw_response = _validate_and_extract_response(
             response_json, is_external=False, provider="LLM"
         )
-        
+
         # Apply response validation and cleanup if enabled
         if enable_validation:
             validation_result = ResponseValidator.clean_response(raw_response, response_type, prompt)
@@ -261,7 +265,7 @@ def build_openshift_prompt(
     else:
         scope = f"namespace **{namespace}**" if namespace else "cluster-wide"
 
-    header = f"You are an expert in OpenShift platform monitoring and operations. You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n📊 **Metrics**:\n"
+    header = f"You are an expert in OpenShift platform monitoring and operations. You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n[STATS] **Metrics**:\n"
     analysis_focus = f"{metric_category.lower()} performance and health"
 
     lines = []
@@ -280,7 +284,7 @@ def build_openshift_prompt(
             f"- {label}: Avg={avg:.2f}, Latest={latest:.2f}, Trend={trend}, {anomaly}"
         )
 
-    analysis_questions = f"""🔍 Please analyze:
+    analysis_questions = f"""[SEARCH] Please analyze:
 1. What's the current state of {analysis_focus}?
 2. Are there any performance or reliability concerns?
 3. What actions should be taken?
@@ -321,14 +325,14 @@ def build_openshift_chat_prompt(
     if time_range_info:
         time_duration = time_range_info.get("duration_str", "")
         time_range_syntax = time_range_info.get("rate_syntax", FALLBACK_RATE_SYNTAX)
-        time_context = f"""**🕐 TIME RANGE CONTEXT:**
+        time_context = f"""**[TIME] TIME RANGE CONTEXT:**
 The user asked about: **{time_duration}**
 Use time range syntax `[{time_range_syntax}]` in PromQL queries where appropriate.
 
 """
 
     # Common OpenShift metrics for reference
-    common_metrics = """**📊 Comprehensive OpenShift/Kubernetes Metrics:**
+    common_metrics = """**[STATS] Comprehensive OpenShift/Kubernetes Metrics:**
 - Pods: `sum(kube_pod_status_phase{phase="Running"})`, `sum(kube_pod_status_phase{phase="Failed"})`
 - Deployments: `sum(kube_deployment_status_replicas_ready)`, `sum(kube_deployment_spec_replicas)`
 - Services: `sum(kube_service_info)`, `sum(kube_endpoint_address_available)`
@@ -404,16 +408,16 @@ def build_flexible_llm_prompt(
     if time_range_info:
         time_duration = time_range_info.get("duration_str", "")
         time_range_syntax = time_range_info.get("rate_syntax", FALLBACK_RATE_SYNTAX)
-        time_context = f"""**🕐 CRITICAL TIME RANGE REQUIREMENTS:**
+        time_context = f"""**[TIME] CRITICAL TIME RANGE REQUIREMENTS:**
 The user asked about: **{time_duration}**
 
 **MANDATORY PromQL Syntax Rules:**
-✅ ALWAYS add time range `[{time_range_syntax}]` to metrics that need it
-✅ For P95/P99 latency: `histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[{time_range_syntax}])) by (le))`  
-✅ For rates: `rate(vllm:request_prompt_tokens_created[{time_range_syntax}])`
-✅ For averages over time: `avg_over_time(vllm:num_requests_running[{time_range_syntax}])`
-❌ NEVER use: `vllm:metric_name{{namespace="...", }}` (trailing comma)
-❌ NEVER use: `vllm:metric_name{{namespace="..."}}` (missing time range)
+[OK] ALWAYS add time range `[{time_range_syntax}]` to metrics that need it
+[OK] For P95/P99 latency: `histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[{time_range_syntax}])) by (le))`  
+[OK] For rates: `rate(vllm:request_prompt_tokens_created[{time_range_syntax}])`
+[OK] For averages over time: `avg_over_time(vllm:num_requests_running[{time_range_syntax}])`
+[ERROR] NEVER use: `vllm:metric_name{{namespace="...", }}` (trailing comma)
+[ERROR] NEVER use: `vllm:metric_name{{namespace="..."}}` (missing time range)
 
 """
 
@@ -473,7 +477,7 @@ def extract_time_range_with_info(
             number = float(match.group(1))
             unit = match.group(2)
             
-            print(f"🔍 Dynamic time found: {number} {unit}")
+            print(f"[SEARCH] Dynamic time found: {number} {unit}")
             
             # Convert to hours
             if unit.startswith('min'):
@@ -532,7 +536,7 @@ def extract_time_range_with_info(
                 "hours": hours
             }
             
-            print(f"✅ Parsed: {duration_str} → {rate_syntax}")
+            print(f"[OK] Parsed: {duration_str} → {rate_syntax}", file=sys.stderr)
             return int(start_time.timestamp()), int(end_time.timestamp()), time_range_info
     
     # Priority 2: Handle special keywords and month names
@@ -605,7 +609,7 @@ def extract_time_range_with_info(
     
     for keyword, (hours, rate_syntax, duration_str) in special_cases.items():
         if keyword in query_lower:
-            print(f"🔍 Special case found: {keyword} → {hours} hours")
+            print(f"[SEARCH] Special case found: {keyword} → {hours} hours")
             end_time = datetime.now()
             start_time = end_time - timedelta(hours=hours)
             

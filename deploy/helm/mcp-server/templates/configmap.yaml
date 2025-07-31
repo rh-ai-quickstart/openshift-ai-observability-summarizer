@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    app: {{ .Release.Name }}-app
+data:
+  server.conf: |
+    # MCP Server Configuration
+    prometheus_url: {{ .Values.config.prometheusUrl | quote }}
+    log_level: {{ .Values.config.logLevel | default "INFO" | quote }}
+    timeout: {{ .Values.config.timeout | default "30" | quote }}

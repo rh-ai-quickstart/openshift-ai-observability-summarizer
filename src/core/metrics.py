@@ -8,6 +8,7 @@ collecting vLLM metrics, and processing observability data.
 import requests
 import pandas as pd
 import os
+import sys
 import json
 import re
 from datetime import datetime
@@ -205,7 +206,7 @@ def discover_dcgm_metrics():
         nvidia_metrics = [metric for metric in all_metrics if "nvidia" in metric.lower()]
         gpu_metrics = [metric for metric in all_metrics if "gpu" in metric.lower() and not metric.startswith("vllm:")]
 
-        print(f"🔍 Found {len(dcgm_metrics)} DCGM metrics, {len(nvidia_metrics)} NVIDIA metrics, {len(gpu_metrics)} GPU metrics")
+        print(f"[SEARCH] Found {len(dcgm_metrics)} DCGM metrics, {len(nvidia_metrics)} NVIDIA metrics, {len(gpu_metrics)} GPU metrics")
 
         # Create a mapping of useful GPU metrics for fleet monitoring
         gpu_mapping = {}
@@ -241,7 +242,7 @@ def discover_dcgm_metrics():
 
         # Priority 2: nvidia-smi or alternative metrics if DCGM not available
         if not gpu_mapping:
-            print("🔍 No DCGM metrics found, checking for alternative GPU metrics...")
+            print("[SEARCH] No DCGM metrics found, checking for alternative GPU metrics...")
             
             # Look for common GPU metric patterns
             gpu_patterns = {
@@ -259,12 +260,12 @@ def discover_dcgm_metrics():
                     if matching_metrics:
                         # Use the first matching metric
                         gpu_mapping[friendly_name] = f"avg({matching_metrics[0]})"
-                        print(f"✅ Found alternative GPU metric: {friendly_name} -> {matching_metrics[0]}")
+                        print(f"[OK] Found alternative GPU metric: {friendly_name} -> {matching_metrics[0]}", file=sys.stderr)
                         break
 
         # Priority 3: Generic GPU metrics
         if not gpu_mapping:
-            print("🔍 No specific GPU metrics found, checking for generic patterns...")
+            print("[SEARCH] No specific GPU metrics found, checking for generic patterns...")
             for metric in gpu_metrics:
                 metric_lower = metric.lower()
                 if "temperature" in metric_lower or "temp" in metric_lower:
@@ -277,9 +278,9 @@ def discover_dcgm_metrics():
                     gpu_mapping["GPU Memory Used"] = f"avg({metric})"
 
         if gpu_mapping:
-            print(f"✅ Successfully discovered {len(gpu_mapping)} GPU metrics")
+            print(f"[OK] Successfully discovered {len(gpu_mapping)} GPU metrics", file=sys.stderr)
         else:
-            print("⚠️ No GPU metrics found - cluster may not have GPUs or GPU monitoring")
+            print("[WARN] No GPU metrics found - cluster may not have GPUs or GPU monitoring")
 
         return gpu_mapping
     except Exception as e:
@@ -341,7 +342,7 @@ def discover_openshift_metrics():
             "Container Memory Usage": "sum(container_memory_usage_bytes)",
         },
         "GPU & Accelerators": {
-            # 🚀 Comprehensive GPU fleet monitoring with DCGM metrics
+            # [START] Comprehensive GPU fleet monitoring with DCGM metrics
             "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
             "GPU Power Usage (Watts)": "avg(DCGM_FI_DEV_POWER_USAGE)",
             "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
@@ -561,13 +562,13 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
         response.raise_for_status()
         result = response.json()["data"]["result"]
     except requests.exceptions.ConnectionError as e:
-        print(f"⚠️ Prometheus connection error for query '{promql_query}': {e}")
+        print(f"[WARN] Prometheus connection error for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        print(f"⚠️ Prometheus timeout for query '{promql_query}': {e}")
+        print(f"[WARN] Prometheus timeout for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Prometheus request error for query '{promql_query}': {e}")
+        print(f"[WARN] Prometheus request error for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []
@@ -649,13 +650,13 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
         response.raise_for_status()
         result = response.json()["data"]["result"]
     except requests.exceptions.ConnectionError as e:
-        print(f"⚠️ Prometheus connection error for OpenShift query '{query}': {e}")
+        print(f"[WARN] Prometheus connection error for OpenShift query '{query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        print(f"⚠️ Prometheus timeout for OpenShift query '{query}': {e}")
+        print(f"[WARN] Prometheus timeout for OpenShift query '{query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Prometheus request error for OpenShift query '{query}': {e}")
+        print(f"[WARN] Prometheus request error for OpenShift query '{query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []

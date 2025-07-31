@@ -1,0 +1,26 @@
+{{- if .Values.route.enabled }}
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: {{ .Release.Name }}-route
+  labels:
+    app: {{ .Release.Name }}-app
+spec:
+  to:
+    kind: Service
+    name: {{ .Release.Name }}-svc
+    weight: 100
+  port:
+    targetPort: 8080
+  {{- if .Values.route.tls.enabled }}
+  tls:
+    termination: {{ .Values.route.tls.termination | default "edge" }}
+    {{- if eq .Values.route.tls.termination "edge" }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.tls.insecureEdgeTerminationPolicy | default "Redirect" }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.route.host }}
+  host: {{ .Values.route.host }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}
