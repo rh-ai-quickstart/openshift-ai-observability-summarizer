@@ -20,5 +20,11 @@ spec:
           ports:
             - containerPort: 8501
           env:
+            - name: PROMETHEUS_URL
+              value: "{{ .Values.env.PROMETHEUS_URL }}"
+            - name: LLM_URL
+              value: "{{ .Values.env.LLM_URL }}"
+            - name: LLM_API_TOKEN
+              value: "{{ .Values.env.LLM_API_TOKEN }}"
             - name: METRICS_API_URL
-              value: "http://metrics-api-svc.{{ .Release.Namespace }}.svc.cluster.local:8000"
+              value: "http://metric-mcp-svc.{{ .Release.Namespace }}.svc.cluster.local:8000"
