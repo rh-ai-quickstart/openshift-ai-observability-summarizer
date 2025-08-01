@@ -241,10 +241,14 @@ def chat(req: ChatRequest):
         )
         # Get LLM response using helper function
 <<<<<<< HEAD
+<<<<<<< HEAD
         response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key, max_tokens=1500)
 =======
         response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key, max_tokens=150)
 >>>>>>> 195abdc (Further enhancement for chat with metrics prompt)
+=======
+        response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key, max_tokens=1500)
+>>>>>>> 4699315 (Add post model response validation and clean up logic)
         return {"response": _clean_llm_summary_string(response)}
     except Exception as e:
         # Handle API key errors and other LLM-related errors
@@ -1949,10 +1953,14 @@ RESPONSE:"""
     # Call LLM with reasonable token limit for contextual summaries
     try:
 <<<<<<< HEAD
+<<<<<<< HEAD
         return summarize_with_llm(prompt, model_id, api_key, max_tokens=1500)
 =======
         return summarize_with_llm(prompt, model_id, api_key, max_tokens=150)
 >>>>>>> 195abdc (Further enhancement for chat with metrics prompt)
+=======
+        return summarize_with_llm(prompt, model_id, api_key, max_tokens=1500)
+>>>>>>> 4699315 (Add post model response validation and clean up logic)
     except Exception as e:
         return f"Error generating summary: {e}"
 
