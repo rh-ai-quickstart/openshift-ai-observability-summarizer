@@ -15,9 +15,7 @@ from .config import MODEL_CONFIG, LLM_API_TOKEN, LLAMA_STACK_URL, VERIFY_SSL
 
 # LLM Generation Configuration Constants
 DETERMINISTIC_TEMPERATURE = 0  # Zero temperature for consistent, deterministic output
-DETERMINISTIC_TOP_K = 1  # Most restrictive top-K setting for deterministic responses
-DETERMINISTIC_TOP_P = 0.1  # Low top-P for minimal randomness in token selection
-MAX_RESPONSE_TOKENS = 6000  # Maximum tokens allowed in LLM responses
+DEFAULT_MAX_TOKENS = 6000  # Maximum tokens allowed
 DEFAULT_SSL_VERIFICATION = True  # Enable SSL verification for external API calls
 
 # Time Range Configuration Constants
@@ -80,7 +78,7 @@ def summarize_with_llm(
     summarize_model_id: str,
     api_key: Optional[str] = None,
     messages: Optional[List[Dict[str, str]]] = None,
-    max_tokens: int = 1000,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
     """
     Summarize content using an LLM (local or external).
@@ -90,7 +88,7 @@ def summarize_with_llm(
         summarize_model_id: Model identifier from MODEL_CONFIG
         api_key: API key for external models (optional for local models)
         messages: Previous conversation messages (optional)
-        max_tokens: Maximum number of tokens to generate (default: 1000)
+        max_tokens: Maximum number of tokens to generate (default: 6000)
         
     Returns:
         LLM-generated summary text
@@ -136,9 +134,7 @@ def summarize_with_llm(
                 "model": model_name,
                 "messages": llm_messages,
                 "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
-                "topK": DETERMINISTIC_TOP_K,  # Most deterministic setting
-                "topP": DETERMINISTIC_TOP_P,  # Additional control
-                "max_tokens": MAX_RESPONSE_TOKENS,
+                "max_tokens": max_tokens,
             }
 
         response_json = _make_api_request(api_url, headers, payload, verify_ssl=DEFAULT_SSL_VERIFICATION)
@@ -162,15 +158,13 @@ def summarize_with_llm(
             "model": summarize_model_id,
             "prompt": prompt_text,
             "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
-            "topK": DETERMINISTIC_TOP_K,  # Most deterministic setting
-            "topP": DETERMINISTIC_TOP_P,  # Additional control
-            "max_tokens": MAX_RESPONSE_TOKENS,
+            "max_tokens": max_tokens,
         }
-
+        print(f"prompt_text: {prompt_text}")
         response_json = _make_api_request(
             f"{LLAMA_STACK_URL}/completions", headers, payload, verify_ssl=VERIFY_SSL
         )
-
+        print(f"response_json: {response_json}")
         return _validate_and_extract_response(
             response_json, is_external=False, provider="LLM"
         )
@@ -179,19 +173,20 @@ def summarize_with_llm(
 def build_chat_prompt(user_question: str, metrics_summary: str) -> str:
     """Build a chat prompt combining user question with metrics context"""
     prompt = f"""
-You are an expert AI model performance analyst. I have some vLLM metrics data and need help interpreting it.
-
-Here's the metrics summary:
+Metrics Summary:
 {metrics_summary}
 
-User question: {user_question}
+Question: {user_question}
 
-Please provide a helpful analysis focusing on:
-1. Directly answering the user's question based on the metrics
-2. Any performance insights or recommendations
-3. Potential issues or optimizations to consider
+Provide a concise answer that:
+1. Directly answers the question using the metrics data
+2. States the current status (Normal/Warning/Critical)
+3. Gives brief recommendations if needed
 
-Keep your response focused and actionable.
+Keep response under 100 words.
+Stop after you have provided the answer and do not add additional explanations or notes.
+
+ANSWER:
 """
     return prompt.strip()
 
@@ -275,7 +270,7 @@ def build_openshift_prompt(
 3. What actions should be taken?
 4. Any optimization recommendations?
 
-In your response, do not add or ask additional questions. Your response should only include the questions and answers for the above questions.
+Do not add or ask additional questions. Your response should only include the questions and answers for the above questions.
 For each question, state the question in bold font, and then answer each question concisely and directly with maximum of 150 words.
 If there is no direct answer to a question, say so and do not speculate or add additional information. 
 Stop after you have answered question 4 and do not add explainations or notes.
