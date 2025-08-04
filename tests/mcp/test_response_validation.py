@@ -12,40 +12,7 @@ from src.core.response_validator import ResponseValidator, ResponseType
 class TestResponseValidator:
     """Test cases for the ResponseValidator class"""
 
-    def test_detect_openshift_response_type(self):
-        """Test detection of OpenShift analysis prompts"""
-        openshift_prompt = """
-        Analyze OpenShift GPU metrics:
-        Questions:
-        1. What's the current gpu & accelerators state?
-        2. Are there performance or reliability concerns?
-        3. What actions should be taken?
-        4. Any optimization recommendations?
-        """
-        
-        response_type = ResponseValidator.detect_response_type(openshift_prompt)
-        assert response_type == ResponseType.OPENSHIFT_ANALYSIS
 
-    def test_detect_vllm_response_type(self):
-        """Test detection of vLLM analysis prompts"""
-        vllm_prompt = """
-        ANALYSIS REQUIREMENTS:
-        1. Performance Summary: Overall health status
-        2. Key Metrics Analysis: Interpret metrics
-        3. Trends and Patterns: Identify trends
-        4. Recommendations: Optimization suggestions
-        5. Alerting: Top issues needing attention
-        """
-        
-        response_type = ResponseValidator.detect_response_type(vllm_prompt)
-        assert response_type == ResponseType.VLLM_ANALYSIS
-
-    def test_detect_general_chat_response_type(self):
-        """Test detection of general chat prompts"""
-        chat_prompt = "How are my models performing today?"
-        
-        response_type = ResponseValidator.detect_response_type(chat_prompt)
-        assert response_type == ResponseType.GENERAL_CHAT
 
     def test_clean_response_with_repetitive_content(self):
         """Test removal of repetitive content like the original Llama-3.2-3B issue"""
@@ -63,7 +30,7 @@ class TestResponseValidator:
         
         openshift_prompt = "Questions: 1. Current state? 2. Concerns? 3. Actions? 4. Optimization?"
         
-        result = ResponseValidator.clean_response(repetitive_response, openshift_prompt)
+        result = ResponseValidator.clean_response(repetitive_response, ResponseType.OPENSHIFT_ANALYSIS, openshift_prompt)
         
         # Should be truncated
         assert result['validation_info']['truncated'] == True
@@ -90,7 +57,7 @@ class TestResponseValidator:
         
         openshift_prompt = "Questions: 1. Current state? 2. Concerns? 3. Actions? 4. Optimization?"
         
-        result = ResponseValidator.clean_response(good_response, openshift_prompt)
+        result = ResponseValidator.clean_response(good_response, ResponseType.OPENSHIFT_ANALYSIS, openshift_prompt)
         
         # Should not be truncated
         assert result['validation_info']['truncated'] == False
@@ -225,16 +192,6 @@ class TestIntegration:
         assert 'enable_validation' in sig.parameters
         assert sig.parameters['enable_validation'].default == True
 
-    def test_summarize_with_llm_detailed_exists(self):
-        """Test that the detailed function exists"""
-        from src.core.llm_client import summarize_with_llm_detailed
-        
-        # Check that function exists and has right return type hint
-        import inspect
-        sig = inspect.signature(summarize_with_llm_detailed)
-        # Should return Dict[str, Any]
-        assert 'Dict' in str(sig.return_annotation) or 'dict' in str(sig.return_annotation).lower()
-
 
 if __name__ == "__main__":
     # Run basic tests
@@ -242,11 +199,7 @@ if __name__ == "__main__":
     
     print("🧪 Running Response Validation Tests...")
     
-    # Test response type detection
-    validator.test_detect_openshift_response_type()
-    validator.test_detect_vllm_response_type()
-    validator.test_detect_general_chat_response_type()
-    print("✅ Response type detection tests passed")
+
     
     # Test content cleaning
     validator.test_clean_response_with_repetitive_content()
@@ -268,7 +221,7 @@ if __name__ == "__main__":
     # Test integration
     integration = TestIntegration()
     integration.test_summarize_with_llm_validation_enabled()
-    integration.test_summarize_with_llm_detailed_exists()
+
     print("✅ Integration tests passed")
     
     print("\n🎉 All tests passed! Response validation system is working correctly.")
