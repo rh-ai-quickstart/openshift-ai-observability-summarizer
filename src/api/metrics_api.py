@@ -100,6 +100,8 @@ MODEL_CONFIG = {}
 try:
     model_config_str = os.getenv("MODEL_CONFIG", "{}")
     MODEL_CONFIG = json.loads(model_config_str)
+    # Sort MODEL_CONFIG to put external:false entries first
+    MODEL_CONFIG = dict(sorted(MODEL_CONFIG.items(), key=lambda x: x[1].get('external', True)))
 except Exception as e:
     print(f"Warning: Could not parse MODEL_CONFIG: {e}")
     MODEL_CONFIG = {}

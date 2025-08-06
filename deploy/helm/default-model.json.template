@@ -1,0 +1,7 @@
+{
+  "$MODEL_ID": {
+    "external": false,
+    "requiresApiKey": false,
+    "serviceName": "$MODEL_NAME"
+  }
+}
