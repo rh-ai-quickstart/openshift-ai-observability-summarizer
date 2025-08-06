@@ -55,7 +55,16 @@ def get_namespaces():
     """Fetch available namespaces from API"""
     try:
         res = requests.get(f"{API_URL}/namespaces")
-        return res.json()
+        namespace_data = res.json()
+        # Extract just the namespace names for the dropdown
+        if isinstance(namespace_data, list) and len(namespace_data) > 0:
+            if isinstance(namespace_data[0], dict) and 'name' in namespace_data[0]:
+                # New format with name/displayName objects
+                return [ns['name'] for ns in namespace_data]
+            else:
+                # Old format with just strings
+                return namespace_data
+        return []
     except Exception as e:
         st.sidebar.error(f"Error fetching namespaces: {e}")
         return []
@@ -77,7 +86,11 @@ def get_model_config():
     """Fetch model configuration from API"""
     try:
         res = requests.get(f"{API_URL}/model_config")
-        return res.json()
+        if res.status_code == 200:
+            return res.json()
+        else:
+            st.sidebar.error(f"API returned status {res.status_code}")
+            return {}
     except Exception as e:
         st.sidebar.error(f"Error fetching model config: {e}")
         return {}
@@ -212,7 +225,13 @@ def display_new_deployment_info(model_name):
 
 def model_requires_api_key(model_id, model_config):
     """Check if a model requires an API key based on unified configuration"""
+    if not isinstance(model_config, dict):
+        return False
+    
     model_info = model_config.get(model_id, {})
+    if not isinstance(model_info, dict):
+        return False
+    
     # Check for both requiresApiKey and external fields
     return model_info.get("requiresApiKey", False) or model_info.get("external", False)
 
@@ -679,11 +698,22 @@ else:
     )
 
     # Filter models by selected namespace
-    filtered_models = [
-        model for model in model_list if model.startswith(f"{selected_namespace} | ")
-    ]
+    if selected_namespace:
+        filtered_models = [
+            model for model in model_list if model.startswith(f"{selected_namespace} | ")
+        ]
+    else:
+        filtered_models = model_list
+    
+    # Show debug info if no models found
+    if not filtered_models and selected_namespace:
+        st.sidebar.warning(f"No models found for namespace: {selected_namespace}")
+        filtered_models = ["No models available"]
+    
     model_name = st.sidebar.selectbox(
-        "Select Model", filtered_models, key="model_selector"
+        "Select Model", 
+        filtered_models if filtered_models else ["No models available"], 
+        key="model_selector"
     )
 
     st.sidebar.markdown("### Select Timestamp Range")
@@ -818,9 +848,9 @@ if page == "vLLM Metric Summarizer":
                 # Get parameters from sidebar
                 params = {
                     "model_name": model_name,
-                    "summarize_model_id": multi_model_name,
                     "start_ts": selected_start,
                     "end_ts": selected_end,
+                    "summarize_model_id": multi_model_name,
                     "api_key": api_key,
                 }
 
