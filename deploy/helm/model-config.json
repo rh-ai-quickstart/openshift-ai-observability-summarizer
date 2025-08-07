@@ -1,9 +1,4 @@
 {
-  "meta-llama/Llama-3.2-3B-Instruct": {
-    "external": false,
-    "requiresApiKey": false,
-    "serviceName": "llama-3-2-3b-instruct"
-  },
   "openai/gpt-4o-mini": {
     "external": true,
     "requiresApiKey": true,

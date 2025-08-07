@@ -12,6 +12,7 @@ NC='\033[0m' # No Color
 # Configuration
 PROMETHEUS_NAMESPACE="openshift-monitoring"
 LLM_NAMESPACE="${LLM_NAMESPACE:-m3}"
+METRIC_API_APP="metrics-api-app"
 THANOS_PORT=9090
 LLAMASTACK_PORT=8321
 LLAMA_MODEL_PORT=8080
@@ -91,6 +92,27 @@ start_port_forwards() {
     sleep 3  # Give port-forwards time to establish
 }
 
+# This function sets "MODEL_CONFIG" envrionment variable by reading it from "$METRIC_API_APP" deployment
+function set_model_config() {
+    # Find metrics-api-app deployment
+    # MODEL_CONFIG=$(oc get deploy 'metrics-api-app' -n"$LLM_NAMESPACE" -o json -o jsonpath='{.spec.template.spec.containers..env}' | jq '.[] | select(.name == "MODEL_CONFIG") | .value')
+
+    METRIC_API_DEPLOYMENT=$(oc get deploy "$METRIC_API_APP" -n"$LLM_NAMESPACE")
+    if [ -n "$METRIC_API_DEPLOYMENT" ]; then
+        echo -e "${GREEN}✅ Found [$METRIC_API_APP] deployment: $METRIC_API_DEPLOYMENT${NC}"
+        export $(oc set env deployment/$METRIC_API_APP --list | grep MODEL_CONFIG)
+        if [ -n "$MODEL_CONFIG" ]; then
+          echo -e "${GREEN}✅   MODEL_CONFIG set to: $MODEL_CONFIG${NC}"
+        else
+          echo -e "${RED}❌ Unable to set MODEL_CONFIG environment variable. It is required to run the UI locally.${NC}"
+          exit 1
+        fi
+    else
+        echo -e "${RED}❌ $METRIC_API_APP deployment not found. It is required to set MODEL_CONFIG.${NC}"
+        exit 1
+    fi
+}
+
 # Function to start local services
 start_local_services() {
     echo -e "${BLUE}🏃 Starting local services...${NC}"
@@ -102,17 +124,17 @@ start_local_services() {
     export PROMETHEUS_URL="http://localhost:$THANOS_PORT"
     export LLAMA_STACK_URL="http://localhost:$LLAMASTACK_PORT/v1/openai/v1"
     export THANOS_TOKEN="$TOKEN"
-    export MODEL_CONFIG=$(cat scripts/model-config.json | jq -c .)
     export MCP_API_URL="http://localhost:$MCP_PORT"
     export PROM_URL="http://localhost:$THANOS_PORT"
-    export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
     
     # macOS weasyprint support
     export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
+
+    set_model_config
     
     # Start MCP service
-echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
-(cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $MCP_PORT --reload > log.txt) &
+    echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
+    (cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $MCP_PORT --reload > log.txt) &
     MCP_PID=$!
     
     # Wait for MCP to start
