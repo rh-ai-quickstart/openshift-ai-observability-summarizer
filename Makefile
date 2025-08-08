@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting push push-metrics-api push-ui push-alerting clean config,$(MAKECMDGOALS)))
+ifeq (,$(filter depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting push push-metrics-api push-ui push-alerting install-observability uninstall-observability clean config,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -60,7 +60,12 @@ LLM_JSON := $(shell echo '["$(LLM_JSON)"]')
 SLACK_WEBHOOK_URL ?= $(shell bash -c 'read -r -p "Enter SLACK_WEBHOOK_URL: " SLACK_URL; echo $$SLACK_URL')
 ALERTING_RELEASE_NAME ?= alerting
 
+# Observability configuration
+OBSERVABILITY_NAMESPACE ?= observability-hub # currently hard-coded in instrumentation.yaml
+INSTRUMENTATION_PATH ?= observability/otel-collector/scripts/instrumentation.yaml
+
 # Helm argument templates
+
 helm_llm_service_args = \
     --set llm-service.secret.hf_token=$(HF_TOKEN) \
     $(if $(DEVICE),--set llm-service.device='$(DEVICE)',) \
@@ -114,51 +119,11 @@ help:
 	@echo "  generate-model-config - Generate JSON config for specified LLM using template"
 	@echo "  install-ingestion-pipeline - Install extra ingestion pipelines"
 	@echo ""
-	@echo "Alerting:"
-	@echo "  install-alerts     - Install alerting Helm chart"
-	@echo "  uninstall-alerts   - Uninstall alerting and related resources"
-	@echo "  patch-config       - Enable Alertmanager and configure cross-project alerting"
-	@echo "  revert-config      - Remove namespace from cross-project alerting configuration"
-	@echo "  create-secret      - Create/update Kubernetes Secret with Slack Webhook URL"
-	@echo ""
-	@echo "Utilities:"
-	@echo "  clean              - Clean up local images"
-	@echo "  config             - Show current configuration"
-	@echo ""
-	@echo "Configuration (set via environment variables):"
-	@echo "  REGISTRY           - Container registry (default: quay.io/ecosystem-appeng)"
-	@echo "  VERSION            - Image version (default: 0.1.0)"
-	@echo "  PLATFORM           - Target platform (default: linux/amd64)"
-	@echo "  BUILD_TOOL         - Build tool: docker or podman (auto-detected)"
-	@echo "  NAMESPACE          - OpenShift namespace for deployment"
-	@echo "  HF_TOKEN           - Hugging Face Token (will prompt if not provided)"
-	@echo "  DEVICE             - Deploy models on cpu or gpu (default)"
-	@echo "  LLM                - Model id (eg. llama-3-2-3b-instruct)"
-	@echo "  SAFETY             - Safety model id"
-	@echo "  ALERTS             - Set to TRUE to install alerting with main deployment"
-	@echo "  SLACK_WEBHOOK_URL  - Slack Webhook URL for alerting (will prompt if not provided)"
-	@echo ""
-	@echo ""
-	@echo "Build & Push:"
-	@echo "  build              - Build all container images"
-	@echo "  build-metrics-api  - Build FastAPI backend (metrics-api)"
-	@echo "  build-ui           - Build Streamlit UI (metric-ui)"
-	@echo "  build-alerting     - Build Alerting Service (metric-alerting)"
-	@echo "  push               - Push all container images to registry"
-	@echo "  push-metrics-api   - Push metrics-api image"
-	@echo "  push-ui            - Push metric-ui image"
-	@echo "  push-alerting      - Push metric-alerting image"
-	@echo ""
-	@echo "Deployment:"
-	@echo "  install            - Deploy to OpenShift using Helm"
-	@echo "  install-with-alerts - Deploy with alerting enabled"
-	@echo "  install-local      - Set up local development environment"
-	@echo "  install-rag        - Install RAG backend services only"
-	@echo "  install-metric-mcp - Install metrics API only"
-	@echo "  install-metric-ui  - Install UI only"
-	@echo "  uninstall          - Uninstall from OpenShift"
-	@echo "  status             - Check deployment status"
-	@echo "  list-models        - List available models"
+	@echo "Tracing:"
+	@echo "  install-observability - Install TempoStack and OpenTelemetry Collector for tracing"
+	@echo "  setup-tracing - Enable auto-instrumentation for tracing in target namespace"
+	@echo "  remove-tracing - Disable auto-instrumentation for tracing in target namespace"
+	@echo "  uninstall-observability - Uninstall observability components (Tempo and OTEL Collector)"
 	@echo ""
 	@echo "Alerting:"
 	@echo "  install-alerts     - Install alerting Helm chart"
@@ -320,6 +285,9 @@ install: namespace depend validate-llm install-rag install-metric-mcp install-me
 		echo "ALERTS flag is set to TRUE. Installing alerting..."; \
 		$(MAKE) install-alerts NAMESPACE=$(NAMESPACE); \
 	fi
+	@echo "Installing OpenTelemetry Collector and Tempo..."
+	@$(MAKE) install-observability
+	@$(MAKE) setup-tracing NAMESPACE=$(NAMESPACE)
 	@echo "Installation complete."
 
 .PHONY: install-with-alerts
@@ -383,6 +351,10 @@ uninstall:
 	- @helm -n $(NAMESPACE) uninstall $(METRIC_UI_RELEASE_NAME)
 	@echo "Uninstalling $(METRIC_MCP_RELEASE_NAME) helm chart"
 	- @helm -n $(NAMESPACE) uninstall $(METRIC_MCP_RELEASE_NAME)
+	@echo "Removing tracing instrumentation from namespace $(NAMESPACE)"
+	- @$(MAKE) remove-tracing NAMESPACE=$(NAMESPACE) || true
+	@echo "Uninstalling observability stack"
+	- @$(MAKE) uninstall-observability || true
 	@echo "Checking for any remaining resources in namespace $(NAMESPACE)..."
 	@echo "If you want to completely remove the namespace, run: oc delete project $(NAMESPACE)"
 	@echo "Remaining resources in namespace $(NAMESPACE):"
@@ -593,3 +565,35 @@ validate-llm:
 		echo "\n❌ Error: LLM variable is not set or empty. Please set LLM=<model_name>"; \
 		exit 1; \
 	fi
+
+.PHONY: install-observability
+install-observability:
+	@echo "Installing TempoStack and MinIO in namespace $(OBSERVABILITY_NAMESPACE)"
+	@cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--create-namespace \
+		--set global.namespace=$(OBSERVABILITY_NAMESPACE)
+
+	@echo "Installing Open Telemetry Collector in namespace $(OBSERVABILITY_NAMESPACE)"
+	@cd deploy/helm && helm upgrade --install otel-collector ./observability/otel-collector \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--create-namespace \
+		--set global.namespace=$(OBSERVABILITY_NAMESPACE)
+
+.PHONY: setup-tracing
+setup-tracing: namespace
+	@echo "Setting up auto-instrumentation for tracing in namespace $(NAMESPACE)"
+	@cd deploy/helm && oc apply -f $(INSTRUMENTATION_PATH) -n $(NAMESPACE)
+	@oc annotate namespace $(NAMESPACE) instrumentation.opentelemetry.io/inject-python="true" --overwrite
+
+.PHONY: remove-tracing
+remove-tracing: namespace
+	@echo "Removing auto-instrumentation for tracing in namespace $(NAMESPACE)"
+	@oc delete instrumentation python-instrumentation -n $(NAMESPACE)
+	@oc annotate namespace $(NAMESPACE) instrumentation.opentelemetry.io/inject-python- --overwrite
+
+.PHONY: uninstall-observability
+uninstall-observability:
+	@echo "Uninstalling TempoStack and MinIO and Otel Collector in namespace $(OBSERVABILITY_NAMESPACE)"
+	@helm uninstall tempo -n $(OBSERVABILITY_NAMESPACE)
+	@helm uninstall otel-collector -n $(OBSERVABILITY_NAMESPACE)

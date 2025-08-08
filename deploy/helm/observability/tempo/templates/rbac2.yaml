@@ -1,0 +1,75 @@
+# RBAC Fix for OTEL Collector Cross-Namespace Tempo Access
+# This addresses the 401 authentication errors when OTEL collector tries to export traces to Tempo
+
+---
+# Ensure the OTEL collector service account can write traces to Tempo
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-tempo-traces-write
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tempostack-traces-write
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: llama-serve
+
+---
+# Additional binding for reading traces (if needed for debugging)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-tempo-traces-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tempostack-traces-reader
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: llama-serve
+
+---
+# Additional binding for OTEL collector in observability-hub namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tempostack-traces-reader-grafana
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tempostack-traces-reader
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: observability-hub
+
+---
+# ClusterRole for trace writing (should already exist from Tempo operator)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tempostack-traces-write
+rules:
+- apiGroups: [""]
+  resources: [""]
+  verbs: [""]
+  resourceNames: []
+# Note: The actual permissions are managed by the Tempo operator
+# This is just to ensure the ClusterRole exists
+
+---
+# ClusterRole for trace reading (should already exist from Tempo operator)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tempostack-traces-reader
+rules:
+- apiGroups: [""]
+  resources: [""]
+  verbs: [""]
+  resourceNames: []
+# Note: The actual permissions are managed by the Tempo operator
+# This is just to ensure the ClusterRole exists

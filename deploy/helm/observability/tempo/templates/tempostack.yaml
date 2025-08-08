@@ -1,0 +1,43 @@
+# TempoStack instance with multitenant configuration
+apiVersion: tempo.grafana.com/v1alpha1
+kind: TempoStack
+metadata:
+  name: {{ .Values.tempoStack.name }}
+  namespace: {{ include "tempo-stack.namespace" . }}
+  labels:
+    {{- include "tempo-stack.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  storage:
+    secret:
+      name: minio-tempo
+      type: s3
+  storageSize: {{ .Values.tempoStack.storageSize }}
+  resources:
+    total:
+      limits:
+        memory: {{ .Values.tempoStack.resources.total.limits.memory }}
+        cpu: {{ .Values.tempoStack.resources.total.limits.cpu }}
+  tenants:
+    mode: {{ .Values.tempoStack.tenants.mode }}
+    authentication:
+      {{- range .Values.tempoStack.tenants.authentication }}
+      - tenantName: {{ .tenantName }}
+        tenantId: {{ .tenantId | quote }}
+      {{- end }}
+  template:
+    gateway:
+      enabled: {{ .Values.tempoStack.template.gateway.enabled }}
+    queryFrontend:
+      jaegerQuery:
+        enabled: {{ .Values.tempoStack.template.queryFrontend.jaegerQuery.enabled }}
+        {{- if .Values.tempoStack.template.queryFrontend.jaegerQuery.ingress }}
+        ingress:
+          type: {{ .Values.tempoStack.template.queryFrontend.jaegerQuery.ingress.type }}
+        {{- end }}

@@ -1,0 +1,25 @@
+apiVersion: v2
+name: tempo-stack
+description: A Helm chart for TempoStack with MinIO storage on OpenShift
+type: application
+version: 1.0.0
+appVersion: "latest"
+keywords:
+  - tempo
+  - tracing
+  - observability
+  - opentelemetry
+  - minio
+  - storage
+home: https://grafana.com/oss/tempo/
+sources:
+  - https://github.com/grafana/tempo-operator
+maintainers:
+  - name: Observability Team
+    email: observability@company.com
+annotations:
+  category: Observability
+  openshift.io/display-name: "Tempo Stack with Storage"
+  openshift.io/provider-display-name: "Observability Team"
+  openshift.io/documentation-url: "https://grafana.com/docs/tempo/"
+  openshift.io/support-url: "https://grafana.com/support/"

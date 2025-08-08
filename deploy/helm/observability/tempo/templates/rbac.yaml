@@ -1,0 +1,50 @@
+{{- if .Values.rbac.create }}
+# ClusterRole for TempoStack traces reading
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tempo-stack.clusterResourceName" . }}-traces-reader
+  labels:
+    {{- include "tempo-stack.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+  - apiGroups:
+      - 'tempo.grafana.com'
+    resources:
+      {{- range .Values.tempoStack.tenants.authentication }}
+      - {{ .tenantName }}
+      {{- end }}
+    resourceNames:
+      - traces
+    verbs:
+      - 'get'
+---
+# ClusterRoleBinding for TempoStack traces reading
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tempo-stack.clusterResourceName" . }}-traces-reader
+  labels:
+    {{- include "tempo-stack.labels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tempo-stack.clusterResourceName" . }}-traces-reader
+subjects:
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: system:authenticated
+{{- end }}

@@ -1,0 +1,96 @@
+# Default values for tempo-stack
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Global configuration
+global:
+  namespace: observability-hub
+
+# TempoStack configuration
+tempoStack:
+  name: tempostack
+  storageSize: 15Gi
+  
+  # Resource limits for TempoStack
+  resources:
+    total:
+      limits:
+        memory: 10Gi
+        cpu: 5000m
+  
+  # Tenant configuration
+  tenants:
+    mode: openshift
+    authentication:
+      - tenantName: dev
+        tenantId: "1610b0c3-c509-4592-a256-a1871353dbfa"
+  
+  # Template configuration
+  template:
+    gateway:
+      enabled: true
+    queryFrontend:
+      jaegerQuery:
+        enabled: false
+        # ingress:
+        #   type: route
+
+# MinIO storage configuration
+minio:
+  # MinIO deployment settings
+  image: quay.io/minio/minio
+  imagePullPolicy: Always
+  
+  # Storage configuration
+  storage:
+    size: 12Gi
+    storageClass: ""  # Use default storage class
+  
+  # MinIO service configuration
+  service:
+    name: minio-tempo-svc
+    ports:
+      api: 9000
+      console: 9001
+  
+  # MinIO credentials (TEST VALUES - CHANGE IN PRODUCTION)
+  credentials:
+    rootUser: admin
+    rootPassword: minio123
+  
+  # S3 configuration for Tempo
+  s3:
+    accessKeyId: admin
+    accessKeySecret: minio123
+    bucket: tempo
+
+# RBAC configuration
+rbac:
+  create: true
+  
+# Security configuration
+podSecurityContext:
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Additional labels and annotations
+commonLabels: {}
+commonAnnotations: {}

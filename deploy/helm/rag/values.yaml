@@ -35,6 +35,40 @@ minio:
 
 
 llama-stack:
+  env:
+    - name: VLLM_MAX_TOKENS
+      value: "4096"
+    - name: VLLM_API_TOKEN
+      value: fake
+    - name: OTEL_ENDPOINT
+      value: http://otel-collector-collector.observability-hub.svc.cluster.local:4318/v1/traces
+    - name: OTEL_PYTHON_DISABLED_INSTRUMENTATIONS
+      value: sqlite3
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          key: user
+          name: pgvector
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          key: password
+          name: pgvector
+    - name: POSTGRES_HOST
+      valueFrom:
+        secretKeyRef:
+          key: host
+          name: pgvector
+    - name: POSTGRES_PORT
+      valueFrom:
+        secretKeyRef:
+          key: port
+          name: pgvector
+    - name: POSTGRES_DBNAME
+      valueFrom:
+        secretKeyRef:
+          key: dbname
+          name: pgvector
   secrets:
     TAVILY_SEARCH_API_KEY: "Paste-your-key-here"
   mcp-servers: {}

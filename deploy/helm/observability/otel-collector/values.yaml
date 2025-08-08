@@ -1,0 +1,161 @@
+# Global configuration
+global:
+  namespace: observability-hub
+
+# Common configuration for all collectors
+common:
+  nameOverride: ""
+  fullnameOverride: ""
+  
+  # Common labels applied to all resources
+  labels: {}
+  
+  # Common annotations applied to all resources
+  annotations: {}
+
+# Service Account configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "otel-collector"
+
+# RBAC configuration
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+  # ClusterRole rules for Tempo traces
+  clusterRole:
+    # Name of the ClusterRole for writing traces to Tempo
+    name: "tempostack-traces-write"
+    rules:
+      - apiGroups:
+          - 'tempo.grafana.com'
+        resources:
+          - dev
+        resourceNames:
+          - traces
+        verbs:
+          - 'create'
+
+# Main OpenTelemetry Collector configuration
+collector:
+  # Enable/disable the main collector
+  enabled: true
+  
+  # Collector name
+  name: "otel-collector"
+  
+  # Deployment mode: deployment, daemonset, sidecar, statefulset
+  mode: deployment
+  
+  # Upgrade strategy
+  upgradeStrategy: automatic
+  
+  # Management state
+  managementState: managed
+  
+  # Replicas for deployment mode
+  replicas: 1
+  
+  # IP family policy
+  ipFamilyPolicy: SingleStack
+  
+  # Resource limits and requests
+  resources: {}
+    # limits:
+    #   cpu: 500m
+    #   memory: 512Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  
+  # Observability settings for the collector itself
+  observability:
+    metrics:
+      enableMetrics: true
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    type: route
+    route:
+      termination: passthrough
+    annotations: {}
+  
+  # Configuration for the collector
+  config:
+    # Extensions configuration
+    extensions:
+      bearertokenauth:
+        filename: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    
+    # Exporters configuration
+    exporters:
+      debug:
+        verbosity: basic
+      otlphttp/dev:
+        # Tempo gateway endpoint - configurable
+        endpoint: "https://tempo-tempostack-gateway.{{ .Values.global.namespace }}.svc.cluster.local:8080/api/traces/v1/dev"
+        headers:
+          X-Scope-OrgID: dev
+        tls:
+          insecure: false
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+        auth:
+          authenticator: bearertokenauth
+    
+    # Receivers configuration
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    
+    # Processors configuration
+    processors:
+      batch:
+        send_batch_size: 100
+        timeout: 1s
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 95
+        spike_limit_percentage: 25
+    
+    # Service configuration (pipelines)
+    service:
+      extensions:
+        - bearertokenauth
+      pipelines:
+        traces:
+          receivers:
+            - otlp
+          processors:
+            - batch
+            - memory_limiter
+          exporters:
+            - debug
+            - otlphttp/dev
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+
+# Tempo configuration for exporters
+tempo:
+  # Tempo gateway endpoint configuration
+  gateway:
+    endpoint: "tempo-tempostack-gateway"
+    port: "8080"
+    path: "/api/traces/v1/dev"
+    protocol: "https"
+    namespace: "observability-hub"
+  
+  # Tempo authentication
+  auth:
+    orgID: "dev"
+    useServiceAccountToken: true

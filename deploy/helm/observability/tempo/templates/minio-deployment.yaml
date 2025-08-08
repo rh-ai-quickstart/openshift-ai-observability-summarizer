@@ -1,0 +1,91 @@
+# MinIO Deployment for Tempo storage
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio-tempo
+  namespace: {{ include "tempo-stack.namespace" . }}
+  labels:
+    {{- include "tempo-stack.minioLabels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  progressDeadlineSeconds: 600
+  selector:
+    matchLabels:
+      {{- include "tempo-stack.minioSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tempo-stack.minioSelectorLabels" . | nindent 8 }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.commonAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: minio-tempo
+      containers:
+        - name: minio-tempo
+          image: {{ .Values.minio.image }}
+          imagePullPolicy: {{ .Values.minio.imagePullPolicy }}
+          command:
+            - /bin/sh
+            - '-c'
+            - |
+              mkdir -p /storage/{{ .Values.minio.s3.bucket }} && \
+              /usr/bin/docker-entrypoint.sh minio server /storage --console-address ":{{ .Values.minio.service.ports.console }}"
+          env:
+            - name: HOME
+              value: "/tmp"
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-user-creds
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-user-creds
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - name: api
+              containerPort: {{ .Values.minio.service.ports.api }}
+              protocol: TCP
+            - name: console
+              containerPort: {{ .Values.minio.service.ports.console }}
+              protocol: TCP
+          volumeMounts:
+            - name: storage
+              mountPath: /storage
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
