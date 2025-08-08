@@ -266,11 +266,7 @@ def chat(req: ChatRequest):
             user_question=req.question, metrics_summary=req.prompt_summary
         )
         # Get LLM response using helper function
-<<<<<<< HEAD
-        response = summarize_with_llm(prompt, req.summarize_model_id, ResponseType.GENERAL_CHAT, req.api_key, max_tokens=300)
-=======
-        response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key, max_tokens=150)
->>>>>>> 195abdc (Further enhancement for chat with metrics prompt)
+        response = summarize_with_llm(prompt, req.summarize_model_id, ResponseType.GENERAL_CHAT, req.api_key, max_tokens=1500)
         return {"response": _clean_llm_summary_string(response)}
     except Exception as e:
         # Handle API key errors and other LLM-related errors
