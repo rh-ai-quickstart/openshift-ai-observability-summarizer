@@ -1,0 +1,91 @@
+{{- if .Values.collector.enabled -}}
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: {{ .Values.collector.name }}
+  namespace: {{ include "otel-collector.namespace" . }}
+  labels:
+    {{- include "otel-collector.collectorLabels" . | nindent 4 }}
+  {{- with .Values.common.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  serviceAccount: {{ include "otel-collector.serviceAccountName" . }}
+  mode: {{ .Values.collector.mode }}
+  upgradeStrategy: {{ .Values.collector.upgradeStrategy }}
+  managementState: {{ .Values.collector.managementState }}
+  {{- if eq .Values.collector.mode "deployment" }}
+  replicas: {{ .Values.collector.replicas }}
+  {{- end }}
+  ipFamilyPolicy: {{ .Values.collector.ipFamilyPolicy }}
+  {{- with .Values.collector.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  observability:
+    {{- with .Values.collector.observability }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.collector.ingress.enabled }}
+  ingress:
+    type: {{ .Values.collector.ingress.type }}
+    {{- if eq .Values.collector.ingress.type "route" }}
+    route:
+      {{- with .Values.collector.ingress.route }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+    {{- end }}
+    {{- with .Values.collector.ingress.annotations }}
+    annotations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  config:
+    extensions:
+      {{- with .Values.collector.config.extensions }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+
+    exporters:
+      debug:
+        {{- with .Values.collector.config.exporters.debug }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      otlphttp/dev:
+        endpoint: {{ include "otel-collector.tempoGatewayEndpoint" . }}
+        headers:
+          X-Scope-OrgID: {{ .Values.tempo.auth.orgID }}
+        tls:
+          insecure: false
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+        {{- if .Values.tempo.auth.useServiceAccountToken }}
+        auth:
+          authenticator: bearertokenauth
+        {{- end }}
+
+    receivers:
+      otlp:
+        {{- with .Values.collector.config.receivers.otlp }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+
+    processors:
+      {{- with .Values.collector.config.processors }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+
+    service:
+      extensions:
+        {{- with .Values.collector.config.service.extensions }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      pipelines:
+        {{- with .Values.collector.config.service.pipelines }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      telemetry:
+        {{- with .Values.collector.config.service.telemetry }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}

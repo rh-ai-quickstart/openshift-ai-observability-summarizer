@@ -63,6 +63,9 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 - Slack notifications when alerts are triggered
 - Custom alert thresholds and conditions
 
+### **6. Distributed Tracing Integration**
+- Tracing support with OpenTelemetry and Tempo to monitor request flows across your AI services.
+
 ---
 
 ### GPU Monitoring
@@ -116,6 +119,10 @@ Monitor GPU health across your entire OpenShift cluster:
 - `helm` v3.x
 - `yq` (YAML processor)
 - Deployed Prometheus/Thanos
+- Operators for distributed tracing
+  - Red Hat Build of OpenTelemetry Operator
+  - Tempo Operator
+  - Cluster Observability Operator
 - (Optional) DCGM exporter for GPU monitoring
 - (Optional) Slack Webhook URL for alerting ([How to create a Webhook for your Slack Workspace](https://api.slack.com/messaging/webhooks))
 
@@ -165,15 +172,21 @@ make install NAMESPACE=your-namespace \
 ```bash
 make install NAMESPACE=your-namespace ALERTS=TRUE
 ```
+Enabling alerting will deploy alert rules, a cron job to monitor vLLM metrics, and AI-powered Slack notifications.
 
-This deploys:
+### Accessing the Application
+
+The default configuration deploys:
 - **llm-service** - LLM inference 
 - **llama-stack** - Backend API
 - **pgvector** - Vector database
 - **metric-mcp** - Metrics collection & processing API
 - **metric-ui** - Multi-dashboard Streamlit interface
+- **OpenTelemetry Collector** - Distributed tracing collection
+- **Tempo** - Trace storage and analysis
+- **MinIO** - Object storage for traces
 
-Navigate to your **Openshift Cluster --> Networking --> Route** and you should be able to see the route for your application.
+Navigate to your **Openshift Cluster --> Networking --> Route** and you should be able to see the route for your application. You can also navigate to **Observe > Traces** in the OpenShift console to view traces.
 
 On terminal you can access the route with -
 

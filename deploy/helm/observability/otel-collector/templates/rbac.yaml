@@ -1,0 +1,36 @@
+{{- if .Values.rbac.create -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "otel-collector.clusterResourceName" . }}-{{ .Values.rbac.clusterRole.name }}
+  labels:
+    {{- include "otel-collector.labels" . | nindent 4 }}
+  {{- with .Values.common.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+{{- with .Values.rbac.clusterRole.rules }}
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "otel-collector.clusterResourceName" . }}-tempostack-traces
+  labels:
+    {{- include "otel-collector.labels" . | nindent 4 }}
+  {{- with .Values.common.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "otel-collector.clusterResourceName" . }}-{{ .Values.rbac.clusterRole.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "otel-collector.serviceAccountName" . }}
+    namespace: {{ include "otel-collector.namespace" . }}
+{{- end }}

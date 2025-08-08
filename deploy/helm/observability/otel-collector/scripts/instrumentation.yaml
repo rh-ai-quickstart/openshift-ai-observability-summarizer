@@ -1,0 +1,20 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: python-instrumentation
+spec:
+  exporter:
+    # This is the address of your collector service
+    # The format is <service-name>.<namespace>.svc.cluster.local:<port>
+    endpoint: http://otel-collector-collector.observability-hub.svc.cluster.local:4318
+  propagators:
+    - tracecontext
+    - baggage
+    - b3
+  python:
+    image: "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest"
+    # The operator automatically injects environment variables,
+    # but you can add more here if needed.
+    env:
+      - name: OTEL_PYTHON_PLATFORM
+        value: "glibc" # or musl, depending on your base image

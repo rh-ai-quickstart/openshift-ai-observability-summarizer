@@ -1,0 +1,29 @@
+# MinIO Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.minio.service.name }}
+  namespace: {{ include "tempo-stack.namespace" . }}
+  labels:
+    {{- include "tempo-stack.minioLabels" . | nindent 4 }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  internalTrafficPolicy: Cluster
+  selector:
+    {{- include "tempo-stack.minioSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: api
+      protocol: TCP
+      port: {{ .Values.minio.service.ports.api }}
+      targetPort: {{ .Values.minio.service.ports.api }}
+    - name: console
+      protocol: TCP
+      port: {{ .Values.minio.service.ports.console }}
+      targetPort: {{ .Values.minio.service.ports.console }}

@@ -1,0 +1,21 @@
+apiVersion: v2
+name: otel-collector
+description: A generic Helm chart for OpenTelemetry Collector for application observability and distributed tracing
+type: application
+version: 0.2.0
+appVersion: "0.115.0"
+keywords:
+  - opentelemetry
+  - observability
+  - tracing
+  - metrics
+  - otel
+  - distributed-tracing
+home: https://opentelemetry.io/
+sources:
+  - https://github.com/open-telemetry/opentelemetry-operator
+maintainers:
+  - name: Observability Team
+dependencies: []
+annotations:
+  category: Observability
