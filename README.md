@@ -124,7 +124,6 @@ Monitor GPU health across your entire OpenShift cluster:
 
 Use the included `Makefile` to install everything:
 ```bash
-cd deploy/helm
 make install NAMESPACE=your-namespace
 ```
 This will install the project with the default LLM deployment, `llama-3-2-3b-instruct`.
@@ -252,83 +251,137 @@ To generate a report:
 
 ## Build & Deploy
 
-### Building the Container Images
+The project includes a comprehensive Makefile that simplifies building, pushing, and deploying the application components.
 
-The application consists of multiple services that need to be built as container images for openshift deployment.
+### Building and Pushing Container Images
 
-#### **Build FastAPI Backend (metrics-api)**
+The application consists of multiple services that need to be built as container images for OpenShift deployment.
 
-**Using Podman:**
+#### **Build All Images**
+
 ```bash
-# Navigate to the src directory (important for build context)
-cd src
+# Build all container images (metrics-api, metric-ui, metric-alerting)
+make build
 
-# Build for linux/amd64 platform (required for most K8s clusters)
-podman buildx build --platform linux/amd64 \
-  -f api/Dockerfile \
-  -t quay.io/ecosystem-appeng/metrics-api:your-tag .
+# Build with custom tag
+make build TAG=v1.0.0
 
-# Push to container registry
-podman push quay.io/ecosystem-appeng/metrics-api:your-tag
+# Build with custom registry
+make build REGISTRY=your-registry.com/your-org
 ```
 
-**Using Docker:**
+#### **Build Individual Components**
+
 ```bash
-# Navigate to the src directory (important for build context)
-cd src
+# Build FastAPI Backend (metrics-api)
+make build-metrics-api
 
-# Build for linux/amd64 platform
-docker buildx build --platform linux/amd64 \
-  -f api/Dockerfile \
-  -t quay.io/ecosystem-appeng/metrics-api:your-tag .
+# Build Streamlit UI (metric-ui)
+make build-ui
 
-# Push to container registry
-docker push quay.io/ecosystem-appeng/metrics-api:your-tag
+# Build Alerting Service (metric-alerting)
+make build-alerting
 ```
 
-#### **Build Streamlit UI (metric-ui)**
+#### **Push Images to Registry**
 
 ```bash
-# Build UI container
-cd src/ui
-podman buildx build --platform linux/amd64 \
-  -f Dockerfile \
-  -t quay.io/ecosystem-appeng/metric-ui:your-tag .
+# Push all images to registry
+make push
 
-# Push to registry
-podman push quay.io/ecosystem-appeng/metric-ui:your-tag
+# Push with custom tag
+make push TAG=v1.0.0
+
+# Push individual components
+make push-metrics-api
+make push-ui
+make push-alerting
 ```
 
-#### **Build Alerting Service (metric-alerting)**
+#### **Complete Build and Push Workflow**
 
 ```bash
-# Build alerting container
-cd src/alerting
-podman buildx build --platform linux/amd64 \
-  -f Dockerfile \
-  -t quay.io/ecosystem-appeng/metric-alerting:your-tag .
+# Build and push all images in one command
+make build-and-push
 
-# Push to registry
-podman push quay.io/ecosystem-appeng/metric-alerting:your-tag
+# With custom configuration
+make build-and-push TAG=v1.0.0 REGISTRY=your-registry.com/your-org
 ```
 
 ### Deploy to OpenShift
 
-After building and pushing the images:
+#### **Basic Deployment**
 
-1. **Update Helm values** with your new image tags:
-   ```yaml
-   # deploy/helm/metric-mcp/values.yaml
-   image:
-     repository: quay.io/ecosystem-appeng/metric-mcp
-     tag: your-tag
-   ```
+```bash
+# Deploy to OpenShift namespace
+make deploy NAMESPACE=your-namespace
 
-2. **Deploy using Helm**:
-   ```bash
-   cd deploy/helm
-   make install NAMESPACE=your-namespace
-   ```
+# Deploy with alerting enabled
+make deploy-with-alerts NAMESPACE=your-namespace
+```
+
+#### **Complete Build, Push, and Deploy Workflow**
+
+```bash
+# Complete workflow: build → push → deploy
+make build-deploy NAMESPACE=your-namespace
+
+# Complete workflow with alerting
+make build-deploy-alerts NAMESPACE=your-namespace
+```
+
+#### **Deployment Management**
+
+```bash
+# Check deployment status
+make status NAMESPACE=your-namespace
+
+# Uninstall deployment
+make uninstall NAMESPACE=your-namespace
+```
+
+### Configuration Options
+
+The Makefile supports various configuration options via environment variables:
+
+```bash
+# Set custom registry
+export REGISTRY=your-registry.com/your-org
+
+# Set custom tag
+export TAG=v1.0.0
+
+# Set target platform
+export PLATFORM=linux/amd64
+
+# Show current configuration
+make config
+```
+
+### Local Development
+
+For local development with port-forwarding:
+
+```bash
+# Set up local development environment
+make deploy-local
+```
+
+This will run the `./scripts/local-dev.sh` script to set up port-forwarding to Llamastack, llm-service, and Thanos.
+
+### Available Models
+
+```bash
+# List available models for deployment
+make list-models
+```
+
+### Cleanup
+
+```bash
+# Clean up local images
+make clean
+```
 
 ### Automated CI/CD Build
 
@@ -340,14 +393,27 @@ The project includes GitHub Actions workflow (`.github/workflows/build-and-push.
 
 ## Local Development via Port-Forwarding
 
-In order to develop locally faster on the metrics API/UI you can leverage port-forwarding to Llamastack, llm-service and Thanos by making use of `scripts/local-dev.sh` script.
+In order to develop locally faster on the metrics API/UI you can leverage port-forwarding to Llamastack, llm-service and Thanos.
 
 **Pre-requisites**:
 1. You have a deployment on the cluster already.
 2. You are logged into the cluster and can execute `oc` commands against the cluster.
 
-### Running script
-To perform local setup using the `./scripts/local-dev.sh` script, execute the following steps:
+### Quick Setup with Makefile
+
+The easiest way to set up local development is using the Makefile:
+
+```bash
+# Set up local development environment
+make deploy-local
+```
+
+This will run the `./scripts/local-dev.sh` script automatically.
+
+### Manual Setup
+
+If you prefer to run the script manually, follow these steps:
+
 1. **Make sure you are logged into the cluster and can execute `oc` commands against the cluster.**
 2. Install `uv` by following instructions on the [uv website](https://github.com/astral-sh/uv)
 3. Sync up the environment and development dependencies using `uv` in the base directory:
