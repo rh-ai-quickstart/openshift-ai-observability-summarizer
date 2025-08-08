@@ -21,6 +21,7 @@ sys.path.insert(0, parent_dir)  # For local development (src/)
 
 # Import LLM client for summarization
 from core.llm_client import summarize_with_llm
+from core.response_validator import ResponseType
 sys.path.insert(0, current_dir)  # For container deployment (/app/)
 
 from report_assets.report_renderer import (
@@ -208,7 +209,7 @@ def analyze(req: AnalyzeRequest):
         }
         prompt = build_prompt(metric_dfs, req.model_name)
 
-        summary = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
+        summary = summarize_with_llm(prompt, req.summarize_model_id, ResponseType.VLLM_ANALYSIS, req.api_key)
 
         # Ensure both columns exist, even if the DataFrame is empty
         serialized_metrics = {}
@@ -229,9 +230,13 @@ def analyze(req: AnalyzeRequest):
             "metrics": serialized_metrics,
         }
     except Exception as e:
+        # Log the actual error for debugging
+        print(f"❌ Error in /analyze endpoint: {e}")
+        import traceback
+        traceback.print_exc()
         # Handle API key errors and other LLM-related errors
         raise HTTPException(
-            status_code=500, detail="Please check your API Key or try again later."
+            status_code=500, detail=f"Please check your API Key or try again later: {str(e)}"
         )
 
 
@@ -242,7 +247,7 @@ def chat(req: ChatRequest):
             user_question=req.question, metrics_summary=req.prompt_summary
         )
         # Get LLM response using helper function
-        response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key, max_tokens=1500)
+        response = summarize_with_llm(prompt, req.summarize_model_id, ResponseType.GENERAL_CHAT, req.api_key, max_tokens=1500)
         return {"response": _clean_llm_summary_string(response)}
     except Exception as e:
         # Handle API key errors and other LLM-related errors
@@ -1946,7 +1951,7 @@ RESPONSE:"""
     
     # Call LLM with reasonable token limit for contextual summaries
     try:
-        return summarize_with_llm(prompt, model_id, api_key, max_tokens=1500)
+        return summarize_with_llm(prompt, model_id, ResponseType.GENERAL_CHAT, api_key, max_tokens=1500)
     except Exception as e:
         return f"Error generating summary: {e}"
 
@@ -2019,7 +2024,7 @@ User Question: {req.question}
 
 Provide a concise technical response focusing on operational insights and recommendations. Respond with JSON format:
 {{"promql": "relevant_query_if_applicable", "summary": "your_analysis"}}"""
-        llm_response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
+        llm_response = summarize_with_llm(prompt, req.summarize_model_id, ResponseType.OPENSHIFT_ANALYSIS, req.api_key)
         # Simple JSON parsing
         try:
             # Try to extract JSON from response
@@ -2107,7 +2112,7 @@ def analyze_openshift(req: OpenShiftAnalyzeRequest):
         )
 
         # Get LLM summary
-        summary = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
+        summary = summarize_with_llm(prompt, req.summarize_model_id, ResponseType.OPENSHIFT_ANALYSIS, req.api_key)
 
         # Serialize metrics data
         serialized_metrics = {}

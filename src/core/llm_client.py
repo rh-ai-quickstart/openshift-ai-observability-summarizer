@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone, time
 from dateparser.search import search_dates
 
 from .config import MODEL_CONFIG, LLM_API_TOKEN, LLAMA_STACK_URL, VERIFY_SSL
+from .response_validator import ResponseValidator, ResponseType
 
 # LLM Generation Configuration Constants
 DETERMINISTIC_TEMPERATURE = 0  # Zero temperature for consistent, deterministic output
@@ -76,9 +77,11 @@ def _clean_llm_summary_string(text: str) -> str:
 def summarize_with_llm(
     prompt: str,
     summarize_model_id: str,
+    response_type: ResponseType,
     api_key: Optional[str] = None,
     messages: Optional[List[Dict[str, str]]] = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
+    enable_validation: bool = True,
 ) -> str:
     """
     Summarize content using an LLM (local or external).
@@ -86,12 +89,14 @@ def summarize_with_llm(
     Args:
         prompt: The content to summarize
         summarize_model_id: Model identifier from MODEL_CONFIG
+        response_type: Expected response type for validation (OPENSHIFT, VLLM, CHAT) - required
         api_key: API key for external models (optional for local models)
         messages: Previous conversation messages (optional)
         max_tokens: Maximum number of tokens to generate (default: 6000)
+        enable_validation: Whether to enable response validation and cleanup (default: True)
         
     Returns:
-        LLM-generated summary text
+        LLM-generated summary text (cleaned if validation enabled)
     """
     headers = {"Content-Type": "application/json"}
 
@@ -138,9 +143,12 @@ def summarize_with_llm(
             }
 
         response_json = _make_api_request(api_url, headers, payload, verify_ssl=DEFAULT_SSL_VERIFICATION)
-        return _validate_and_extract_response(
+        raw_response = _validate_and_extract_response(
             response_json, is_external=True, provider=provider
         )
+        
+        # For external models, no need to do response validation and cleanup
+        return raw_response
 
     else:
         # Local model (deployed in cluster)
@@ -160,14 +168,22 @@ def summarize_with_llm(
             "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
             "max_tokens": max_tokens,
         }
-        print(f"prompt_text: {prompt_text}")
         response_json = _make_api_request(
             f"{LLAMA_STACK_URL}/completions", headers, payload, verify_ssl=VERIFY_SSL
         )
-        print(f"response_json: {response_json}")
-        return _validate_and_extract_response(
+        raw_response = _validate_and_extract_response(
             response_json, is_external=False, provider="LLM"
         )
+        
+        # Apply response validation and cleanup if enabled
+        if enable_validation:
+            validation_result = ResponseValidator.clean_response(raw_response, response_type, prompt)
+            return validation_result['cleaned_response']
+        else:
+            return raw_response
+
+
+
 
 
 def build_chat_prompt(user_question: str, metrics_summary: str) -> str:
@@ -220,7 +236,7 @@ ANALYSIS REQUIREMENTS:
 2. **Key Metrics Analysis**: Interpret the most important metrics
 3. **Trends and Patterns**: Identify any concerning trends
 4. **Recommendations**: Actionable suggestions for optimization
-5. **Alerting**: Summarize top 3 issues that are happening and need attention
+5. **Attentions**: Summarize top 3 issues that are happening and need attention
 
 In your response, do not add or ask additional questions. 
 Answer each requirement above concisely as a summary in less than 150 words. 
