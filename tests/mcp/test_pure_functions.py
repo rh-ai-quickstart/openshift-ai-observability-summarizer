@@ -25,12 +25,16 @@ from src.core.metrics import (
 )
 
 # Import new alert analysis functions
-from src.api.metrics_api import (
+from src.core.llm_summary_service import (
     extract_alert_names_from_thanos_data,
     generate_alert_analysis,
-    analyze_unknown_alert_with_llm,
+    analyze_unknown_alert_with_llm
+)
+from src.core.promql_service import (
     extract_time_period_from_question,
-    select_queries_directly,
+    select_queries_directly
+)
+from src.core.thanos_service import (
     find_primary_promql_for_question
 )
 
