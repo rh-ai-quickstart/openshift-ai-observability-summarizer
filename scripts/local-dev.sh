@@ -97,10 +97,10 @@ function set_model_config() {
     # Find metrics-api-app deployment
     # MODEL_CONFIG=$(oc get deploy 'metrics-api-app' -n"$LLM_NAMESPACE" -o json -o jsonpath='{.spec.template.spec.containers..env}' | jq '.[] | select(.name == "MODEL_CONFIG") | .value')
 
-    METRIC_API_DEPLOYMENT=$(oc get deploy "$METRIC_API_APP" -n"$LLM_NAMESPACE")
+    METRIC_API_DEPLOYMENT=$(oc get deploy "$METRIC_API_APP" -n "$LLM_NAMESPACE")
     if [ -n "$METRIC_API_DEPLOYMENT" ]; then
         echo -e "${GREEN}✅ Found [$METRIC_API_APP] deployment: $METRIC_API_DEPLOYMENT${NC}"
-        export $(oc set env deployment/$METRIC_API_APP --list | grep MODEL_CONFIG)
+        export $(oc set env deployment/$METRIC_API_APP --list  -n "$LLM_NAMESPACE" | grep MODEL_CONFIG)
         if [ -n "$MODEL_CONFIG" ]; then
           echo -e "${GREEN}✅   MODEL_CONFIG set to: $MODEL_CONFIG${NC}"
         else
