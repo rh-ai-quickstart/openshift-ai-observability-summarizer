@@ -12,6 +12,7 @@ from datetime import datetime
 
 # Import LLM client
 from .llm_client import summarize_with_llm
+from .response_validator import ResponseType
 
 def generate_llm_summary(question: str, thanos_data: Dict[str, Any], model_id: str, api_key: str, namespace: str) -> str:
     """
@@ -71,7 +72,14 @@ Key insight: [one key observation]
 Do not include any formatting instructions, notes, or additional commentary."""
 
         # Generate summary with LLM
-        summary = summarize_with_llm(prompt, model_id, api_key, max_tokens=300)
+        # Use GENERAL_CHAT validation for free-form summaries
+        summary = summarize_with_llm(
+            prompt,
+            model_id,
+            ResponseType.GENERAL_CHAT,
+            api_key=api_key,
+            max_tokens=300,
+        )
         
         if not summary or summary.strip() == "":
             return "❌ Failed to generate summary. Please try again."
@@ -254,7 +262,13 @@ Keep it concise and actionable."""
         if not api_key:
             return f"⚠️ Alert Analysis: Found {len(alert_names)} active alerts in {namespace}. Please check your API key configuration."
         
-        summary = summarize_with_llm(prompt, model_id, api_key, max_tokens=200)
+        summary = summarize_with_llm(
+            prompt,
+            model_id,
+            ResponseType.GENERAL_CHAT,
+            api_key=api_key,
+            max_tokens=200,
+        )
         
         if not summary or summary.strip() == "":
             return f"⚠️ Alert Analysis: Found {len(alert_names)} active alerts in {namespace}. Unable to generate detailed analysis."
@@ -290,7 +304,13 @@ Provide a BRIEF analysis in 2-3 lines:
         if not api_key:
             return f"⚠️ Unknown Alert Analysis: Alert '{alert_name}' in {namespace}. Please check your API key configuration."
         
-        summary = summarize_with_llm(prompt, model_id, api_key, max_tokens=150)
+        summary = summarize_with_llm(
+            prompt,
+            model_id,
+            ResponseType.GENERAL_CHAT,
+            api_key=api_key,
+            max_tokens=150,
+        )
         
         if not summary or summary.strip() == "":
             return f"⚠️ Unknown Alert Analysis: Alert '{alert_name}' in {namespace}. Unable to generate analysis."

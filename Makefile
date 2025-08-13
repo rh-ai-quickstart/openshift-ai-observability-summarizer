@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting push push-metrics-api push-ui push-alerting install-observability uninstall-observability clean config,$(MAKECMDGOALS)))
+ifeq (,$(filter depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting push push-metrics-api push-ui push-alerting install-observability uninstall-observability clean config test,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -136,6 +136,9 @@ help:
 	@echo "  clean              - Clean up local images"
 	@echo "  config             - Show current configuration"
 	@echo ""
+	@echo "Tests:"
+	@echo "  test               - Run unit tests with coverage"
+	@echo ""
 	@echo "Configuration (set via environment variables):"
 	@echo "  REGISTRY           - Container registry (default: quay.io/ecosystem-appeng)"
 	@echo "  VERSION            - Image version (default: 0.1.0)"
@@ -166,8 +169,8 @@ build-metrics-api:
 .PHONY: build-ui
 build-ui:
 	@echo "🔨 Building Streamlit UI (metric-ui)..."
-	@cd src/ui && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
-		-f Dockerfile \
+	@cd src && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
+		-f ui/Dockerfile \
 		-t $(METRIC_UI_IMAGE):$(VERSION) \
 		.
 	@echo "✅ metric-ui image built: $(METRIC_UI_IMAGE):$(VERSION)"
@@ -175,8 +178,8 @@ build-ui:
 .PHONY: build-alerting
 build-alerting:
 	@echo "🔨 Building Alerting Service (metric-alerting)..."
-	@cd src/alerting && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
-		-f Dockerfile \
+	@cd src && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
+		-f alerting/Dockerfile \
 		-t $(METRIC_ALERTING_IMAGE):$(VERSION) \
 		.
 	@echo "✅ metric-alerting image built: $(METRIC_ALERTING_IMAGE):$(VERSION)"
@@ -404,6 +407,13 @@ clean:
 	@$(BUILD_TOOL) rmi $(METRIC_UI_IMAGE):$(VERSION) 2>/dev/null || true
 	@$(BUILD_TOOL) rmi $(METRIC_ALERTING_IMAGE):$(VERSION) 2>/dev/null || true
 	@echo "✅ Cleanup completed"
+
+# Run tests
+.PHONY: test
+test:	
+	@echo "🧪 Running tests with coverage..."
+	@uv sync --group test
+	@uv run pytest -v --cov=src --cov-report=html --cov-report=term
 
 # Convenience targets for common workflows
 .PHONY: build-and-push
