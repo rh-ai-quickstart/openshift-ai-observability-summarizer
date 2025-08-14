@@ -26,7 +26,20 @@ def generate_llm_summary(question: str, thanos_data: Dict[str, Any], model_id: s
         
         if not successful_data:
             return "❌ No data available to analyze. Please check your query and try again."
-        
+
+        question_lower = question.lower()
+
+        # === SPECIAL HANDLING FOR ALERTS ===
+        if any(word in question_lower for word in ["alert", "alerts", "firing", "warning", "critical", "problem", "issue"]):
+            alert_names = extract_alert_names_from_thanos_data(thanos_data)
+            scope = "fleet-wide" if namespace == "" else f"namespace '{namespace}'"
+            if alert_names:
+                alert_analysis = generate_alert_analysis(alert_names, namespace)
+                return f"🚨 **ALERT ANALYSIS FOR {scope.upper()}**\n\n{alert_analysis}"
+            else:
+                return f"✅ No alerts currently firing in {scope}. All systems appear to be operating normally."
+
+        # === REGULAR METRIC HANDLING ===
         # Build context for LLM
         context_parts = []
         
@@ -209,6 +222,164 @@ def _format_summary_structure(summary: str) -> str:
     # Fallback: return original summary with basic line breaks
     return summary.replace('. ', '.\n\n').replace(': ', ':\n\n')
 
+def analyze_unknown_alert_with_llm(alert_name: str, namespace: str) -> str:
+    """
+    Use intelligent analysis for unknown alerts based on naming patterns
+    """
+    severity = "🔴 WARNING"  # Default to warning
+    
+    # Simple heuristics based on alert name
+    if any(word in alert_name.lower() for word in ["down", "failed", "error", "critical"]):
+        severity = "🔴 CRITICAL"
+    elif any(word in alert_name.lower() for word in ["high", "slow", "latency", "pending"]):
+        severity = "🟡 WARNING"
+    elif any(word in alert_name.lower() for word in ["info", "recommendation", "deprecated"]):
+        severity = "🟡 INFO"
+    
+    analysis = f"### {severity} {alert_name}\n"
+    
+    # Provide intelligent analysis based on naming patterns
+    if "api" in alert_name.lower():
+        analysis += "**What it means:** API-related issue that may affect cluster functionality\n"
+        analysis += "**Investigation:** Check API server logs and endpoint availability\n"
+        analysis += "**Action required:** Verify API server health and network connectivity\n"
+        analysis += "**Troubleshooting commands:**\n"
+        analysis += "```\noc get apiserver\noc logs -n openshift-kube-apiserver apiserver-xxx\n```"
+    elif "node" in alert_name.lower() or "kubelet" in alert_name.lower():
+        analysis += "**What it means:** Worker node or kubelet issue affecting workload scheduling\n"
+        analysis += "**Investigation:** Check node status and kubelet logs\n"
+        analysis += "**Action required:** Investigate node health and resource availability\n"
+        analysis += "**Troubleshooting commands:**\n"
+        analysis += "```\noc get nodes\noc describe node <node-name>\n```"
+    elif "pod" in alert_name.lower() or "container" in alert_name.lower():
+        analysis += "**What it means:** Pod or container issue affecting application workloads\n"
+        analysis += "**Investigation:** Check pod status and logs\n"
+        analysis += "**Action required:** Investigate application health and resource constraints\n"
+        analysis += "**Troubleshooting commands:**\n"
+        if namespace:
+            analysis += f"```\noc get pods -n {namespace}\noc logs -n {namespace} <pod-name>\n```"
+        else:
+            analysis += "```\noc get pods -A\noc logs <pod-name> -n <namespace>\n```"
+    else:
+        # Generic analysis for completely unknown alerts
+        analysis += f"**What it means:** Alert '{alert_name}' requires investigation\n"
+        analysis += "**Investigation:** Review alert definition and current cluster state\n"
+        analysis += "**Action required:** Check related OpenShift components and logs\n"
+        analysis += "**Troubleshooting commands:**\n"
+        analysis += f"```\noc get prometheusrule -A | grep -i {alert_name.lower()}\n```"
+    
+    return analysis
+
+
+def generate_alert_analysis(alert_names: List[str], namespace: str) -> str:
+    """
+    Generate detailed, actionable analysis for SRE and MLOps teams
+    """
+    analysis_parts = []
+    
+    # Alert knowledge base with detailed troubleshooting
+    alert_kb = {
+        "VLLMDummyServiceInfo": {
+            "severity": "🟡 INFO",
+            "meaning": "Test alert for vLLM service monitoring - indicates the model is processing requests",
+            "investigation": "Check vLLM service logs and request metrics",
+            "action": "This is typically a test alert. Verify if this should be disabled in production.",
+            "commands": [
+                f"oc logs -n {namespace} -l app=llama-3-2-3b-instruct",
+                f"oc get pods -n {namespace} -l app=llama-3-2-3b-instruct"
+            ]
+        },
+        "GPUOperatorNodeDeploymentDriverFailed": {
+            "severity": "🔴 WARNING", 
+            "meaning": "NVIDIA GPU driver deployment failed on worker nodes",
+            "investigation": "Check GPU operator pods and node status for driver installation issues",
+            "action": "Investigate GPU operator logs, verify node labels, check for driver compatibility issues",
+            "commands": [
+                "oc get nodes -l feature.node.kubernetes.io/pci-10de.present=true",
+                "oc logs -n nvidia-gpu-operator -l app=gpu-operator",
+                "oc get pods -n nvidia-gpu-operator"
+            ]
+        },
+        "GPUOperatorNodeDeploymentFailed": {
+            "severity": "🔴 WARNING",
+            "meaning": "NVIDIA GPU operator failed to deploy components on nodes", 
+            "investigation": "Check GPU operator deployment status and node compatibility",
+            "action": "Review GPU operator configuration, verify node selectors, check resource constraints",
+            "commands": [
+                "oc describe clusterpolicy gpu-cluster-policy",
+                "oc get nodes --show-labels | grep nvidia",
+                "oc logs -n nvidia-gpu-operator deployment/gpu-operator"
+            ]
+        },
+        "GPUOperatorReconciliationFailed": {
+            "severity": "🔴 WARNING",
+            "meaning": "GPU operator failed to reconcile desired state with actual cluster state",
+            "investigation": "Check GPU operator controller logs for reconciliation errors",
+            "action": "Restart GPU operator, verify CRD status, check for resource conflicts",
+            "commands": [
+                "oc get clusterpolicy -o yaml",
+                "oc logs -n nvidia-gpu-operator -l control-plane=controller-manager",
+                "oc delete pods -n nvidia-gpu-operator -l app=gpu-operator"
+            ]
+        },
+        "ClusterMonitoringOperatorDeprecatedConfig": {
+            "severity": "🟡 INFO",
+            "meaning": "Cluster monitoring is using deprecated configuration options",
+            "investigation": "Review cluster-monitoring-config ConfigMap for deprecated fields",
+            "action": "Update monitoring configuration to use current API versions before next upgrade",
+            "commands": [
+                "oc get configmap cluster-monitoring-config -n openshift-monitoring -o yaml",
+                "oc get clusterversion"
+            ]
+        },
+        "ClusterNotUpgradeable": {
+            "severity": "🟡 INFO", 
+            "meaning": "Cluster has conditions preventing upgrade (usually due to deprecated APIs)",
+            "investigation": "Check cluster version status for upgrade blocking conditions",
+            "action": "Review upgrade blockers, update deprecated API usage, resolve blocking conditions",
+            "commands": [
+                "oc get clusterversion -o yaml",
+                "oc adm upgrade",
+                "oc get clusteroperators"
+            ]
+        },
+        "InsightsRecommendationActive": {
+            "severity": "🟡 INFO",
+            "meaning": "Red Hat Insights has recommendations for cluster optimization",
+            "investigation": "Review insights recommendations in OpenShift console or Red Hat Hybrid Cloud Console",
+            "action": "Follow insights recommendations to improve cluster security, performance, or reliability",
+            "commands": [
+                "oc logs -n openshift-insights deployment/insights-operator",
+                "echo 'Visit: https://console.redhat.com/openshift/insights/advisor/'"
+            ]
+        }
+    }
+    
+    analysis_parts.append(f"## Alert Summary: {len(alert_names)} Active Alert(s)")
+    analysis_parts.append("")
+    
+    for alert_name in alert_names:
+        if alert_name in alert_kb:
+            alert = alert_kb[alert_name]
+            analysis_parts.append(f"### {alert['severity']} {alert_name}")
+            analysis_parts.append(f"**Issue:** {alert['meaning']}")
+            analysis_parts.append(f"**Action:** {alert['action']}")
+            analysis_parts.append("**Commands:**")
+            for cmd in alert['commands']:
+                analysis_parts.append(f"```\n{cmd}\n```")
+            analysis_parts.append("")
+        else:
+            # Use LLM to analyze unknown alerts
+            llm_analysis = analyze_unknown_alert_with_llm(alert_name, namespace)
+            analysis_parts.append(llm_analysis)
+            analysis_parts.append("")
+    
+    analysis_parts.append("### Next Steps")
+    analysis_parts.append("1. Run the diagnostic commands above")
+    analysis_parts.append("2. Check logs and recent changes")
+    analysis_parts.append("3. Document any fixes in your runbooks")
+    
+    return "\n".join(analysis_parts)
 
 def extract_alert_names_from_thanos_data(thanos_data: Dict[str, Any]) -> List[str]:
     """
@@ -232,93 +403,3 @@ def extract_alert_names_from_thanos_data(thanos_data: Dict[str, Any]) -> List[st
     return alert_names
 
 
-def generate_alert_analysis(alert_names: List[str], namespace: str) -> str:
-    """
-    Generate analysis for specific alerts
-    """
-    if not alert_names:
-        return "✅ No alerts found in the current time range."
-    
-    try:
-        # Build alert analysis prompt
-        alert_list = "\n".join([f"- {alert}" for alert in alert_names])
-        
-        prompt = f"""You are a senior Site Reliability Engineer (SRE) analyzing alerts for namespace: {namespace}.
-
-Active Alerts:
-{alert_list}
-
-Provide a BRIEF analysis in 3-4 lines maximum:
-- Overall severity level
-- One key action needed
-- Impact assessment
-
-Keep it concise and actionable."""
-
-        # Use a default model if none specified
-        model_id = "gpt-3.5-turbo"  # Default fallback
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        
-        if not api_key:
-            return f"⚠️ Alert Analysis: Found {len(alert_names)} active alerts in {namespace}. Please check your API key configuration."
-        
-        summary = summarize_with_llm(
-            prompt,
-            model_id,
-            ResponseType.GENERAL_CHAT,
-            api_key=api_key,
-            max_tokens=200,
-        )
-        
-        if not summary or summary.strip() == "":
-            return f"⚠️ Alert Analysis: Found {len(alert_names)} active alerts in {namespace}. Unable to generate detailed analysis."
-        
-        cleaned_summary = _clean_llm_summary_string(summary)
-        formatted_summary = _format_summary_structure(cleaned_summary)
-        return _truncate_summary(formatted_summary)
-        
-    except Exception as e:
-        print(f"❌ Error generating alert analysis: {e}")
-        return f"⚠️ Alert Analysis: Found {len(alert_names)} active alerts in {namespace}. Error generating detailed analysis: {str(e)}"
-
-
-def analyze_unknown_alert_with_llm(alert_name: str, namespace: str) -> str:
-    """
-    Analyze an unknown alert using LLM
-    """
-    try:
-        prompt = f"""You are a senior Site Reliability Engineer (SRE) analyzing an unknown alert.
-
-Alert Name: {alert_name}
-Namespace: {namespace}
-
-Provide a BRIEF analysis in 2-3 lines:
-- Likely cause or severity
-- One immediate action
-- Keep it concise."""
-
-        # Use a default model if none specified
-        model_id = "gpt-3.5-turbo"  # Default fallback
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        
-        if not api_key:
-            return f"⚠️ Unknown Alert Analysis: Alert '{alert_name}' in {namespace}. Please check your API key configuration."
-        
-        summary = summarize_with_llm(
-            prompt,
-            model_id,
-            ResponseType.GENERAL_CHAT,
-            api_key=api_key,
-            max_tokens=150,
-        )
-        
-        if not summary or summary.strip() == "":
-            return f"⚠️ Unknown Alert Analysis: Alert '{alert_name}' in {namespace}. Unable to generate analysis."
-        
-        cleaned_summary = _clean_llm_summary_string(summary)
-        formatted_summary = _format_summary_structure(cleaned_summary)
-        return _truncate_summary(formatted_summary)
-        
-    except Exception as e:
-        print(f"❌ Error analyzing unknown alert: {e}")
-        return f"⚠️ Unknown Alert Analysis: Alert '{alert_name}' in {namespace}. Error generating analysis: {str(e)}" 
