@@ -166,7 +166,3 @@ jobs:
             git push
           fi
 
-      - name: Create and push git tag
-        run: |
-          git tag ${{ needs.semantic-version.outputs.version }}
-          git push origin ${{ needs.semantic-version.outputs.version }}

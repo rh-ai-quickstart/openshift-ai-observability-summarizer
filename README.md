@@ -3,7 +3,7 @@
 [![CNCF Compatible](https://img.shields.io/badge/CNCF%20Compatible-Yes-blue.svg)](https://www.cncf.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build Status](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions)
-[![Latest Tag](https://img.shields.io/github/v/tag/rh-ai-kickstart/openshift-ai-observability-summarizer?label=Version)](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/tags)
+
 
 <img src="docs/img/logo.png" alt="OpenShift AI Observability Summarizer" width="200"/>
 
