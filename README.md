@@ -519,7 +519,6 @@ This project uses automated semantic versioning based on commit message conventi
 1. When PRs are merged to `main` or `dev`, the build workflow analyzes commit messages
 2. Automatically calculates the next version number
 3. Updates container image tags, Helm charts, and Makefile
-4. Creates git tags for releases
 
 ### Examples
 
