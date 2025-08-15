@@ -26,9 +26,7 @@ from src.core.metrics import (
 
 # Import new alert analysis functions
 from src.core.llm_summary_service import (
-    extract_alert_names_from_thanos_data,
-    generate_alert_analysis,
-    analyze_unknown_alert_with_llm
+    extract_alert_info_from_thanos_data
 )
 from src.core.promql_service import (
     extract_time_period_from_question,
@@ -459,16 +457,22 @@ class TestAlertAnalysisFunctions:
             }
         }
 
-        result = extract_alert_names_from_thanos_data(thanos_data)
+        result = extract_alert_info_from_thanos_data(thanos_data)
 
         assert len(result) == 2
-        assert "VLLMDummyServiceInfo" in result
-        assert "HighCPUUsage" in result
+        names = {info["alertname"] for info in result}
+        namespaces = {info.get("namespace") for info in result}
+        severities = {info.get("severity") for info in result}
+        assert "VLLMDummyServiceInfo" in names
+        assert "HighCPUUsage" in names
+        assert "m3" in namespaces
+        assert "production" in namespaces
+        assert "info" in severities or "warning" in severities
 
     def test_extract_alert_names_from_thanos_data_empty(self):
         """Should handle empty Thanos data gracefully"""
         thanos_data = {}
-        result = extract_alert_names_from_thanos_data(thanos_data)
+        result = extract_alert_info_from_thanos_data(thanos_data)
         assert result == []
 
     def test_extract_alert_names_with_error_data(self):
@@ -479,42 +483,12 @@ class TestAlertAnalysisFunctions:
                 "raw_data": []
             }
         }
-        result = extract_alert_names_from_thanos_data(thanos_data)
+        result = extract_alert_info_from_thanos_data(thanos_data)
         assert result == []
 
-    #def test_generate_alert_analysis_known_alerts(self):
-    #    """Should generate professional analysis for known alerts"""
-    #    alert_names = ["VLLMDummyServiceInfo"]
-    #    namespace = "m3"
+    # Removed tests for deprecated generate_alert_analysis
 
-    #    result = generate_alert_analysis(alert_names, namespace)
-
-        # Check professional formatting structure - actual implementation returns API key error
-    #    assert "API key" in result or "Alert Analysis" in result
-
-    #def test_generate_alert_analysis_unknown_alerts(self):
-    #    """Should use LLM analysis for unknown alerts"""
-    #    alert_names = ["UnknownCustomAlert"]
-    #    namespace = "test"
-
-    #    result = generate_alert_analysis(alert_names, namespace)
-
-        # Should contain analysis structure - actual implementation returns API key error
-    #    assert "API key" in result or "Alert Analysis" in result
-
-    #def test_analyze_unknown_alert_with_llm_critical_pattern(self):
-    #    """Should identify critical alerts based on naming patterns"""
-    #    result = analyze_unknown_alert_with_llm("CriticalDatabaseDown", "production")
-
-        # Actual implementation returns API key error
-    #    assert "API key" in result or "Unknown Alert Analysis" in result
-
-    #def test_analyze_unknown_alert_with_llm_warning_pattern(self):
-    #    """Should identify warning alerts based on naming patterns"""
-    #    result = analyze_unknown_alert_with_llm("HighMemoryUsage", "test")
-
-        # Actual implementation returns API key error
-    #    assert "API key" in result or "Unknown Alert Analysis" in result
+    # Removed tests for deprecated generate_alert_analysis
 
 
 class TestTimeExtractionFunctions:

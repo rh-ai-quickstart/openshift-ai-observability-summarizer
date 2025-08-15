@@ -527,7 +527,12 @@ class ResponseValidator:
                 'validation_info': {'status': 'empty_response', 'truncated': False}
             }
         
-
+        if prompt_text.lower().find("alerts") != -1:
+            return {
+                'cleaned_response': response,
+                'removed_content': '',
+                'validation_info': {'status': 'empty_response', 'truncated': False}
+            }
         
         # STEP 1: Analyze response structure and find optimal truncation point
         # This is where the sophisticated paragraph-based validation happens

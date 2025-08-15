@@ -8,6 +8,7 @@ building prompts, and processing LLM responses.
 import re
 import requests
 from typing import Dict, List, Optional, Any
+from .config import CHAT_SCOPE_FLEET_WIDE
 from datetime import datetime, timedelta, timezone, time
 from dateparser.search import search_dates
 
@@ -171,13 +172,16 @@ def summarize_with_llm(
         response_json = _make_api_request(
             f"{LLAMA_STACK_URL}/completions", headers, payload, verify_ssl=VERIFY_SSL
         )
+        
         raw_response = _validate_and_extract_response(
             response_json, is_external=False, provider="LLM"
         )
         
         # Apply response validation and cleanup if enabled
         if enable_validation:
+            
             validation_result = ResponseValidator.clean_response(raw_response, response_type, prompt)
+            
             return validation_result['cleaned_response']
         else:
             return raw_response
@@ -308,7 +312,7 @@ def build_openshift_chat_prompt(
 ) -> str:
     """Build specialized prompt for OpenShift/Kubernetes queries"""
     # Build scope context
-    if chat_scope == "fleet_wide":
+    if chat_scope == CHAT_SCOPE_FLEET_WIDE:
         scope_context = "You are analyzing **fleet-wide OpenShift/Kubernetes metrics across ALL namespaces**.\n\n"
     elif target_namespace:
         scope_context = f"You are analyzing OpenShift/Kubernetes metrics for namespace: **{target_namespace}**.\n\n"
@@ -391,7 +395,7 @@ def build_flexible_llm_prompt(
             summary_tokens_generated = f"Token generation data: {generated_tokens_sum}"
 
     # Build scope context
-    if chat_scope == "fleet_wide":
+    if chat_scope == CHAT_SCOPE_FLEET_WIDE:
         namespace_context = f"You are analyzing **fleet-wide metrics across ALL namespaces** for model **{model_name}**.\n\n"
     elif selected_namespace:
         namespace_context = f"You are currently focused on the namespace: **{selected_namespace}** and model **{model_name}**.\n\n"

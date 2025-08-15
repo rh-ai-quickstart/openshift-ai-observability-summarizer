@@ -1155,16 +1155,17 @@ elif page == "Chat with Prometheus":
                         ai_response_content += (
                             "_No direct PromQL generated for this question._\n\n"
                         )
+
                     
-                    # Show AI Summary
-                    ai_response_content += "**AI Summary:**\n\n" + summary
+                    scope_display = "Fleet-wide" if chat_scope_response.lower() == "fleet_wide" else "Namespace-specific"
+
+                    # Show AI Summary 
+                    ai_response_content += "**AI Summary with Scope " + scope_display + ":**\n\n" + summary
                     
                     # Show additional context if available
                     if time_range:
                         ai_response_content += f"\n\n📅 **Time Range:** {time_range}"
-                    
-                    scope_display = "Fleet-wide" if chat_scope_response == "fleet_wide" else "Namespace-specific"
-                    ai_response_content += f"\n🔍 **Scope:** {scope_display}"
+                    # ai_response_content += f"\n🔍 **Scope:** {scope_display}"
 
                     st.session_state.messages.append(
                         {"role": "assistant", "content": ai_response_content}

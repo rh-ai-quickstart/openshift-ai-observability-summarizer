@@ -104,6 +104,7 @@ from core.thanos_service import (
 from core.llm_summary_service import (
     generate_llm_summary,
 )
+from core.config import CHAT_SCOPE_FLEET_WIDE, FLEET_WIDE_DISPLAY
 
 
 app = FastAPI()
@@ -290,7 +291,7 @@ def chat_metrics(req: ChatMetricsRequest):
         clean_model_name = req.model_name.split(' | ')[1].strip() if ' | ' in req.model_name else req.model_name
         
         # Determine if fleet-wide (no namespace filter) or namespace-specific
-        is_fleet_wide = req.chat_scope == "fleet_wide"
+        is_fleet_wide = req.chat_scope == CHAT_SCOPE_FLEET_WIDE
         target_namespace = None if is_fleet_wide else req.namespace
         
         promql_queries = generate_promql_from_question(req.question, target_namespace, clean_model_name, start_ts, end_ts, is_fleet_wide)
@@ -300,14 +301,15 @@ def chat_metrics(req: ChatMetricsRequest):
         thanos_data = query_thanos_with_promql(promql_queries, start_ts, end_ts)
         
         # Step 4: Send results to LLM for summary
-        summary_namespace = "Fleet-wide" if is_fleet_wide else req.namespace
+        summary_namespace = FLEET_WIDE_DISPLAY if is_fleet_wide else req.namespace
         summary = generate_llm_summary(req.question, thanos_data, req.summarize_model_id, req.api_key, summary_namespace)
         # Step 5: Return summary for UI
         # Find the most relevant PromQL for the question (not just the first one)
         primary_promql = find_primary_promql_for_question(req.question, promql_queries)
         return {
             "promql": primary_promql,
-            "summary": summary
+            "summary": summary,
+            "chat_scope": req.chat_scope,
         }
         
     except Exception as e:
