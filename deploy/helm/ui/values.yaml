@@ -1,6 +1,6 @@
 image:
-  repository: quay.io/ecosystem-appeng/obs-metric-ui
-  tag: ts24
+  repository: quay.io/ecosystem-appeng/aiobs/metrics-ui
+  tag: 0.1.1
   pullPolicy: IfNotPresent
 
 service:

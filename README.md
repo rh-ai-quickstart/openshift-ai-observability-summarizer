@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Build Status](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions)
 
+
 <img src="docs/img/logo.png" alt="OpenShift AI Observability Summarizer" width="200"/>
 
 
@@ -29,11 +30,13 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 - [Build & Deploy](#build--deploy)
 - [Local Development](#local-development-via-port-forwarding)
 - [Testing](#testing)
+- [Semantic Versioning](#semantic-versioning)
 - [Contributing](#contributing)
 - [Community](#community)
 - [License](#license)
 
 ---
+
 
 ## Features
 
@@ -489,6 +492,88 @@ uv run pytest -v tests/mcp/test_api_endpoints.py
 ```
 
 To view a detailed coverage report after generating, open `htmlcov/index.html`.
+
+---
+
+
+## Semantic Versioning
+
+This project uses automated semantic versioning based on commit message conventions.
+
+### Version Bump Rules
+
+- **Major (`X`.0.0)**: Breaking changes
+  - Keywords: `BREAKING CHANGE:`, `breaking:`, `!:`, `major:`
+  - Example: `refactor!: redesign API endpoints`
+
+- **Minor (X.`Y`.0)**: New features
+  - Keywords: `feat:`, `feature:`, `add:`, `minor:`
+  - Example: `feat: add user authentication`
+
+- **Patch (X.Y.`Z`)**: Bug fixes and other changes
+  - Keywords: Any other commit message
+  - Example: `fix: resolve login timeout`
+
+### How It Works
+
+1. When PRs are merged to `main` or `dev`, the build workflow analyzes commit messages
+2. Automatically calculates the next version number
+3. Updates container image tags, Helm charts, and Makefile
+
+### Examples
+
+#### Major Version Bump (`X`.0.0)
+
+Breaking changes that require major version bump:
+
+```bash
+# Using "BREAKING CHANGE:" in commit message body
+git commit -m "refactor: change API structure
+
+BREAKING CHANGE: API endpoints restructured"
+
+# Using "!" in commit type
+git commit -m "refactor!: change API structure"
+
+# Using "major:" keyword
+git commit -m "major: remove deprecated features"
+```
+
+#### Minor Version Bump (X.`Y`.0)
+
+New features that require minor version bump:
+
+```bash
+# New feature addition
+git commit -m "feat: add metrics dashboard"
+
+# Using "feature:" keyword
+git commit -m "feature: implement user authentication"
+
+# Using "add:" keyword
+git commit -m "add: support for new GPU metrics"
+
+# Using "minor:" keyword
+git commit -m "minor: enhance UI with new charts"
+```
+
+#### Patch Version Bump (X.Y.`Z`)
+
+Bug fixes and other changes that require patch version bump:
+
+```bash
+# Bug fix
+git commit -m "fix: resolve memory leak in alerting"
+
+# Documentation update
+git commit -m "docs: update installation guide"
+
+# Chore or maintenance
+git commit -m "chore: update dependencies"
+
+# Any commit without specific keywords
+git commit -m "resolve memory leak in alerting"
+```
 
 ---
 

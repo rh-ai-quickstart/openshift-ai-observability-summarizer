@@ -11,14 +11,17 @@ endif
 MAKEFLAGS += --no-print-directory
 
 # Default values
-REGISTRY ?= quay.io/ecosystem-appeng
-VERSION ?= 0.1.0
+REGISTRY ?= quay.io
+ORG ?= ecosystem-appeng
+REPOSITORY ?= aiobs
+VERSION ?= 0.1.1
 PLATFORM ?= linux/amd64
 
 # Container image names
-METRICS_API_IMAGE = $(REGISTRY)/metrics-api
-METRIC_UI_IMAGE = $(REGISTRY)/metric-ui
-METRIC_ALERTING_IMAGE = $(REGISTRY)/metric-alerting
+METRICS_API_IMAGE = $(REGISTRY)/$(ORG)/$(REPOSITORY)/metrics-api
+METRICS_UI_IMAGE = $(REGISTRY)/$(ORG)/$(REPOSITORY)/metrics-ui
+METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(REPOSITORY)/metrics-vllm-alerting
+
 
 # Build tools
 DOCKER ?= docker
@@ -140,7 +143,9 @@ help:
 	@echo "  test               - Run unit tests with coverage"
 	@echo ""
 	@echo "Configuration (set via environment variables):"
-	@echo "  REGISTRY           - Container registry (default: quay.io/ecosystem-appeng)"
+	@echo "  REGISTRY           - Container registry (default: quay.io)"
+	@echo "  ORG                - Account or org name (default: ecosystem-appeng)"
+	@echo "  REPOSITORY         - Image prefix (default: aiobs)"
 	@echo "  VERSION            - Image version (default: 0.1.0)"
 	@echo "  PLATFORM           - Target platform (default: linux/amd64)"
 	@echo "  BUILD_TOOL         - Build tool: docker or podman (auto-detected)"
@@ -169,20 +174,20 @@ build-metrics-api:
 .PHONY: build-ui
 build-ui:
 	@echo "🔨 Building Streamlit UI (metric-ui)..."
-	@cd src && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
-		-f ui/Dockerfile \
-		-t $(METRIC_UI_IMAGE):$(VERSION) \
-		.
-	@echo "✅ metric-ui image built: $(METRIC_UI_IMAGE):$(VERSION)"
+	@$(BUILD_TOOL) buildx build --platform $(PLATFORM) \
+		-f src/ui/Dockerfile \
+		-t $(METRICS_UI_IMAGE):$(VERSION) \
+		src
+	@echo "✅ metrics-ui image built: $(METRICS_UI_IMAGE):$(VERSION)"
 
 .PHONY: build-alerting
 build-alerting:
 	@echo "🔨 Building Alerting Service (metric-alerting)..."
-	@cd src && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
-		-f alerting/Dockerfile \
-		-t $(METRIC_ALERTING_IMAGE):$(VERSION) \
-		.
-	@echo "✅ metric-alerting image built: $(METRIC_ALERTING_IMAGE):$(VERSION)"
+	@$(BUILD_TOOL) buildx build --platform $(PLATFORM) \
+		-f src/alerting/Dockerfile \
+		-t $(METRICS_ALERTING_IMAGE):$(VERSION) \
+		src
+	@echo "✅ metrics-alerting image built: $(METRICS_ALERTING_IMAGE):$(VERSION)"
 
 .PHONY: push
 push: push-metrics-api push-ui push-alerting
@@ -199,13 +204,13 @@ push-metrics-api:
 .PHONY: push-ui
 push-ui:
 	@echo "📤 Pushing metric-ui image..."
-	@$(BUILD_TOOL) push $(METRIC_UI_IMAGE):$(VERSION)
+	@$(BUILD_TOOL) push $(METRICS_UI_IMAGE):$(VERSION)
 	@echo "✅ metric-ui image pushed"
 
 .PHONY: push-alerting
 push-alerting:
 	@echo "📤 Pushing metric-alerting image..."
-	@$(BUILD_TOOL) push $(METRIC_ALERTING_IMAGE):$(VERSION)
+	@$(BUILD_TOOL) push $(METRICS_ALERTING_IMAGE):$(VERSION)
 	@echo "✅ metric-alerting image pushed"
 
 
@@ -339,9 +344,16 @@ uninstall:
 		echo "Usage: make uninstall NAMESPACE=your-namespace"; \
 		exit 1; \
 	fi
+	@echo "🔍 Checking OpenShift credentials..."
+	@if ! oc whoami >/dev/null 2>&1; then \
+		echo "❌ Error: Not logged in to OpenShift or credentials have expired"; \
+		echo "   Please run: oc login"; \
+		exit 1; \
+	fi
+	@echo "✅ OpenShift credentials are valid"
 	@echo "🗑️  Uninstalling from OpenShift namespace: $(NAMESPACE)"
 	@echo "Uninstalling $(RAG_CHART) helm chart"
-	- @helm -n $(NAMESPACE) uninstall $(RAG_CHART)  --ignore-not-found
+	- @helm -n $(NAMESPACE) uninstall $(RAG_CHART) --ignore-not-found
 	@echo "Removing pgvector and minio PVCs from $(NAMESPACE)"
 	- @oc get pvc -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^(pg|minio)-data' | xargs -I {} oc delete pvc -n $(NAMESPACE) {} ||:
 	@if helm list -n $(NAMESPACE) -q | grep -q "^$(ALERTING_RELEASE_NAME)$$"; then \
@@ -403,10 +415,24 @@ install-local:
 .PHONY: clean
 clean:
 	@echo "🧹 Cleaning up local images..."
-	@$(BUILD_TOOL) rmi $(METRICS_API_IMAGE):$(VERSION) 2>/dev/null || true
-	@$(BUILD_TOOL) rmi $(METRIC_UI_IMAGE):$(VERSION) 2>/dev/null || true
-	@$(BUILD_TOOL) rmi $(METRIC_ALERTING_IMAGE):$(VERSION) 2>/dev/null || true
-	@echo "✅ Cleanup completed"
+	@ERRORS=0; \
+	if ! $(BUILD_TOOL) rmi $(METRICS_API_IMAGE):$(VERSION) 2>/dev/null; then \
+		echo "⚠️  Could not remove $(METRICS_API_IMAGE):$(VERSION) (may not exist)"; \
+		ERRORS=$$((ERRORS + 1)); \
+	fi; \
+	if ! $(BUILD_TOOL) rmi $(METRICS_UI_IMAGE):$(VERSION) 2>/dev/null; then \
+		echo "⚠️  Could not remove $(METRICS_UI_IMAGE):$(VERSION) (may not exist)"; \
+		ERRORS=$$((ERRORS + 1)); \
+	fi; \
+	if ! $(BUILD_TOOL) rmi $(METRICS_ALERTING_IMAGE):$(VERSION) 2>/dev/null; then \
+		echo "⚠️  Could not remove $(METRICS_ALERTING_IMAGE):$(VERSION) (may not exist)"; \
+		ERRORS=$$((ERRORS + 1)); \
+	fi; \
+	if [ $$ERRORS -eq 0 ]; then \
+		echo "✅ All images cleaned successfully"; \
+	else \
+		echo "⚠️  Cleanup completed with $$ERRORS warning(s)"; \
+	fi
 
 # Run tests
 .PHONY: test
@@ -428,19 +454,19 @@ build-deploy: build push install
 build-deploy-alerts: build push install-with-alerts
 	@echo "✅ Build, push, and deploy with alerting workflow completed"
 
-
-
 # Show current configuration
 .PHONY: config
 config:
 	@echo "🔧 Current Build Configuration:"
 	@echo "  Registry: $(REGISTRY)"
+	@echo "  Org: $(ORG)"
+	@echo "  Repository: $(REPOSITORY)"
 	@echo "  Version: $(VERSION)"
 	@echo "  Platform: $(PLATFORM)"
 	@echo "  Build Tool: $(BUILD_TOOL)"
 	@echo "  Metrics API Image: $(METRICS_API_IMAGE):$(VERSION)"
-	@echo "  Metric UI Image: $(METRIC_UI_IMAGE):$(VERSION)"
-	@echo "  Metric Alerting Image: $(METRIC_ALERTING_IMAGE):$(VERSION)"
+	@echo "  Metric UI Image: $(METRICS_UI_IMAGE):$(VERSION)"
+	@echo "  Metric Alerting Image: $(METRICS_ALERTING_IMAGE):$(VERSION)"
 
 # -- Alerting targets --
 

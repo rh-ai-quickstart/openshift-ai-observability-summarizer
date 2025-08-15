@@ -1,18 +1,88 @@
 name: Build and push image
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - main
+      - dev
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
-  METRICS_API_DIR: src/api
+  REGISTRY: quay.io
+  ORG: ecosystem-appeng
+  REPOSITORY: aiobs
 
 jobs:
+  semantic-version:
+    name: Generate semantic version
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate semantic version
+        id: version
+        run: |
+          DEFAULT_VERSION="0.1.1"
+          # Get the latest tag or use 0.1.1 if no tags exist
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "${DEFAULT_VERSION}")
+          echo "Latest tag: $LATEST_TAG"
+
+          # Use version as-is (no 'v' prefix to remove)
+          VERSION=${LATEST_TAG}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Get commit messages from current PR/push only
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # For push events, handle initial commit case where before commit doesn't exist
+            if ! git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
+              # Initial commit - get the commit message
+              COMMITS=$(git log --pretty=format:"%B" -1 ${{ github.event.after }})
+            else
+              # Normal push - get commits from the push (full message including body)
+              COMMITS=$(git log --pretty=format:"%B" ${{ github.event.before }}..${{ github.event.after }})
+            fi
+          else
+            # For workflow_dispatch, get the last commit only (full message including body)
+            COMMITS=$(git log --pretty=format:"%B" -1)
+          fi
+
+          echo "Commit messages from current PR/push:"
+          echo "$COMMITS"
+
+          # Determine version bump and calculate new version
+          if echo "$COMMITS" | grep -qiE "(BREAKING CHANGE:?|breaking:|\!:|major:)"; then
+            echo "Bump type determined: major"
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif echo "$COMMITS" | grep -qiE "(feat:|feature:|add:|minor:)"; then
+            echo "Bump type determined: minor"
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            echo "Bump type determined: patch"
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
   build-image:
     name: Build and Push container image
     runs-on: ubuntu-latest
+    needs: semantic-version
     strategy:
       matrix:
         include:
@@ -20,22 +90,25 @@ jobs:
             context: src
             dockerfile: src/api/Dockerfile
             image-name: metrics-api
-          - name: metric-ui
-            context: src/ui
-            dockerfile: src/ui/Dockerfile
-            image-name: metric-ui
-          - name: metric-alerting
-            context: src/alerting
-            dockerfile: src/alerting/Dockerfile
-            image-name: metric-alerting
 
+          - name: metrics-ui
+            context: src
+            dockerfile: src/ui/Dockerfile
+            image-name: metrics-ui
+
+          - name: metrics-alerting
+            context: src
+            dockerfile: src/alerting/Dockerfile
+            image-name: metrics-vllm-alerting
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Quay.io
         uses: docker/login-action@v3
@@ -44,17 +117,52 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
-      - name: Set version from run number
-        id: version
-        run: |
-          echo "tag=v1.0.${GITHUB_RUN_NUMBER}" >> $GITHUB_OUTPUT
-
       - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
-          tags: quay.io/ecosystem-appeng/${{ matrix.image-name }}:${{ steps.version.outputs.tag }}
+          tags: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.REPOSITORY }}/${{ matrix.image-name }}:${{ needs.semantic-version.outputs.version }}
           build-args: |
-            IMAGE_TAG=${{ steps.version.outputs.tag }}
+            IMAGE_TAG=${{ needs.semantic-version.outputs.version }}
+
+  update-versions:
+    name: Update versions in Helm charts and Makefile
+    runs-on: ubuntu-latest
+    needs: [semantic-version, build-image]
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update metrics-api values.yaml
+        run: |
+          sed -i 's|tag: .*|tag: ${{ needs.semantic-version.outputs.version }}|' deploy/helm/metrics-api/values.yaml
+
+      - name: Update ui values.yaml
+        run: |
+          sed -i 's|tag: .*|tag: ${{ needs.semantic-version.outputs.version }}|' deploy/helm/ui/values.yaml
+
+      - name: Update alerting values.yaml
+        run: |
+          sed -i 's|tag: .*|tag: ${{ needs.semantic-version.outputs.version }}|' deploy/helm/alerting/values.yaml
+
+      - name: Update Makefile version
+        run: |
+          sed -i 's|VERSION ?= .*|VERSION ?= ${{ needs.semantic-version.outputs.version }}|' Makefile
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add deploy/helm/*/values.yaml Makefile
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update Helm chart versions and Makefile to ${{ needs.semantic-version.outputs.version }} [skip ci]"
+            git push
+          fi
+

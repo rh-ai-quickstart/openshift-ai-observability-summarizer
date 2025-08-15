@@ -1,5 +1,5 @@
 image:
-  repository: quay.io/ecosystem-appeng/vllm-alert-receiver
+  repository: quay.io/ecosystem-appeng/aiobs/metrics-vllm-alerting
   tag: 0.1.1
   pullPolicy: IfNotPresent
 

@@ -1,8 +1,8 @@
 replicaCount: 1
 
 image:
-  repository: quay.io/ecosystem-appeng/obs-metrics-mcp
-  tag: ts24
+  repository: quay.io/ecosystem-appeng/aiobs/metrics-api
+  tag: 0.1.1
 
 service:
   type: ClusterIP
