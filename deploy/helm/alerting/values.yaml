@@ -1,6 +1,6 @@
 image:
   repository: quay.io/ecosystem-appeng/aiobs/metrics-vllm-alerting
-  tag: 0.1.1
+  tag: 0.1.2
   pullPolicy: IfNotPresent
 
 schedule: "*/1 * * * *" # cron job scheduled every minute
