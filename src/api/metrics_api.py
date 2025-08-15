@@ -103,8 +103,6 @@ from core.thanos_service import (
 )
 from core.llm_summary_service import (
     generate_llm_summary,
-    extract_alert_names_from_thanos_data,
-    generate_alert_analysis
 )
 
 

@@ -287,6 +287,7 @@ class ResponseValidator:
         
         Expected structure: Single paragraph answer
         """
+
         if len(paragraphs) >= 1:
             # For general chat, typically expect one main paragraph
             # Find the end of the first substantive paragraph
