@@ -5,19 +5,19 @@ metadata:
 rules:
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["clusterroles", "clusterrolebindings"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "create", "update", "patch"]
 - apiGroups: [""]
   resources: ["serviceaccounts"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "create", "update", "patch"]
 - apiGroups: ["monitoring.coreos.com"]
   resources: ["prometheuses", "prometheusrules", "servicemonitors", "podmonitors"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "create", "update", "patch"]
 - apiGroups: ["tempo.grafana.com"]
   resources: ["tempostacks"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "create", "update", "patch"]
 - apiGroups: ["opentelemetry.io"]
   resources: ["opentelemetrycollectors", "instrumentations"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "create", "update", "patch"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
