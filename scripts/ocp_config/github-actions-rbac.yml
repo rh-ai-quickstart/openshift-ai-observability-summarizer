@@ -1,0 +1,48 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: github-actions-rbac-manager
+rules:
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles", "clusterrolebindings"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["monitoring.coreos.com"]
+  resources: ["prometheuses", "prometheusrules", "servicemonitors", "podmonitors"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["tempo.grafana.com"]
+  resources: ["tempostacks"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["opentelemetry.io"]
+  resources: ["opentelemetrycollectors", "instrumentations"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: github-actions-rbac-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: github-actions-rbac-manager
+subjects:
+- kind: ServiceAccount
+  name: github-actions
+  namespace: $NAMESPACE
+---
+# Grant cluster-admin for deployment permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: github-actions-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: github-actions
+  namespace: $NAMESPACE

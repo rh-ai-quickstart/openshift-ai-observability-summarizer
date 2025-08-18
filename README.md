@@ -29,7 +29,8 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 - [Usage](#usage)
 - [Build & Deploy](#build--deploy)
 - [Local Development](#local-development-via-port-forwarding)
-- [Testing](#testing)
+- [Running Tests with Pytest](#running-tests-with-pytest)
+- [GitHub Actions CI/CD](#github-actions-cicd)
 - [Semantic Versioning](#semantic-versioning)
 - [Contributing](#contributing)
 - [Community](#community)
@@ -399,13 +400,6 @@ make list-models
 make clean
 ```
 
-### Automated CI/CD Build
-
-The project includes GitHub Actions workflow (`.github/workflows/build-and-push.yml`) that automatically builds and pushes container images when changes are pushed to the repository.
-
-**Image naming convention:** `v1.0.{GITHUB_RUN_NUMBER}`
-
----
 
 ## Local Development via Port-Forwarding
 
@@ -495,85 +489,40 @@ To view a detailed coverage report after generating, open `htmlcov/index.html`.
 
 ---
 
+## GitHub Actions CI/CD
+
+The project uses 5 automated GitHub Actions workflows for comprehensive CI/CD:
+
+### Workflow Overview
+- **PR Review**: Run Tests and Rebase Check (parallel during PR review)
+- **Post-Merge**: Build → Deploy → Undeploy (sequential after merge)
+
+### Quick Setup
+1. **Service Account**: Run `./scripts/ocp-setup.sh -s -t -n <namespace>` to create OpenShift service account
+2. **GitHub Secrets**: Configure `OPENSHIFT_SERVER`, `OPENSHIFT_TOKEN`, `HUGGINGFACE_API_KEY`, `QUAY_USERNAME`, `QUAY_PASSWORD`
+3. **Ready**: Workflows automatically run on PR events and merges
+
+📖 **[Complete GitHub Actions Documentation](docs/GITHUB_ACTIONS.md)** - Detailed workflow configuration, service account setup, troubleshooting, and manual execution instructions.
+
+---
 
 ## Semantic Versioning
 
-This project uses automated semantic versioning based on commit message conventions.
+This project uses automated semantic versioning based on commit message conventions. Version bumps are determined by analyzing commit messages when PRs are merged.
 
 ### Version Bump Rules
+- **Major (`X`.0.0)**: Breaking changes - Keywords: `BREAKING CHANGE:`, `breaking:`, `!:`, `major:`
+- **Minor (X.`Y`.0)**: New features - Keywords: `feat:`, `feature:`, `add:`, `minor:`
+- **Patch (X.Y.`Z`)**: Bug fixes and other changes - Any other commit message
 
-- **Major (`X`.0.0)**: Breaking changes
-  - Keywords: `BREAKING CHANGE:`, `breaking:`, `!:`, `major:`
-  - Example: `refactor!: redesign API endpoints`
-
-- **Minor (X.`Y`.0)**: New features
-  - Keywords: `feat:`, `feature:`, `add:`, `minor:`
-  - Example: `feat: add user authentication`
-
-- **Patch (X.Y.`Z`)**: Bug fixes and other changes
-  - Keywords: Any other commit message
-  - Example: `fix: resolve login timeout`
-
-### How It Works
-
-1. When PRs are merged to `main` or `dev`, the build workflow analyzes commit messages
-2. Automatically calculates the next version number
-3. Updates container image tags, Helm charts, and Makefile
-
-### Examples
-
-#### Major Version Bump (`X`.0.0)
-
-Breaking changes that require major version bump:
-
+### Quick Examples
 ```bash
-# Using "BREAKING CHANGE:" in commit message body
-git commit -m "refactor: change API structure
-
-BREAKING CHANGE: API endpoints restructured"
-
-# Using "!" in commit type
-git commit -m "refactor!: change API structure"
-
-# Using "major:" keyword
-git commit -m "major: remove deprecated features"
+git commit -m "feat: add user authentication"           # Minor bump
+git commit -m "fix: resolve login timeout"             # Patch bump  
+git commit -m "refactor!: redesign API endpoints"      # Major bump
 ```
 
-#### Minor Version Bump (X.`Y`.0)
-
-New features that require minor version bump:
-
-```bash
-# New feature addition
-git commit -m "feat: add metrics dashboard"
-
-# Using "feature:" keyword
-git commit -m "feature: implement user authentication"
-
-# Using "add:" keyword
-git commit -m "add: support for new GPU metrics"
-
-# Using "minor:" keyword
-git commit -m "minor: enhance UI with new charts"
-```
-
-#### Patch Version Bump (X.Y.`Z`)
-
-Bug fixes and other changes that require patch version bump:
-
-```bash
-# Bug fix
-git commit -m "fix: resolve memory leak in alerting"
-
-# Documentation update
-git commit -m "docs: update installation guide"
-
-# Chore or maintenance
-git commit -m "chore: update dependencies"
-
-# Any commit without specific keywords
-git commit -m "resolve memory leak in alerting"
-```
+📖 **[Complete Semantic Versioning Documentation](docs/SEMANTIC_VERSIONING.md)** - Detailed rules, implementation, examples, and troubleshooting.
 
 ---
 

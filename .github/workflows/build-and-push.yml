@@ -14,7 +14,7 @@ permissions:
 env:
   REGISTRY: quay.io
   ORG: ecosystem-appeng
-  REPOSITORY: aiobs
+  IMAGE_PREFIX: aiobs
 
 jobs:
   semantic-version:
@@ -89,17 +89,17 @@ jobs:
           - name: metrics-api
             context: src
             dockerfile: src/api/Dockerfile
-            image-name: metrics-api
+            component: metrics-api
 
           - name: metrics-ui
             context: src
             dockerfile: src/ui/Dockerfile
-            image-name: metrics-ui
+            component: metrics-ui
 
           - name: metrics-alerting
             context: src
             dockerfile: src/alerting/Dockerfile
-            image-name: metrics-vllm-alerting
+            component: metrics-alerting
 
     steps:
       - name: Checkout repository
@@ -123,7 +123,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.REPOSITORY }}/${{ matrix.image-name }}:${{ needs.semantic-version.outputs.version }}
+          tags: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ needs.semantic-version.outputs.version }}
           build-args: |
             IMAGE_TAG=${{ needs.semantic-version.outputs.version }}
 
@@ -165,4 +165,3 @@ jobs:
             git commit -m "chore: update Helm chart versions and Makefile to ${{ needs.semantic-version.outputs.version }} [skip ci]"
             git push
           fi
-

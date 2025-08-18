@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: quay.io/ecosystem-appeng/aiobs/metrics-api
+  repository: quay.io/ecosystem-appeng/aiobs-metrics-api
   tag: 0.1.2
 
 service:
