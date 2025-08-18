@@ -18,7 +18,7 @@ on:
         required: false
         type: string
       delay_minutes:
-        description: 'Minutes to wait before auto-uninstall (default: 60)'
+        description: 'Minutes to wait before auto-uninstall (default: 10)'
         required: false
         default: '10'
         type: string
