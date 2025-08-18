@@ -14,9 +14,10 @@ on:
         default: 'test-workflow-deploy'
         type: string
       confirm_uninstall:
-        description: 'Confirm uninstall by typing "CONFIRM" (not required for automatic runs)'
-        required: false
-        type: string
+        description: 'I understand this will permanently delete the deployment'
+        required: true
+        default: false
+        type: boolean
       delay_minutes:
         description: 'Minutes to wait before auto-uninstall (default: 10)'
         required: false
@@ -28,12 +29,39 @@ env:
   DELAY_MINUTES: ${{ github.event.inputs.delay_minutes || '10' }}
 
 jobs:
+  check-confirmation:
+    runs-on: ubuntu-latest
+    # Only run for manual triggers without confirmation
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_uninstall != 'true' }}
+    steps:
+      - name: Log confirmation error
+        run: |
+          echo "❌ Manual undeploy workflow triggered without confirmation"
+          echo ""
+          echo "🛡️  Safety Check Failed:"
+          echo "   - Manual undeployment requires explicit confirmation"
+          echo "   - Please check the confirmation checkbox to proceed"
+          echo "   - This prevents accidental deletion of deployments"
+          echo ""
+          echo "📋 To run this workflow:"
+          echo "   1. Go to Actions → Undeploy from OpenShift"
+          echo "   2. Click 'Run workflow'"
+          echo "   3. ✅ Check the confirmation checkbox"
+          echo "   4. Specify the target namespace"
+          echo "   5. Click 'Run workflow'"
+          echo ""
+          echo "🔍 Current inputs:"
+          echo "   - Namespace: ${{ github.event.inputs.namespace || 'test-workflow-deploy' }}"
+          echo "   - Confirmation: ${{ github.event.inputs.confirm_uninstall }}"
+          echo "   - Delay: ${{ github.event.inputs.delay_minutes || '10' }} minutes"
+          exit 1
+
   undeploy:
     runs-on: ubuntu-latest
     # Run if:
     # 1. Deploy workflow completed successfully (automatic)
     # 2. Manual trigger with confirmation (manual)
-    if: ${{ (github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_uninstall == 'CONFIRM') }}
+    if: ${{ (github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_uninstall == 'true') }}
 
     steps:
       - name: Determine run type and delay

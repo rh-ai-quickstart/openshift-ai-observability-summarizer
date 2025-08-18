@@ -140,9 +140,9 @@ After running the setup script, configure these secrets in your GitHub repositor
 
 **Undeploy Workflow:**
 - **Automatic trigger:** Runs after successful deployment with configurable delay (default: 10 minutes)
-- **Manual trigger:** Requires typing "CONFIRM" and specifying namespace
+- **Manual trigger:** Requires checking confirmation checkbox and specifying namespace
 - **Configurable delay:** Set custom wait time before auto-cleanup
-- **Safety features:** Can be cancelled during delay period
+- **Safety features:** Can be cancelled during delay period, mandatory confirmation for manual runs
 
 ## Manual Workflow Execution
 
@@ -167,7 +167,7 @@ Most workflows run automatically, but some can be triggered manually:
 
 **Undeploy from OpenShift:**
 - `namespace`: Target namespace (default: `test-workflow-deploy`)
-- `confirm_uninstall`: Must type "CONFIRM" for manual runs
+- `confirm_uninstall`: Must check the confirmation checkbox for manual runs
 - `delay_minutes`: Wait time before auto-uninstall (default: `10`)
 
 ## Workflow Variables
@@ -180,7 +180,7 @@ The workflows use these environment variables and inputs:
 
 **Undeploy Workflow:**
 - `namespace`: Target OpenShift namespace (default: `test-workflow-deploy`)
-- `confirm_uninstall`: Must type "CONFIRM" for manual runs
+- `confirm_uninstall`: Must check confirmation checkbox for manual runs (required: true, default: false)
 - `delay_minutes`: Wait time before auto-uninstall (default: `10`)
 
 ## Troubleshooting
