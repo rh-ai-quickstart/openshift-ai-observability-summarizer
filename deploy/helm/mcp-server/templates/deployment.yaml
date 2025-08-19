@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-app
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-app
+    spec:
+      serviceAccountName: mcp-analyzer
+      restartPolicy: Always
+      containers:
+        - name: mcp-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            - name: MCP_HOST
+              value: "{{ .Values.env.MCP_HOST }}"
+            - name: MCP_PORT
+              value: "{{ .Values.env.MCP_PORT }}"
+            - name: MCP_TRANSPORT_PROTOCOL
+              value: "{{ .Values.env.MCP_TRANSPORT_PROTOCOL }}"
+            - name: PYTHON_LOG_LEVEL
+              value: "{{ .Values.env.PYTHON_LOG_LEVEL }}"
+            {{- if .Values.tls.enabled }}
+            - name: MCP_SSL_KEYFILE
+              value: "/run/secrets/tls/tls.key"
+            - name: MCP_SSL_CERTFILE
+              value: "/run/secrets/tls/tls.crt"
+            {{- end }}
+            - name: PROMETHEUS_URL
+              value: "{{ .Values.env.PROMETHEUS_URL }}"
+            - name: NAMESPACE
+              value: "{{ .Release.Namespace }}"
+            - name: THANOS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-analyzer
+                  key: token
+            {{- if .Values.llm.url }}
+            - name: LLAMA_STACK_URL
+              value: "{{ .Values.llm.url }}"
+            {{- end }}
+            {{- if .Values.llm.apiToken }}
+            - name: LLM_API_TOKEN
+              value: "{{ .Values.llm.apiToken }}"
+            {{- end }}
+            - name: MODEL_CONFIG
+              value: '{{ .Values.modelConfig | toJson }}'
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: thanos-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            {{- if .Values.trustedCA.enabled }}
+            - name: trusted-ca
+              mountPath: /etc/pki/ca-trust/extracted/pem
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: thanos-token
+          secret:
+            secretName: mcp-analyzer
+            defaultMode: 0440
+        {{- if .Values.trustedCA.enabled }}
+        - name: trusted-ca
+          configMap:
+            name: {{ default (printf "%s-trusted-ca-bundle" .Release.Name) .Values.trustedCA.configMapName }}
+            items:
+              - key: service-ca.crt
+                path: ca-bundle.crt
+        {{- end }}
+
+

@@ -1,28 +1,19 @@
-FROM registry.access.redhat.com/ubi9/python-311:latest
-
-USER 0
-RUN ln -sf /usr/bin/python3.11 /usr/bin/python \
-    && ln -sf /usr/bin/pip3.11 /usr/bin/pip \
-    && chmod -R g+rwX /opt/app-root \
-    && chgrp -R 0 /opt/app-root
+FROM registry.access.redhat.com/ubi9/python-312:latest
 
 WORKDIR /app
 
-RUN python --version \
- && python -c "import sys; print('Python version:', sys.version)"
-
-COPY mcp-server/requirements.txt .
+# Copy and install Python dependencies via pip using requirements.txt
+COPY src/mcp_server/requirements.txt /app/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip \
- && python -m pip install --no-cache-dir -r requirements.txt
+    && python -m pip install --no-cache-dir -r /app/requirements.txt
 
-COPY core/ core/
-COPY mcp_server/ mcp_server/
+# Copy source code
+COPY src/core /app/core
+COPY src/mcp_server /app/mcp_server
 
-RUN chmod -R g+rwX /app && chgrp -R 0 /app
-USER 1001
+ENV PYTHONPATH=/app
+EXPOSE 8085
 
-EXPOSE 8080
-
-CMD ["python", "-m", "uvicorn", "mcp_server.api:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "mcp_server.main"]
 
 

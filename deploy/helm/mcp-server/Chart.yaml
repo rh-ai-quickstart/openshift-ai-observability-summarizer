@@ -1,0 +1,7 @@
+apiVersion: v2
+name: mcp-server
+description: Helm chart for Observability MCP Server
+version: 0.1.0
+appVersion: "1.0"
+
+

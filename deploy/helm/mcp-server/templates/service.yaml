@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-svc
+  {{- if and .Values.tls.enabled .Values.tls.serviceCertAnnotation }}
+  annotations:
+    {{ .Values.tls.serviceCertAnnotation }}: {{ .Values.tls.secretName }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: {{ .Release.Name }}-app
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.port }}
+
+

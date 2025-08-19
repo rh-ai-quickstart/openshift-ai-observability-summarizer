@@ -201,6 +201,72 @@ When running as HTTP server:
 - `/health` - Health check endpoint
 - `/mcp` - MCP HTTP transport endpoint
 
+## 🚀 OpenShift deployment and testing
+
+### 1) Deploy with Make
+
+```bash
+make install-mcp-server NAMESPACE=<namespace>
+```
+
+Notes:
+- Image comes from Makefile vars. Override as needed:
+  - `REGISTRY`, `ORG`, `REPOSITORY`, `VERSION`
+- Optional route host: set `MCP_SERVER_ROUTE_HOST=<host>`
+- To change Prometheus URL or model config, edit `deploy/helm/mcp-server/values.yaml` (or use the Helm flags below).
+
+#### Alternative: Helm
+
+```bash
+# Namespace must exist and you must be logged in with oc
+helm upgrade --install mcp-server deploy/helm/mcp-server -n <namespace> \
+  --set image.repository=quay.io/<org>/<repo>/mcp-server \
+  --set image.tag=0.1.2 \
+  --set env.PROMETHEUS_URL=https://thanos-querier.openshift-monitoring.svc.cluster.local:9091 \
+  --set-json modelConfig='{"llama-3-2-3b-instruct":{"external":false,"modelName":"llama-3.2-3b"}}'
+```
+
+Notes:
+- ServiceAccount `mcp-analyzer` is created; it mounts a token as `THANOS_TOKEN` and sets `NAMESPACE` automatically.
+- A release-scoped CA bundle ConfigMap `<release>-trusted-ca-bundle` is created and mounted to enable TLS verification for in-cluster services.
+- RBAC ClusterRoleBindings are created to grant access to Thanos and cluster/user monitoring views. The cluster-scoped `grafana-prometheus-reader` role is NOT created by default to avoid ownership conflicts; enable with `--set rbac.createGrafanaRole=true` only in fresh clusters.
+
+Optional settings:
+- Route host: `--set route.host=<custom-host>` (otherwise OpenShift assigns one)
+- SSE transport: `--set env.MCP_TRANSPORT_PROTOCOL=sse`
+
+### 2) Connect to the server
+
+From the health route you will see the transport and endpoint, for example:
+
+```text
+{"status":"healthy","service":"observability-mcp-server","transport_protocol":"http","mcp_endpoint":"/mcp"}
+```
+
+- HTTP / Streamable HTTP:
+```bash
+npx @modelcontextprotocol/inspector http https://<route>/mcp
+```
+- SSE (only if enabled):
+```bash
+npx @modelcontextprotocol/inspector sse https://<route>/sse
+```
+
+### 3) Troubleshooting
+
+- 404 on connect: ensure the URL includes the MCP path (`/mcp` for HTTP, `/sse` for SSE). The route root `/` returns 404.
+- 403 from Thanos/Prometheus:
+  - Verify RBAC ClusterRoleBindings exist for `mcp-analyzer` and that the pod uses this ServiceAccount.
+  - Confirm `THANOS_TOKEN` env is present and the CA bundle is mounted at `/etc/pki/ca-trust/extracted/pem/ca-bundle.crt`.
+  - Test manually:
+    ```bash
+    TOKEN=$(oc -n <namespace> create token mcp-analyzer)
+    curl -sS -H "Authorization: Bearer $TOKEN" \
+      https://thanos-querier.openshift-monitoring.svc.cluster.local:9091/api/v1/query?query=up \
+      --cacert /etc/pki/ca-trust/extracted/pem/ca-bundle.crt
+    ```
+- TLS issues: ensure the CA bundle ConfigMap is injected (`trusted-ca-bundle`) and mounted; or set `VERIFY_SSL` to `true` (default) and keep the mount.
+
 ## 🛠️ Troubleshooting
 
 ### Server Not Starting

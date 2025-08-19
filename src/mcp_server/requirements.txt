@@ -1,0 +1,14 @@
+fastapi>=0.116.1
+uvicorn>=0.35.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+structlog>=25.0.0
+requests>=2.32.4
+httpx>=0.24.0
+python-dotenv>=1.0.0
+pandas>=2.3.1
+numpy>=1.24.0
+scipy>=1.16.0
+dateparser>=1.2.2
+fastmcp>=2.11
+
