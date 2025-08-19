@@ -154,6 +154,11 @@ jobs:
             dockerfile: src/alerting/Dockerfile
             component: metrics-alerting
 
+          - name: mcp-server
+            context: src
+            dockerfile: src/mcp_server/Dockerfile
+            component: mcp-server
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -202,6 +207,10 @@ jobs:
       - name: Update alerting values.yaml
         run: |
           sed -i 's|tag: .*|tag: ${{ needs.semantic-version.outputs.version }}|' deploy/helm/alerting/values.yaml
+
+      - name: Update mcp-server values.yaml
+        run: |
+          sed -i 's|tag: .*|tag: ${{ needs.semantic-version.outputs.version }}|' deploy/helm/mcp-server/values.yaml
 
       - name: Update Makefile version
         run: |

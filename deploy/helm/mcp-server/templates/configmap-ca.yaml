@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ default (printf "%s-trusted-ca-bundle" .Release.Name) .Values.trustedCA.configMapName }}
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+data:
+  service-ca.crt: ""
+
+

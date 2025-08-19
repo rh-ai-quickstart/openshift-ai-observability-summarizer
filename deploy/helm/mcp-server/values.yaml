@@ -1,0 +1,57 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/ecosystem-appeng/aiobs-mcp-server
+  tag: 0.1.2
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8085
+  annotations: {}
+
+route:
+  enabled: true
+  host: ""
+  tls:
+    termination: edge
+
+env:
+  MCP_HOST: "0.0.0.0"
+  MCP_PORT: 8085
+  MCP_TRANSPORT_PROTOCOL: "http"
+  PYTHON_LOG_LEVEL: "INFO"
+  PROMETHEUS_URL: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+
+tls:
+  enabled: false
+  secretName: mcp-server-tls
+  serviceCertAnnotation: service.beta.openshift.io/serving-cert-secret-name
+
+# JSON map of model configs exposed to tools (converted to env MODEL_CONFIG)
+modelConfig: {}
+
+# Optional LLM endpoint settings (not required by tools, but available)
+llm:
+  url: ""
+  apiToken: ""
+
+# Mount OpenShift service CA to enable HTTPS verification for in-cluster services
+trustedCA:
+  enabled: true
+  configMapName: ""
+
+# RBAC setup similar to metrics-api
+rbac:
+  createGrafanaRole: false
+
+
+resources:
+  requests:
+    cpu: "1"
+    memory: "1Gi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+
+
