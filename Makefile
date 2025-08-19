@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting push push-metrics-api push-ui push-alerting install-observability uninstall-observability clean config test,$(MAKECMDGOALS)))
+ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting push push-metrics-api push-ui push-alerting install-observability uninstall-observability clean config test,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -13,14 +13,14 @@ MAKEFLAGS += --no-print-directory
 # Default values
 REGISTRY ?= quay.io
 ORG ?= ecosystem-appeng
-REPOSITORY ?= aiobs
+IMAGE_PREFIX ?= aiobs
 VERSION ?= 0.1.2
 PLATFORM ?= linux/amd64
 
 # Container image names
-METRICS_API_IMAGE = $(REGISTRY)/$(ORG)/$(REPOSITORY)/metrics-api
-METRICS_UI_IMAGE = $(REGISTRY)/$(ORG)/$(REPOSITORY)/metrics-ui
-METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(REPOSITORY)/metrics-vllm-alerting
+METRICS_API_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-api
+METRICS_UI_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-ui
+METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-alerting
 
 
 # Build tools
@@ -145,7 +145,7 @@ help:
 	@echo "Configuration (set via environment variables):"
 	@echo "  REGISTRY           - Container registry (default: quay.io)"
 	@echo "  ORG                - Account or org name (default: ecosystem-appeng)"
-	@echo "  REPOSITORY         - Image prefix (default: aiobs)"
+	@echo "  IMAGE_PREFIX       - Image prefix (default: aiobs)"
 	@echo "  VERSION            - Image version (default: 0.1.0)"
 	@echo "  PLATFORM           - Target platform (default: linux/amd64)"
 	@echo "  BUILD_TOOL         - Build tool: docker or podman (auto-detected)"
@@ -460,7 +460,7 @@ config:
 	@echo "🔧 Current Build Configuration:"
 	@echo "  Registry: $(REGISTRY)"
 	@echo "  Org: $(ORG)"
-	@echo "  Repository: $(REPOSITORY)"
+	@echo "  Image Prefix: $(IMAGE_PREFIX)"
 	@echo "  Version: $(VERSION)"
 	@echo "  Platform: $(PLATFORM)"
 	@echo "  Build Tool: $(BUILD_TOOL)"

@@ -2,13 +2,14 @@ name: Run Tests
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, reopened]
+    branches: [ main, dev ]
+  push:
     branches: [ main, dev ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
 
     steps:
       - name: Checkout repository

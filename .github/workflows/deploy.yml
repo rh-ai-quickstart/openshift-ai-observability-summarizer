@@ -1,32 +1,55 @@
 name: Deploy to OpenShift
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    # Workflows this workflow depends on
+    workflows: ["Build and push image"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: 'Target namespace for deployment'
+        required: false
+        default: 'test-workflow-deploy'
+        type: string
+      force_deploy:
+        description: 'Force deployment even if build workflow did not run'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NAMESPACE: ${{ github.event.inputs.namespace || 'test-workflow-deploy' }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Run this workflow when:
+    # 1. Build workflow completes successfully (automatic)
+    # 2. Manually triggered (workflow_dispatch)
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install OpenShift CLI
-        run: |
-          curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/openshift-client-linux.tar.gz
-          tar -xvf openshift-client-linux.tar.gz
-          sudo mv oc /usr/local/bin/oc
+        uses: redhat-actions/openshift-tools-installer@v1
+        with:
+          oc: 4
 
       - name: Login to OpenShift
-        run: |
-          oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_SECRET }}
+        uses: redhat-actions/oc-login@v1
+        with:
+          openshift_server_url: ${{ secrets.OPENSHIFT_SERVER }}
+          openshift_token: ${{ secrets.OPENSHIFT_TOKEN }}
+          insecure_skip_tls_verify: true # Set to false if we have a valid certificate
 
       - name: Deploy metrics-summarizer with Makefile
         env:
           HF_TOKEN: ${{ secrets.HUGGINGFACE_API_KEY }}
-          NAMESPACE: metrics-summarizer
+          NAMESPACE: ${{ env.NAMESPACE }}
         run: |
-          cd deploy/helm
+          # Run make target from root dir
           make install
