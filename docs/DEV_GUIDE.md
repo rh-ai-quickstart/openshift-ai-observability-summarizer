@@ -51,31 +51,25 @@ summarizer/
 - `yq` (YAML processor)
 - Docker or Podman
 
-### Environment Setup
-```bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Sync dependencies
-uv sync --group dev
-
-# Activate virtual environment
-source .venv/bin/activate
-
-# Set namespace for development
-export LLM_NAMESPACE=<your-namespace>
-```
 
 ### Local Development
 ```bash
 # Set up port-forwarding to cluster services
-make deploy-local
+LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
 
 # This runs ./scripts/local-dev.sh which sets up:
 # - Port-forwarding to Llamastack (8000:8000)
 # - Port-forwarding to llm-service (8001:8001)  
 # - Port-forwarding to Thanos (9090:9090)
+
+# Example:
+LLM_NAMESPACE=test make install-local
 ```
+
+**Note**: The `LLM_NAMESPACE` environment variable is used by the `./scripts/local-dev.sh` script to:
+- Set up port-forwarding to the correct namespace
+- Configure the local development environment
+- Ensure all services are accessible from your local machine
 
 ## 🏗️ Architecture & Data Flow
 
@@ -239,30 +233,30 @@ Common models include:
 ### 1. Feature Development
 ```bash
 # 1. Set up local environment
-uv sync --group dev
-source .venv/bin/activate
+LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
 
-# 2. Set up port-forwarding
-make deploy-local
+# 2. Make changes to source code
 
-# 3. Make changes to source code
+# 3. Run tests
+make test
 
-# 4. Run tests
-uv run pytest -v
-
-# 5. Build and test locally
+# 4. Build and test locally
 make build
 ```
 
 ### 2. Bug Fixing
 ```bash
-# 1. Reproduce issue locally
-make deploy-local
+# 1. Setup local environment
+LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
 
-# 2. Run specific test
+# 2. Activate virtual environment
+uv sync --group dev
+source .venv/bin/activate
+
+# 3. Run specific test
 uv run pytest -v tests/core/test_specific_feature.py
 
-# 3. Debug with coverage
+# 4. Debug with coverage
 uv run pytest -v --cov=src --cov-report=term-missing
 ```
 
@@ -286,9 +280,14 @@ make uninstall NAMESPACE=test-namespace
 
 ## 📊 Monitoring & Debugging
 
+### Setup Namespace
+```bash
+export LLM_NAMESPACE=<TARGET_NAMESPACE>
+```
+
 ### Port Forwarding
 ```bash
-# Manual port-forwarding (if make deploy-local fails)
+# Manual port-forwarding (if make install-local fails)
 oc port-forward svc/llama-stack 8000:8000 -n $LLM_NAMESPACE &
 oc port-forward svc/llm-service 8001:8001 -n $LLM_NAMESPACE &
 oc port-forward svc/thanos-query 9090:9090 -n $LLM_NAMESPACE &
@@ -304,6 +303,7 @@ oc logs -f deployment/metric-alerting -n $LLM_NAMESPACE
 
 ### Metrics
 ```bash
+
 # Access Prometheus metrics
 oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
 # Then visit http://localhost:8000/metrics
@@ -312,7 +312,7 @@ oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
 ## 🛠️ Useful Makefile Targets
 
 ### Development
-- `make deploy-local` - Set up local development environment
+- `LLM_NAMESPACE=<namespace> make install-local` - Set up local development environment
 - `make test` - Run unit tests with coverage
 - `make clean` - Clean up local images
 
@@ -343,7 +343,7 @@ oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
 oc get pods -n $LLM_NAMESPACE
 
 # Restart port-forwarding
-make deploy-local
+LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
 ```
 
 #### Tests Fail
@@ -386,6 +386,37 @@ oc get events -n $LLM_NAMESPACE --sort-by='.lastTimestamp'
 - No secrets should be logged or committed to repository
 - API endpoints use proper authentication and authorization
 
+## 🔐 Credential Management
+
+### Required Credentials
+- **Quay Registry**: Username and password for container image pushing
+- **OpenShift**: Server URL and authentication token
+- **Hugging Face**: API token for model access
+
+### Retrieving Credentials
+
+#### Quay Registry Access
+- **Search for**: `Appeng Quay ecosystem-appeng+aiobs kubernetes secret and token` in Bitwarden
+  - **Required fields**: Username and Password
+- **Purpose**: Pushing container images to Quay registry
+
+#### OpenShift Access
+- **For GitHub Actions workflows**: Run `./scripts/ocp-setup.sh -s -n <namespace>` to generate the required token
+- **Manual setup**: Access your password manager and search for:
+  - `openshift-ai-observability-summarizer ai-kickstart (aiobs)` for OCP server user/password
+  - **Required fields**: Username and Password
+- **Purpose**: Deploying to OpenShift clusters
+
+#### Hugging Face Access
+- User your personal "Hugging Face" token (_read token is sufficient_)
+- **Purpose**: Accessing AI models and datasets
+
+### Security Best Practices
+- Never commit credentials to source code
+- Use GitHub repository secrets for CI/CD
+- Rotate credentials regularly
+- Limit credential scope to minimum required permissions
+
 ## 📚 Additional Resources
 
 - **README.md** - Comprehensive project overview and setup
@@ -402,7 +433,7 @@ oc get events -n $LLM_NAMESPACE --sort-by='.lastTimestamp'
 - **Helm Charts**: `deploy/helm/`
 
 ### Key Commands
-- **Local Dev**: `make deploy-local`
+- **Local Dev**: `LLM_NAMESPACE=<namespace> make install-local`
 - **Tests**: `uv run pytest -v`
 - **Build**: `make build`
 - **Deploy**: `make install NAMESPACE=ns`
