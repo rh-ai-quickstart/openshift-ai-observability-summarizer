@@ -48,24 +48,28 @@ jobs:
           MINOR_PATTERN="(feat:|feature:|add:|minor:)"
           PATCH_PATTERN="(patch|bugfix|fix|documentation)"
 
-          # Get commit messages from current PR/push only
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # For push events, handle initial commit case where before commit doesn't exist
-            if ! git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
-              # Initial commit - get the commit message
-              COMMITS=$(git log --pretty=format:"%B" -1 ${{ github.event.after }})
-            else
-              # Normal push - get commits from the push (full message including body)
+          # Get commit messages - use simple, robust approach
+          # For merged PRs and manual dispatch, analyze recent commits
+          # For push events, use the push range if available
+
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            # Normal push event with valid before SHA
+            if git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
               COMMITS=$(git log --pretty=format:"%B" ${{ github.event.before }}..${{ github.event.after }})
+            else
+              # Fallback if before SHA is not available
+              COMMITS=$(git log --pretty=format:"%B" -1)
             fi
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            # For PR events, get commits from the PR
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-            COMMITS=$(git log --pretty=format:"%B" ${BASE_SHA}..${HEAD_SHA})
           else
-            # For workflow_dispatch, get the last commit only (full message including body)
-            COMMITS=$(git log --pretty=format:"%B" -1)
+            # For merged PRs, workflow_dispatch, or initial commits
+            # Get the most recent commit(s) - this is safe and always works
+            if git log --oneline -1 >/dev/null 2>&1; then
+              COMMITS=$(git log --pretty=format:"%B" -1)
+            else
+              # Handle completely empty repository
+              COMMITS="Initial commit"
+              echo "Warning: No git history found, using default commit message"
+            fi
           fi
 
           # Get PR information for better version determination
