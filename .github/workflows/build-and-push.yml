@@ -33,14 +33,20 @@ jobs:
       - name: Calculate semantic version
         id: version
         run: |
-          DEFAULT_VERSION="0.1.1"
-          # Get the latest tag or use 0.1.1 if no tags exist
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "${DEFAULT_VERSION}")
-          echo "Latest tag: $LATEST_TAG"
-
-          # Use version as-is (no 'v' prefix to remove)
-          VERSION=${LATEST_TAG}
+          # Get the current version from Makefile as we are not creating git tags
+          VERSION=$(grep "^VERSION.*=" Makefile | sed 's/VERSION.*= //' | head -1)
+          if [ -z "$VERSION" ]; then
+            VERSION="0.1.1"
+            echo "No VERSION found in Makefile, using default: $VERSION"
+          else
+            echo "Current version from Makefile: $VERSION"
+          fi
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Define regex patterns for version detection
+          MAJOR_PATTERN="(BREAKING CHANGE:?|breaking:|\!:|major:)"
+          MINOR_PATTERN="(feat:|feature:|add:|minor:)"
+          PATCH_PATTERN="(patch|bugfix|fix|documentation)"
 
           # Get commit messages from current PR/push only
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -52,26 +58,69 @@ jobs:
               # Normal push - get commits from the push (full message including body)
               COMMITS=$(git log --pretty=format:"%B" ${{ github.event.before }}..${{ github.event.after }})
             fi
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            # For PR events, get commits from the PR
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            COMMITS=$(git log --pretty=format:"%B" ${BASE_SHA}..${HEAD_SHA})
           else
             # For workflow_dispatch, get the last commit only (full message including body)
             COMMITS=$(git log --pretty=format:"%B" -1)
           fi
 
+          # Get PR information for better version determination
+          PR_TITLE=""
+          PR_LABELS=""
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_TITLE='${{ github.event.pull_request.title }}'
+            PR_LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
+          fi
+
           echo "Commit messages from current PR/push:"
           echo "$COMMITS"
 
+          if [ -n "$PR_TITLE" ]; then
+            echo "PR Title: $PR_TITLE"
+            echo "PR Labels: $PR_LABELS"
+          fi
+
           # Determine version bump and calculate new version
-          if echo "$COMMITS" | grep -qiE "(BREAKING CHANGE:?|breaking:|\!:|major:)"; then
-            echo "Bump type determined: major"
+          # Check PR labels first (highest priority)
+          if [ -n "$PR_LABELS" ] && echo "$PR_LABELS" | grep -qiE "$MAJOR_PATTERN"; then
+            echo "Bump type determined: major (from PR labels)"
             MAJOR=$((MAJOR + 1))
             MINOR=0
             PATCH=0
-          elif echo "$COMMITS" | grep -qiE "(feat:|feature:|add:|minor:)"; then
-            echo "Bump type determined: minor"
+          elif [ -n "$PR_LABELS" ] && echo "$PR_LABELS" | grep -qiE "$MINOR_PATTERN"; then
+            echo "Bump type determined: minor (from PR labels)"
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          elif [ -n "$PR_LABELS" ] && echo "$PR_LABELS" | grep -qiE "$PATCH_PATTERN"; then
+            echo "Bump type determined: patch (from PR labels)"
+            PATCH=$((PATCH + 1))
+          # Check PR title
+          elif [ -n "$PR_TITLE" ] && echo "$PR_TITLE" | grep -qiE "$MAJOR_PATTERN"; then
+            echo "Bump type determined: major (from PR title)"
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ -n "$PR_TITLE" ] && echo "$PR_TITLE" | grep -qiE "$MINOR_PATTERN"; then
+            echo "Bump type determined: minor (from PR title)"
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          # Fall back to commit message analysis
+          elif echo "$COMMITS" | grep -qiE "$MAJOR_PATTERN"; then
+            echo "Bump type determined: major (from commit messages)"
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif echo "$COMMITS" | grep -qiE "$MINOR_PATTERN"; then
+            echo "Bump type determined: minor (from commit messages)"
             MINOR=$((MINOR + 1))
             PATCH=0
           else
-            echo "Bump type determined: patch"
+            echo "Bump type determined: patch (default)"
             PATCH=$((PATCH + 1))
           fi
 
@@ -156,12 +205,12 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           git add deploy/helm/*/values.yaml Makefile
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore: update Helm chart versions and Makefile to ${{ needs.semantic-version.outputs.version }} [skip ci]"
+            git commit -m "chore: update Helm chart versions and Makefile to ${{ needs.semantic-version.outputs.version }}"
             git push
           fi

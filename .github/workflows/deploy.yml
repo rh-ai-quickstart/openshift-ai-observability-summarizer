@@ -11,7 +11,7 @@ on:
       namespace:
         description: 'Target namespace for deployment'
         required: false
-        default: 'test-workflow-deploy'
+        default: 'dev'
         type: string
       force_deploy:
         description: 'Force deployment even if build workflow did not run'
@@ -20,7 +20,7 @@ on:
         type: boolean
 
 env:
-  NAMESPACE: ${{ github.event.inputs.namespace || 'test-workflow-deploy' }}
+  NAMESPACE: ${{ github.event.inputs.namespace || 'dev' }}
 
 jobs:
   deploy:
