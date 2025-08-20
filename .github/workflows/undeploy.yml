@@ -1,88 +1,63 @@
 name: Undeploy from OpenShift
 
 on:
-  workflow_run:
-    # Automatically undeploy after successful deployment
-    workflows: ["Deploy to OpenShift"]
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       namespace:
         description: 'Target namespace for undeployment'
-        required: false
-        default: 'test-workflow-deploy'
+        required: true
         type: string
       confirm_uninstall:
-        description: 'I understand this will permanently delete the deployment'
+        description: 'Type "DELETE {namespace}" using the exact namespace name to confirm permanent deletion'
         required: true
-        default: false
-        type: boolean
-      delay_minutes:
-        description: 'Minutes to wait before auto-uninstall (default: 10)'
-        required: false
-        default: '10'
         type: string
-
 env:
-  NAMESPACE: ${{ github.event.inputs.namespace || 'test-workflow-deploy' }}
-  DELAY_MINUTES: ${{ github.event.inputs.delay_minutes || '10' }}
+  NAMESPACE: ${{ github.event.inputs.namespace }}
 
 jobs:
   check-confirmation:
     runs-on: ubuntu-latest
-    # Only run for manual triggers without confirmation
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_uninstall != 'true' }}
+    # Only run for manual triggers without proper confirmation
+    if: ${{ github.event.inputs.confirm_uninstall != format('DELETE {0}', github.event.inputs.namespace) }}
     steps:
       - name: Log confirmation error
         run: |
-          echo "❌ Manual undeploy workflow triggered without confirmation"
+          EXPECTED="DELETE ${{ github.event.inputs.namespace }}"
+          echo "❌ Manual undeploy workflow triggered without proper confirmation"
           echo ""
           echo "🛡️  Safety Check Failed:"
-          echo "   - Manual undeployment requires explicit confirmation"
-          echo "   - Please check the confirmation checkbox to proceed"
+          echo "   - Manual undeployment requires typing the exact phrase including namespace"
+          echo "   - Expected: '$EXPECTED'"
+          echo "   - You entered: '${{ github.event.inputs.confirm_uninstall }}'"
           echo "   - This prevents accidental deletion of deployments"
           echo ""
           echo "📋 To run this workflow:"
           echo "   1. Go to Actions → Undeploy from OpenShift"
           echo "   2. Click 'Run workflow'"
-          echo "   3. ✅ Check the confirmation checkbox"
-          echo "   4. Specify the target namespace"
+          echo "   3. Specify the target namespace"
+          echo "   4. ✅ Type '$EXPECTED' (without quotes) in the confirmation field"
           echo "   5. Click 'Run workflow'"
           echo ""
           echo "🔍 Current inputs:"
-          echo "   - Namespace: ${{ github.event.inputs.namespace || 'test-workflow-deploy' }}"
-          echo "   - Confirmation: ${{ github.event.inputs.confirm_uninstall }}"
-          echo "   - Delay: ${{ github.event.inputs.delay_minutes || '10' }} minutes"
+          echo "   - Namespace: ${{ github.event.inputs.namespace }}"
+          echo "   - Confirmation: '${{ github.event.inputs.confirm_uninstall }}'"
+          echo "   - Required: '$EXPECTED'"
           exit 1
 
   undeploy:
     runs-on: ubuntu-latest
-    # Run if:
-    # 1. Deploy workflow completed successfully (automatic)
-    # 2. Manual trigger with confirmation (manual)
-    if: ${{ (github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_uninstall == 'true') }}
+    # Only run with manual trigger and proper confirmation
+    if: ${{ github.event.inputs.confirm_uninstall == format('DELETE {0}', github.event.inputs.namespace) }}
 
     steps:
-      - name: Determine run type and delay
-        id: run_info
+      - name: Log undeploy initiation
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "run_type=automatic" >> $GITHUB_OUTPUT
-            echo "🤖 Automatic undeploy triggered after successful deployment"
-            echo "⏰ Will wait ${{ env.DELAY_MINUTES }} minutes before uninstalling from namespace: ${{ env.NAMESPACE }}"
-          else
-            echo "run_type=manual" >> $GITHUB_OUTPUT
-            echo "👤 Manual undeploy triggered for namespace: ${{ env.NAMESPACE }}"
-          fi
-
-      - name: Wait before auto-uninstall
-        if: steps.run_info.outputs.run_type == 'automatic'
-        run: |
-          echo "⏳ Waiting ${{ env.DELAY_MINUTES }} minutes before auto-uninstall..."
-          echo "This gives time to test the deployment before cleanup."
-          echo "To cancel this workflow, go to Actions tab and cancel this run."
-          sleep ${{ env.DELAY_MINUTES }}m
+          echo "🚨 UNDEPLOY OPERATION INITIATED"
+          echo "👤 User: ${{ github.actor }} (${{ github.triggering_actor }})"
+          echo "🎯 Target Namespace: ${{ env.NAMESPACE }}"
+          echo "⏰ Started at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "✅ Confirmation received: ${{ github.event.inputs.confirm_uninstall }}"
+          echo "🔗 Workflow Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -102,13 +77,17 @@ jobs:
       - name: Show deployment context
         run: |
           echo "📋 Undeploy Context:"
-          echo "  Run Type: ${{ steps.run_info.outputs.run_type }}"
+          echo "  Run Type: manual"
           echo "  Namespace: ${{ env.NAMESPACE }}"
-          echo "  Trigger: ${{ github.event_name }}"
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "  Triggered by: Deploy workflow completion"
-            echo "  Deploy status: ${{ github.event.workflow_run.conclusion }}"
-          fi
+          echo "  Trigger: workflow_dispatch"
+          echo "  Triggered by: ${{ github.actor }}"
+          echo "  User ID: ${{ github.triggering_actor }}"
+          echo "  Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "  Repository: ${{ github.repository }}"
+          echo "  Branch: ${{ github.ref_name }}"
+          echo "  Commit: ${{ github.sha }}"
+          echo "  Workflow Run: ${{ github.run_id }}"
+          echo "  Confirmation: ${{ github.event.inputs.confirm_uninstall }}"
 
       - name: Show resources before uninstall
         run: |
@@ -121,3 +100,11 @@ jobs:
         run: |
           echo "🗑️ Uninstalling from namespace: ${{ env.NAMESPACE }}"
           make uninstall NAMESPACE=${{ env.NAMESPACE }}
+
+      - name: Log undeploy completion
+        run: |
+          echo "✅ UNDEPLOY OPERATION COMPLETED"
+          echo "👤 User: ${{ github.actor }} (${{ github.triggering_actor }})"
+          echo "🎯 Namespace: ${{ env.NAMESPACE }} - UNDEPLOYED"
+          echo "⏰ Completed at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "🔗 Workflow Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

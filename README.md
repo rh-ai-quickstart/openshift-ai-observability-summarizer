@@ -531,7 +531,13 @@ The project uses 5 automated GitHub Actions workflows for comprehensive CI/CD:
 
 ### Workflow Overview
 - **PR Review**: Run Tests and Rebase Check (parallel during PR review)
-- **Post-Merge**: Build → Deploy → Undeploy (sequential after merge)
+- **Post-Merge**: Build → Deploy (sequential after merge)
+- **Manual**: Undeploy (manual only with safety confirmation)
+
+### Key Changes
+- **Semantic Versioning**: Now prioritizes PR labels and PR title over commit messages
+- **Deploy Workflow**: Default namespace `dev`
+- **Undeploy Workflow**: Manual execution only with required safety confirmation
 
 ### Quick Setup
 1. **Service Account**: Run `./scripts/ocp-setup.sh -s -t -n <namespace>` to create OpenShift service account
@@ -544,18 +550,29 @@ The project uses 5 automated GitHub Actions workflows for comprehensive CI/CD:
 
 ## Semantic Versioning
 
-This project uses automated semantic versioning based on commit message conventions. Version bumps are determined by analyzing commit messages when PRs are merged.
+This project uses automated semantic versioning based on PR labels, PR titles, and commit message conventions. Version bumps are determined by analyzing PRs in order of priority when merged.
+
+### Version Bump Priority Order
+1. **PR Labels** (highest priority) - Add labels like `major`, `feature`, `bugfix`
+2. **PR Title** (medium priority) - Use conventional commit format in PR title
+3. **Commit Messages** (fallback) - Traditional commit message analysis
 
 ### Version Bump Rules
-- **Major (`X`.0.0)**: Breaking changes - Keywords: `BREAKING CHANGE:`, `breaking:`, `!:`, `major:`
+- **Major (`X`.0.0)**: Breaking changes - Keywords: `BREAKING CHANGE:`, `BREAKING CHANGE` (colon optional), `breaking:`, `!:`, `major:`
 - **Minor (X.`Y`.0)**: New features - Keywords: `feat:`, `feature:`, `add:`, `minor:`
-- **Patch (X.Y.`Z`)**: Bug fixes and other changes - Any other commit message
+- **Patch (X.Y.`Z`)**: Bug fixes and other changes - Keywords: `patch`, `bugfix`, `fix`, `documentation` (no colons)
 
 ### Quick Examples
 ```bash
-git commit -m "feat: add user authentication"           # Minor bump
-git commit -m "fix: resolve login timeout"             # Patch bump  
-git commit -m "refactor!: redesign API endpoints"      # Major bump
+# Recommended: Use PR labels
+PR with label "feature:" → Minor bump
+PR with label "bugfix" → Patch bump
+PR with label "major:" → Major bump
+
+# Alternative: Use PR title
+"feat: add user authentication" → Minor bump
+"fix: resolve login timeout" → Patch bump  
+"refactor!: redesign API endpoints" → Major bump
 ```
 
 📖 **[Complete Semantic Versioning Documentation](docs/SEMANTIC_VERSIONING.md)** - Detailed rules, implementation, examples, and troubleshooting.
