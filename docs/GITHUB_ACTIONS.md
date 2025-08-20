@@ -24,24 +24,28 @@ The project uses 5 GitHub Actions workflows with the following execution order a
    - **Trigger:** PRs merged to `main` or `dev` branches, manual dispatch
    - **Purpose:** Builds and pushes container images with semantic versioning
    - **Actions:** 
-     - Analyzes commit messages for version bumps
+     - **Analyzes PR labels and title first**, then falls back to commit messages for version bumps
+     - Gets current version from Makefile (not git tags)
      - Builds 3 container images (using `IMAGE_PREFIX`-component naming):
        - aiobs-metrics-api
        - aiobs-metrics-ui
        - aiobs-metrics-alerting
      - Updates Helm charts and Makefile with new version
    - **Image naming:** Semantic versions (e.g., `0.1.2`, `1.0.0`)
+   - **Version priority:** PR Labels → PR Title → Commit Messages
    - **Dependencies:** None - runs after merge
 
 4. **Deploy to OpenShift** (`.github/workflows/deploy.yml`)
    - **Trigger:** Automatic after successful Build workflow, manual dispatch
    - **Purpose:** Deploys application to OpenShift cluster
+   - **Default namespace:** `dev`
    - **Dependencies:** ✅ **Requires Build and Push workflow success**
 
 5. **Undeploy from OpenShift** (`.github/workflows/undeploy.yml`)
-   - **Trigger:** Automatic after successful Deploy workflow, manual dispatch
-   - **Purpose:** Cleans up deployments after testing period (configurable delay)
-   - **Dependencies:** ✅ **Requires Deploy workflow success**
+   - **Trigger:** **Manual only** - requires explicit confirmation
+   - **Purpose:** Removes deployments from OpenShift cluster
+   - **Safety:** Requires typing exact confirmation string for manual execution
+   - **Dependencies:** None - can be run independently
 
 ### Workflow Dependency Diagram
 ```
@@ -52,7 +56,9 @@ PR Created/Updated
 PR Merged to main/dev
 └── Build and Push ✅
     └── Deploy to OpenShift ✅
-        └── Undeploy from OpenShift (after delay) ✅
+
+Manual Operations:
+└── Undeploy from OpenShift (manual only) ⚠️
 ```
 
 ## OpenShift Service Account Setup
@@ -135,14 +141,15 @@ After running the setup script, configure these secrets in your GitHub repositor
 
 **Deploy Workflow:**
 - **Automatic trigger:** Runs after successful build workflow
-- **Manual trigger:** Can specify custom namespace (default: `test-workflow-deploy`)
+- **Manual trigger:** Can specify custom namespace (default: `dev`)
 - **Force deploy option:** Deploy even if build workflow didn't run
+- **Default namespace:** `dev`
 
 **Undeploy Workflow:**
-- **Automatic trigger:** Runs after successful deployment with configurable delay (default: 10 minutes)
-- **Manual trigger:** Requires checking confirmation checkbox and specifying namespace
-- **Configurable delay:** Set custom wait time before auto-cleanup
-- **Safety features:** Can be cancelled during delay period, mandatory confirmation for manual runs
+- **Manual trigger only:** No automatic execution
+- **Safety confirmation:** Must type exact confirmation string `DELETE {namespace}`
+- **Namespace required:** Must specify target namespace for undeployment
+- **Safety features:** Prevents accidental deletion through explicit confirmation
 
 ## Manual Workflow Execution
 
@@ -162,26 +169,24 @@ Most workflows run automatically, but some can be triggered manually:
 - No parameters required - runs with default settings
 
 **Deploy to OpenShift:**
-- `namespace`: Target namespace (default: `test-workflow-deploy`)
+- `namespace`: Target namespace (default: `dev`)
 - `force_deploy`: Deploy even if build workflow didn't run (default: `false`)
 
 **Undeploy from OpenShift:**
-- `namespace`: Target namespace (default: `test-workflow-deploy`)
-- `confirm_uninstall`: Must check the confirmation checkbox for manual runs
-- `delay_minutes`: Wait time before auto-uninstall (default: `10`)
+- `namespace`: Target namespace (required)
+- `confirm_uninstall`: Must type exact confirmation string `DELETE {namespace}` (required)
 
 ## Workflow Variables
 
 The workflows use these environment variables and inputs:
 
 **Deploy Workflow:**
-- `namespace`: Target OpenShift namespace (default: `test-workflow-deploy`)
+- `namespace`: Target OpenShift namespace (default: `dev`)
 - `force_deploy`: Boolean to force deployment (default: `false`)
 
 **Undeploy Workflow:**
-- `namespace`: Target OpenShift namespace (default: `test-workflow-deploy`)
-- `confirm_uninstall`: Must check confirmation checkbox for manual runs (required: true, default: false)
-- `delay_minutes`: Wait time before auto-uninstall (default: `10`)
+- `namespace`: Target OpenShift namespace (required, no default)
+- `confirm_uninstall`: Must type exact confirmation string `DELETE {namespace}` (required)
 
 ## Troubleshooting
 
