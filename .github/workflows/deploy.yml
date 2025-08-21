@@ -33,6 +33,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_ref || github.ref }}
 
       - name: Install OpenShift CLI
         uses: redhat-actions/openshift-tools-installer@v1
