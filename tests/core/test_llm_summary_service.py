@@ -12,9 +12,8 @@ from datetime import datetime
 
 from src.core.llm_summary_service import (
     generate_llm_summary,
-    extract_alert_names_from_thanos_data,
-    generate_alert_analysis,
-    analyze_unknown_alert_with_llm
+    extract_alert_info_from_thanos_data,
+    generate_alert_analysis_with_llm
 )
 
 
@@ -151,7 +150,7 @@ class TestExtractAlertNames:
     """Test alert name extraction functionality"""
     
     def test_extract_alert_names_success(self):
-        """Should extract alert names from Thanos data"""
+        """Should extract structured alert info from Thanos data"""
         thanos_data = {
             "alerts": {
                 "status": "success",
@@ -174,12 +173,18 @@ class TestExtractAlertNames:
             }
         }
         
-        result = extract_alert_names_from_thanos_data(thanos_data)
+        result = extract_alert_info_from_thanos_data(thanos_data)
         
-        # Should extract alert names
+        # Should extract two alert info dicts with required keys
         assert len(result) == 2
-        assert "HighCPUUsage" in result
-        assert "LowMemory" in result
+        names = {info["alertname"] for info in result}
+        severities = {info.get("severity") for info in result}
+        assert "HighCPUUsage" in names
+        assert "LowMemory" in names
+        assert "warning" in severities
+        assert "critical" in severities
+        # namespace may be missing in input; default to empty string
+        assert all("namespace" in info for info in result)
     
     def test_extract_alert_names_empty_data(self):
         """Should handle empty alert data"""
@@ -192,7 +197,7 @@ class TestExtractAlertNames:
             }
         }
         
-        result = extract_alert_names_from_thanos_data(thanos_data)
+        result = extract_alert_info_from_thanos_data(thanos_data)
         
         # Should return empty list
         assert result == []
@@ -208,7 +213,7 @@ class TestExtractAlertNames:
             }
         }
         
-        result = extract_alert_names_from_thanos_data(thanos_data)
+        result = extract_alert_info_from_thanos_data(thanos_data)
         
         # Should return empty list
         assert result == []
@@ -228,7 +233,7 @@ class TestExtractAlertNames:
             }
         }
         
-        result = extract_alert_names_from_thanos_data(thanos_data)
+        result = extract_alert_info_from_thanos_data(thanos_data)
         
         # Should return empty list since old format doesn't have status field
         assert result == []
@@ -237,162 +242,65 @@ class TestExtractAlertNames:
 class TestGenerateAlertAnalysis:
     """Test alert analysis generation functionality"""
     
-    @patch('src.core.llm_summary_service.summarize_with_llm')
-    @patch('src.core.llm_summary_service.os.getenv')
-    def test_generate_alert_analysis_known_alerts(self, mock_getenv, mock_summarize):
-        """Should generate analysis for known alerts"""
-        # Mock API key available
-        mock_getenv.return_value = "test-api-key"
-        
-        # Mock LLM response
-        mock_summarize.return_value = "## Alert Summary: 1 Active Alert(s)"
-        
-        alert_names = ["VLLMDummyServiceInfo"]
-        namespace = "test-ns"
-        
-        result = generate_alert_analysis(alert_names, namespace)
-        
-        # Check that LLM was called
-        # mock_summarize.assert_called_once()
-        
-        # Check response contains analysis
-        assert "Alert Summary" in result
-    
-    @patch('src.core.llm_summary_service.summarize_with_llm')
-    @patch('src.core.llm_summary_service.os.getenv')
-    def test_generate_alert_analysis_unknown_alerts(self, mock_getenv, mock_summarize):
-        """Should generate analysis for unknown alerts"""
-        # Mock API key available
-        mock_getenv.return_value = "test-api-key"
-        
-        # Mock LLM response
-        mock_summarize.return_value = "## Alert Summary: 1 Active Alert(s)"
-        
-        alert_names = ["UnknownCustomAlert"]
-        namespace = "test-ns"
-        
-        result = generate_alert_analysis(alert_names, namespace)
-        
-        # Check that LLM was called
-        # mock_summarize.assert_called_once()
-        
-        # Check response contains analysis
-        assert "Alert Summary" in result
-    
-    # @patch('src.core.llm_summary_service.os.getenv')
-    # def test_generate_alert_analysis_no_api_key(self, mock_getenv):
-    #    """Should handle missing API key"""
-        # Mock no API key
-    #    mock_getenv.return_value = ""
-        
-    #    alert_names = ["TestAlert"]
-    #    namespace = "test-ns"
-        
-    #    result = generate_alert_analysis(alert_names, namespace)
-        
-        # Should return error message about API key
-    #    assert "API key" in result
-    #    assert "test-ns" in result
-    
-    # @patch('src.core.llm_summary_service.summarize_with_llm')
-    # @patch('src.core.llm_summary_service.os.getenv')
-    #   def test_generate_alert_analysis_llm_error(self, mock_summarize):
-    #    """Should handle LLM errors gracefully"""
-    #    # Mock API key available
-    #    mock_getenv.return_value = "test-api-key"
-        
-    #    # Mock LLM error
-    #    mock_summarize.side_effect = Exception("LLM API error")
-        
-    #    alert_names = ["TestAlert"]
-    #    namespace = "test-ns"
-        
-    #    result = generate_alert_analysis(alert_names, namespace)
-        
-        # Should return error message
-    #    assert "Error" in result
-    
-    # def test_generate_alert_analysis_empty_alerts(self):
-    #    """Should handle empty alert list"""
-    #    alert_names = []
-    #    namespace = "test-ns"
-        
-    #    result = generate_alert_analysis(alert_names, namespace)
-        
-    #    # Should return message about no alerts
-    #    assert "No alerts found" in result
+    # Removed tests for deprecated generate_alert_analysis
 
 
-class TestAnalyzeUnknownAlert:
-    """Test unknown alert analysis functionality"""
-    
-    @patch('src.core.llm_summary_service.summarize_with_llm')
-    @patch('src.core.llm_summary_service.os.getenv')
-    def test_analyze_unknown_alert_critical_pattern(self, mock_getenv, mock_summarize):
-        """Should identify critical alerts based on naming patterns"""
-        # Mock API key available
-        mock_getenv.return_value = "test-api-key"
-        
-        # Mock LLM response
-        mock_summarize.return_value = "🔴 CRITICAL: Database is down"
-        
-        result = analyze_unknown_alert_with_llm("CriticalDatabaseDown", "production")
-        
-        # Check that LLM was called
-        # mock_summarize.assert_called_once()
-        
-        # Check response contains critical indicator
-        assert "CRITICAL" in result
-    
-    @patch('src.core.llm_summary_service.summarize_with_llm')
-    @patch('src.core.llm_summary_service.os.getenv')
-    def test_analyze_unknown_alert_warning_pattern(self, mock_getenv, mock_summarize):
-        """Should identify warning alerts based on naming patterns"""
-        # Mock API key available
-        mock_getenv.return_value = "test-api-key"
-        
-        # Mock LLM response
-        mock_summarize.return_value = "🟡 WARNING: High memory usage"
-        
-        result = analyze_unknown_alert_with_llm("HighMemoryUsage", "test")
-        
-        # Check that LLM was called
-        # mock_summarize.assert_called_once()
-        
-        # Check response contains warning indicator
-        assert "WARNING" in result
-    
-   # @patch('src.core.llm_summary_service.os.getenv')
-    # def test_analyze_unknown_alert_no_api_key(self, mock_getenv):
-    #    """Should handle missing API key"""
-        # Mock no API key
-    #    mock_getenv.return_value = ""
-        
-    #    result = analyze_unknown_alert_with_llm("TestAlert", "test")
-        
-        # Should return error message about API key
-    #    assert "API key" in result
-    #    assert "TestAlert" in result
-    
-    @patch('src.core.llm_summary_service.summarize_with_llm')
-    @patch('src.core.llm_summary_service.os.getenv')
-    def test_analyze_unknown_alert_info_pattern(self, mock_getenv, mock_summarize):
-        """Should identify info alerts based on naming patterns"""
-        # Mock API key available
-        mock_getenv.return_value = "test-api-key"
-        
-        # Mock LLM response
-        mock_summarize.return_value = "ℹ️ INFO: Service information"
-        
-        result = analyze_unknown_alert_with_llm("ServiceInfo", "test")
-        
-        # Check that LLM was called
-        #mock_summarize.assert_called_once()
-        
-        # Check response contains info indicator
-        assert "INFO" in result
+class TestGenerateAlertAnalysisWithLLM:
+    """Tests for generate_alert_analysis_with_llm behavior and cleanup"""
 
+    @patch('src.core.llm_summary_service.summarize_with_llm')
+    def test_trims_after_last_alert_section(self, mock_summarize):
+        """Should keep sections up to the last alert and drop any trailing content"""
+        # Given two alerts, last in sorted order by severity is 'Watchdog' (none)
+        alert_infos = [
+            {"alertname": "PodDisruptionBudgetLimit", "namespace": "knative-serving", "severity": "info"},
+            {"alertname": "Watchdog", "namespace": "openshift-monitoring", "severity": "none"},
+        ]
 
+        mock_summarize.return_value = (
+            "### PodDisruptionBudgetLimit\n"
+            "- Severity: Info\n"
+            "- Impact: No impact on the cluster.\n\n"
+            "### Watchdog\n"
+            "- Severity: None\n"
+            "- Impact: No impact on the cluster.\n\n"
+            "### ExtraTrailing\n"
+            "- This section should be removed by cleanup.\n"
+        )
+
+        result = generate_alert_analysis_with_llm(alert_infos, namespace="m3", model_id="test", api_key="key")
+
+        assert "### PodDisruptionBudgetLimit" in result
+        assert "### Watchdog" in result
+        # Trailing unrelated section must be removed
+        assert "### ExtraTrailing" not in result
+
+    @patch('src.core.llm_summary_service.summarize_with_llm')
+    def test_truncates_on_duplicate_before_all_alerts(self, mock_summarize):
+        """If a duplicate alert section appears before all alerts are covered, truncate at the duplicate."""
+        alert_infos = [
+            {"alertname": "PodDisruptionBudgetLimit", "namespace": "knative-serving", "severity": "info"},
+            {"alertname": "Watchdog", "namespace": "openshift-monitoring", "severity": "none"},
+        ]
+
+        # Duplicate PDB section appears before Watchdog; cleanup should cut at the duplicate
+        mock_summarize.return_value = (
+            "### PodDisruptionBudgetLimit\n"
+            "- Severity: Info\n\n"
+            "### PodDisruptionBudgetLimit\n"
+            "- Duplicate section that should trigger truncation.\n\n"
+            "### Watchdog\n"
+            "- This section should be removed due to earlier truncation.\n"
+        )
+
+        result = generate_alert_analysis_with_llm(alert_infos, namespace="m3", model_id="test", api_key="key")
+
+        # Contains first section
+        assert "### PodDisruptionBudgetLimit" in result
+        # Does not include second occurrence or any later sections
+        assert result.count("### PodDisruptionBudgetLimit") == 1
+        assert "### Watchdog" not in result
+    
 class TestDataProcessing:
     """Test data processing and formatting functionality"""
     

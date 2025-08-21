@@ -47,3 +47,8 @@ LLM_API_TOKEN = os.getenv("LLM_API_TOKEN", "")
 MODEL_CONFIG = load_model_config()
 THANOS_TOKEN = load_thanos_token()
 VERIFY_SSL = get_ca_verify_setting() 
+
+# Common constants
+# Chat scope values used across the codebase
+CHAT_SCOPE_FLEET_WIDE = "fleet_wide"
+FLEET_WIDE_DISPLAY = "Fleet-wide"

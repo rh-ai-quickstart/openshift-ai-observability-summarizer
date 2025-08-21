@@ -13,6 +13,7 @@ from datetime import datetime
 # Import LLM client
 from .llm_client import summarize_with_llm
 from .response_validator import ResponseType
+from .config import CHAT_SCOPE_FLEET_WIDE, FLEET_WIDE_DISPLAY
 
 def generate_llm_summary(question: str, thanos_data: Dict[str, Any], model_id: str, api_key: str, namespace: str) -> str:
     """
@@ -31,11 +32,11 @@ def generate_llm_summary(question: str, thanos_data: Dict[str, Any], model_id: s
 
         # === SPECIAL HANDLING FOR ALERTS ===
         if any(word in question_lower for word in ["alert", "alerts", "firing", "warning", "critical", "problem", "issue"]):
-            alert_names = extract_alert_names_from_thanos_data(thanos_data)
-            scope = "fleet-wide" if namespace == "" else f"namespace '{namespace}'"
-            if alert_names:
-                alert_analysis = generate_alert_analysis(alert_names, namespace)
-                return f"🚨 **ALERT ANALYSIS FOR {scope.upper()}**\n\n{alert_analysis}"
+            alert_infos = extract_alert_info_from_thanos_data(thanos_data)
+            scope = CHAT_SCOPE_FLEET_WIDE if (namespace == "" or namespace == FLEET_WIDE_DISPLAY) else f"namespace '{namespace}'"
+            if alert_infos:
+                alert_analysis = generate_alert_analysis_with_llm(alert_infos, namespace, model_id=model_id, api_key=api_key)
+                return f"🚨 **TOTAL OF {len(alert_infos)} ALERT(S) FOUND IN {scope.upper()}**\n\n{alert_analysis}"
             else:
                 return f"✅ No alerts currently firing in {scope}. All systems appear to be operating normally."
 
@@ -222,184 +223,222 @@ def _format_summary_structure(summary: str) -> str:
     # Fallback: return original summary with basic line breaks
     return summary.replace('. ', '.\n\n').replace(': ', ':\n\n')
 
-def analyze_unknown_alert_with_llm(alert_name: str, namespace: str) -> str:
-    """
-    Use intelligent analysis for unknown alerts based on naming patterns
-    """
-    severity = "🔴 WARNING"  # Default to warning
-    
-    # Simple heuristics based on alert name
-    if any(word in alert_name.lower() for word in ["down", "failed", "error", "critical"]):
-        severity = "🔴 CRITICAL"
-    elif any(word in alert_name.lower() for word in ["high", "slow", "latency", "pending"]):
-        severity = "🟡 WARNING"
-    elif any(word in alert_name.lower() for word in ["info", "recommendation", "deprecated"]):
-        severity = "🟡 INFO"
-    
-    analysis = f"### {severity} {alert_name}\n"
-    
-    # Provide intelligent analysis based on naming patterns
-    if "api" in alert_name.lower():
-        analysis += "**What it means:** API-related issue that may affect cluster functionality\n"
-        analysis += "**Investigation:** Check API server logs and endpoint availability\n"
-        analysis += "**Action required:** Verify API server health and network connectivity\n"
-        analysis += "**Troubleshooting commands:**\n"
-        analysis += "```\noc get apiserver\noc logs -n openshift-kube-apiserver apiserver-xxx\n```"
-    elif "node" in alert_name.lower() or "kubelet" in alert_name.lower():
-        analysis += "**What it means:** Worker node or kubelet issue affecting workload scheduling\n"
-        analysis += "**Investigation:** Check node status and kubelet logs\n"
-        analysis += "**Action required:** Investigate node health and resource availability\n"
-        analysis += "**Troubleshooting commands:**\n"
-        analysis += "```\noc get nodes\noc describe node <node-name>\n```"
-    elif "pod" in alert_name.lower() or "container" in alert_name.lower():
-        analysis += "**What it means:** Pod or container issue affecting application workloads\n"
-        analysis += "**Investigation:** Check pod status and logs\n"
-        analysis += "**Action required:** Investigate application health and resource constraints\n"
-        analysis += "**Troubleshooting commands:**\n"
-        if namespace:
-            analysis += f"```\noc get pods -n {namespace}\noc logs -n {namespace} <pod-name>\n```"
-        else:
-            analysis += "```\noc get pods -A\noc logs <pod-name> -n <namespace>\n```"
-    else:
-        # Generic analysis for completely unknown alerts
-        analysis += f"**What it means:** Alert '{alert_name}' requires investigation\n"
-        analysis += "**Investigation:** Review alert definition and current cluster state\n"
-        analysis += "**Action required:** Check related OpenShift components and logs\n"
-        analysis += "**Troubleshooting commands:**\n"
-        analysis += f"```\noc get prometheusrule -A | grep -i {alert_name.lower()}\n```"
-    
-    return analysis
+ 
 
+def generate_alert_analysis_with_llm(alert_infos: List[Dict[str, str]], namespace: str, model_id: Optional[str] = None, api_key: Optional[str] = None) -> str:
+    """
+    Generate analysis for specific alerts
+    """
+    if not alert_infos:
+        return "✅ No alerts found in the current time range."
+    
+    try:
+        # Build alert analysis prompt
+        def _format_alert(info: Dict[str, str]) -> str:
+            name = info.get("alertname", "UnknownAlert")
+            sev = info.get("severity", "unknown")
+            ns = info.get("namespace", "")
+            ns_part = f", namespace: {ns}" if ns else ""
+            return f"- {name}, severity: {sev}{ns_part}"
 
-def generate_alert_analysis(alert_names: List[str], namespace: str) -> str:
-    """
-    Generate detailed, actionable analysis for SRE and MLOps teams
-    """
-    analysis_parts = []
-    
-    # Alert knowledge base with detailed troubleshooting
-    alert_kb = {
-        "VLLMDummyServiceInfo": {
-            "severity": "🟡 INFO",
-            "meaning": "Test alert for vLLM service monitoring - indicates the model is processing requests",
-            "investigation": "Check vLLM service logs and request metrics",
-            "action": "This is typically a test alert. Verify if this should be disabled in production.",
-            "commands": [
-                f"oc logs -n {namespace} -l app=llama-3-2-3b-instruct",
-                f"oc get pods -n {namespace} -l app=llama-3-2-3b-instruct"
-            ]
-        },
-        "GPUOperatorNodeDeploymentDriverFailed": {
-            "severity": "🔴 WARNING", 
-            "meaning": "NVIDIA GPU driver deployment failed on worker nodes",
-            "investigation": "Check GPU operator pods and node status for driver installation issues",
-            "action": "Investigate GPU operator logs, verify node labels, check for driver compatibility issues",
-            "commands": [
-                "oc get nodes -l feature.node.kubernetes.io/pci-10de.present=true",
-                "oc logs -n nvidia-gpu-operator -l app=gpu-operator",
-                "oc get pods -n nvidia-gpu-operator"
-            ]
-        },
-        "GPUOperatorNodeDeploymentFailed": {
-            "severity": "🔴 WARNING",
-            "meaning": "NVIDIA GPU operator failed to deploy components on nodes", 
-            "investigation": "Check GPU operator deployment status and node compatibility",
-            "action": "Review GPU operator configuration, verify node selectors, check resource constraints",
-            "commands": [
-                "oc describe clusterpolicy gpu-cluster-policy",
-                "oc get nodes --show-labels | grep nvidia",
-                "oc logs -n nvidia-gpu-operator deployment/gpu-operator"
-            ]
-        },
-        "GPUOperatorReconciliationFailed": {
-            "severity": "🔴 WARNING",
-            "meaning": "GPU operator failed to reconcile desired state with actual cluster state",
-            "investigation": "Check GPU operator controller logs for reconciliation errors",
-            "action": "Restart GPU operator, verify CRD status, check for resource conflicts",
-            "commands": [
-                "oc get clusterpolicy -o yaml",
-                "oc logs -n nvidia-gpu-operator -l control-plane=controller-manager",
-                "oc delete pods -n nvidia-gpu-operator -l app=gpu-operator"
-            ]
-        },
-        "ClusterMonitoringOperatorDeprecatedConfig": {
-            "severity": "🟡 INFO",
-            "meaning": "Cluster monitoring is using deprecated configuration options",
-            "investigation": "Review cluster-monitoring-config ConfigMap for deprecated fields",
-            "action": "Update monitoring configuration to use current API versions before next upgrade",
-            "commands": [
-                "oc get configmap cluster-monitoring-config -n openshift-monitoring -o yaml",
-                "oc get clusterversion"
-            ]
-        },
-        "ClusterNotUpgradeable": {
-            "severity": "🟡 INFO", 
-            "meaning": "Cluster has conditions preventing upgrade (usually due to deprecated APIs)",
-            "investigation": "Check cluster version status for upgrade blocking conditions",
-            "action": "Review upgrade blockers, update deprecated API usage, resolve blocking conditions",
-            "commands": [
-                "oc get clusterversion -o yaml",
-                "oc adm upgrade",
-                "oc get clusteroperators"
-            ]
-        },
-        "InsightsRecommendationActive": {
-            "severity": "🟡 INFO",
-            "meaning": "Red Hat Insights has recommendations for cluster optimization",
-            "investigation": "Review insights recommendations in OpenShift console or Red Hat Hybrid Cloud Console",
-            "action": "Follow insights recommendations to improve cluster security, performance, or reliability",
-            "commands": [
-                "oc logs -n openshift-insights deployment/insights-operator",
-                "echo 'Visit: https://console.redhat.com/openshift/insights/advisor/'"
-            ]
-        }
-    }
-    
-    analysis_parts.append(f"## Alert Summary: {len(alert_names)} Active Alert(s)")
-    analysis_parts.append("")
-    
-    for alert_name in alert_names:
-        if alert_name in alert_kb:
-            alert = alert_kb[alert_name]
-            analysis_parts.append(f"### {alert['severity']} {alert_name}")
-            analysis_parts.append(f"**Issue:** {alert['meaning']}")
-            analysis_parts.append(f"**Action:** {alert['action']}")
-            analysis_parts.append("**Commands:**")
-            for cmd in alert['commands']:
-                analysis_parts.append(f"```\n{cmd}\n```")
-            analysis_parts.append("")
-        else:
-            # Use LLM to analyze unknown alerts
-            llm_analysis = analyze_unknown_alert_with_llm(alert_name, namespace)
-            analysis_parts.append(llm_analysis)
-            analysis_parts.append("")
-    
-    analysis_parts.append("### Next Steps")
-    analysis_parts.append("1. Run the diagnostic commands above")
-    analysis_parts.append("2. Check logs and recent changes")
-    analysis_parts.append("3. Document any fixes in your runbooks")
-    
-    return "\n".join(analysis_parts)
+        # Sort alerts by severity before formatting the list
+        sorted_alert_infos = sort_alert_infos_by_severity(alert_infos)
+        alert_list = "\n".join([_format_alert(info) for info in sorted_alert_infos])
+        ns_info = f"namespace: {namespace}" if namespace != "FLEET_WIDE" else "FLEET_WIDE"
+        prompt = f"""You are a senior Site Reliability Engineer (SRE) analyzing alerts for {ns_info}.
 
-def extract_alert_names_from_thanos_data(thanos_data: Dict[str, Any]) -> List[str]:
-    """
-    Extract alert names from Thanos data
-    """
-    alert_names = []
+Firing Alerts:
+{alert_list}
+
+For each alert, provide an analysis with 5-7 lines maximum:
+- **Severity:** Severity of the alert
+- **Impact:** Impact assessment
+- **Action:** One key action needed to resolve the alert
+- **Troubleshooting commands:** Any commands needed to investigate the alert.
+- **Namespace:** Namespace of the alert if available.
+
+In your response, use the following format as the title of each alert section:
+### [Alert Name]
+
+Keep your response concise and do NOT add any additional notes or commentary.
+"""
+
+        summary = summarize_with_llm(
+            prompt,
+            model_id,
+            ResponseType.GENERAL_CHAT,
+            api_key=api_key,
+            max_tokens=2000,
+        )
+        
+        if not summary or summary.strip() == "":
+            return f"⚠️ Alert Analysis: Found {len(alert_infos)} active alerts in {namespace}. Unable to generate detailed analysis."
+        
+        return clean_alert_analysis_output(summary, sorted_alert_infos)
+        
+    except Exception as e:
+        print(f"❌ Error generating alert analysis: {e}")
+        return f"⚠️ Alert Analysis: Found {len(alert_infos)} active alerts in {namespace}. Error generating detailed analysis: {str(e)}"
+
     
+
+def extract_alert_info_from_thanos_data(thanos_data: Dict[str, Any]) -> List[Dict[str, str]]:
+    """
+    Extract structured alert information from Thanos data.
+    Returns a list of dicts with keys: 'alertname', 'namespace', 'severity'.
+    Deduplicates by alert name and takes the first occurrence.
+    """
+    alert_infos: List[Dict[str, str]] = []
+    seen_alert_names = set()
+
     for metric_key, metric_info in thanos_data.items():
         if metric_info.get("status") == "success":
             data = metric_info.get("data", {})
             result = data.get("result", [])
-            
+
             if result and len(result) > 0:
                 for series in result:
                     if isinstance(series, dict) and "metric" in series:
                         metric = series["metric"]
-                        alert_name = metric.get("alertname", "")
-                        if alert_name and alert_name not in alert_names:
-                            alert_names.append(alert_name)
-    
-    return alert_names
+                        alert_name = metric.get("alertname")
+                        if not alert_name or alert_name in seen_alert_names:
+                            continue
+                        severity = metric.get("severity", "unknown")
+                        namespace_val = metric.get("namespace", "")
+                        alert_infos.append(
+                            {
+                                "alertname": alert_name,
+                                "namespace": namespace_val,
+                                "severity": severity,
+                            }
+                        )
+                        seen_alert_names.add(alert_name)
 
+    return alert_infos
+
+
+def sort_alert_infos_by_severity(alert_infos: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """
+    Sort a list of alert info dicts by severity in the order:
+    critical, warning, info, low/none (unknown also last).
+
+    Each alert info dict is expected to have a 'severity' field.
+    Unknown severities are treated as lowest priority.
+    """
+    def severity_rank(severity_value: Optional[str]) -> int:
+        value = (severity_value or "").strip().lower()
+        if value == "critical":
+            return 0
+        if value == "warning":
+            return 1
+        if value == "info":
+            return 2
+        if value in ("low", "none"):
+            return 3
+        return 3  # Unknowns go last
+
+    # Stable sort; secondary key by alert name for deterministic output
+    return sorted(
+        alert_infos,
+        key=lambda info: (
+            severity_rank(info.get("severity")),
+            (info.get("alertname") or "").lower(),
+        ),
+    )
+
+
+def clean_alert_analysis_output(raw_output: str, alert_infos: List[Dict[str, str]]) -> str:
+    """
+    Post-process the LLM output for alert analysis with two goals:
+    1) If all alerts have a section, trim everything after the end of the last
+       alert section.
+    2) Otherwise, remove any trailing content starting at the first detected
+       duplicate alert section (best-effort cleanup).
+
+    Alert sections are identified primarily by headers following the format
+    "### [Alert Name]" as instructed in the prompt. For robustness,
+    list items that include the alert name are also considered.
+    """
+    if not raw_output:
+        return raw_output
+
+    text = raw_output
+    # Prepare alert name patterns for robust matching
+    alert_names = [info.get("alertname", "") for info in alert_infos if info.get("alertname")]
+    if not alert_names:
+        return text
+
+    # Normalize to avoid Unicode punctuation issues
+    try:
+        import unicodedata
+        text = unicodedata.normalize("NFKC", text)
+        alert_names = [unicodedata.normalize("NFKC", name) for name in alert_names]
+    except Exception:
+        pass
+
+    # Line-based parsing for deterministic behavior
+    lines = text.splitlines(keepends=True)
+    alert_names_lower_list = [n.lower() for n in alert_names]
+    alert_names_lower = set(alert_names_lower_list)
+
+    # Collect header line indices for alert sections and detect duplicates
+    header_indices: List[int] = []
+    header_name_by_index: Dict[int, str] = {}
+    seen_headers: set = set()
+
+    for idx, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("### "):
+            header_text = stripped[4:].strip()
+            header_text_lower = header_text.lower()
+            # Normalize header core up to a colon if present
+            header_core = header_text_lower.split(":", 1)[0].strip()
+            # Match if header starts with an alert name or equals it
+            matched_name = None
+            if header_core in alert_names_lower:
+                matched_name = header_core
+            else:
+                for name in alert_names_lower_list:
+                    if header_text_lower.startswith(name):
+                        matched_name = name
+                        break
+            if matched_name is not None:
+                if matched_name in seen_headers:
+                    # Duplicate alert section detected -> truncate before this header
+                    return "".join(lines[:idx]).rstrip()
+                seen_headers.add(matched_name)
+                header_indices.append(idx)
+                header_name_by_index[idx] = matched_name
+
+    # Trim after the expected last alert section if present
+    last_alert_name = None
+    for info in alert_infos[::-1]:
+        candidate = (info.get("alertname") or "").strip().lower()
+        if candidate:
+            last_alert_name = candidate
+            break
+
+    if last_alert_name is not None:
+        # Find the header index for the last alert
+        last_indices = [i for i, name in header_name_by_index.items() if name == last_alert_name]
+        if last_indices:
+            last_idx = min(last_indices)  # first occurrence of that header
+            # Find end of section: next header, or first non-section line
+            next_header_idx = None
+            end_idx = None
+            for j in range(last_idx + 1, len(lines)):
+                ls = lines[j].lstrip()
+                if ls.startswith("### "):
+                    next_header_idx = j
+                    end_idx = j
+                    break
+                # Allow typical section content lines: bullets, code fences, or blank
+                if not (ls.startswith("- ") or ls.startswith("* ") or ls.startswith("```") or ls.strip() == ""):
+                    end_idx = j
+                    break
+            if end_idx is None:
+                end_idx = len(lines)
+            return "".join(lines[:end_idx]).rstrip()
+
+    return text
 

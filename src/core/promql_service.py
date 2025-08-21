@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import requests
 
 # Import configuration
-from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL as verify
+from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL as verify, CHAT_SCOPE_FLEET_WIDE, FLEET_WIDE_DISPLAY
 
 def generate_promql_from_question(question: str, namespace: Optional[str], model_name: str, start_ts: int, end_ts: int, is_fleet_wide: bool = False) -> List[str]:
     """
@@ -38,7 +38,7 @@ def generate_promql_from_question(question: str, namespace: Optional[str], model
         rate_interval = "6h"   # For longer periods, use 6h intervals
     
     print(f"📊 Time range: {duration_hours:.1f} hours, using interval: {rate_interval}")
-    print(f"🌐 Scope: {'Fleet-wide' if is_fleet_wide else f'Namespace: {namespace}'}")
+    print(f"🌐 Scope: {FLEET_WIDE_DISPLAY if is_fleet_wide else f'Namespace: {namespace}'}")
     
     # STEP 1: Try Enhanced Dynamic System First (TEMPORARILY DISABLED)
     # try:
@@ -156,13 +156,13 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     
     # === ALERTS (HIGH PRIORITY) ===
     
-    if any(word in question_lower for word in ["alert", "alerts", "firing", "warning", "critical", "yesterday", "problem", "issue"]):
+    if any(word in question_lower for word in ["alert", "alerts", "firing", "warning", "critical", "problem", "issue"]):
         print("🎯 Detected: Alerts question")
         pattern_detected = True
         if is_fleet_wide:
-            queries.append("ALERTS")  # No namespace filter for fleet-wide
+            queries.append(f'ALERTS{{alertstate="firing"}}')  # No namespace filter for fleet-wide
         else:
-            queries.append(f'ALERTS{{namespace="{namespace}"}}')  # Namespace-specific alerts
+            queries.append(f'ALERTS{{alertstate="firing", namespace="{namespace}"}}')  # Namespace-specific alerts
     
     # === vLLM METRICS ===
     
