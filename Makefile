@@ -201,7 +201,7 @@ build-mcp-server:
 	@$(BUILD_TOOL) buildx build --platform $(PLATFORM) \
 		-f src/mcp_server/Dockerfile \
 		-t $(MCP_SERVER_IMAGE):$(VERSION) \
-		.
+		src
 	@echo "✅ mcp-server image built: $(MCP_SERVER_IMAGE):$(VERSION)"
 
 .PHONY: push
