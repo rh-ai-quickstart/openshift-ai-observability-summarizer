@@ -151,24 +151,25 @@ make build TAG=v1.0.0
 
 ### Deployment
 ```bash
-# Deploy to OpenShift
+# Deploy to OpenShift (deploys default model)
 make install NAMESPACE=your-namespace
 
-# Deploy with alerting
+# Deploy with alerting (deploys default model)
 make install-with-alerts NAMESPACE=your-namespace
 
 # Deploy with specific LLM model
-make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
+make install NAMESPACE=your-namespace LLM=llama-3-2-1b-instruct
 
-# Deploy with GPU tolerations
-make install NAMESPACE=your-namespace \
-  LLM=llama-3-2-3b-instruct \
-  LLM_TOLERATION="nvidia.com/gpu"
+# Deploy with GPU tolerations (deploys default model)
+make install NAMESPACE=your-namespace LLM_TOLERATION="nvidia.com/gpu"
 
-# Deploy with safety models
+# Deploy with safety models (deploys default model)
+make install NAMESPACE=your-namespace SAFETY=llama-guard-3-8b
+
+# Use existing model (specify LLM_URL as <model service url>:PORT/v1)
+# In the example given below, the model service (llama-3-2-3b-instruct-predictor) is running in "dev" cluster
 make install NAMESPACE=your-namespace \
-  LLM=llama-3-2-3b-instruct \
-  SAFETY=llama-guard-3-8b
+  LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local:8080/v1
 ```
 
 ### Management

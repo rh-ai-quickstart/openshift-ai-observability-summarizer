@@ -165,6 +165,19 @@ make install NAMESPACE=your-namespace
 ```
 This will install the project with the default LLM deployment, `llama-3-2-3b-instruct`.
 
+### Using an Existing Model
+
+To use an existing model instead of deploying a new one, specify `LLM_URL` to be `<model service url>:PORT/v1`:
+
+```bash
+make install LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local:8080/v1 NAMESPACE=your-namespace
+```
+
+This is useful when:
+- You already have a model deployed in your cluster
+- You want to share a model across multiple namespaces
+- You prefer not to deploy redundant model instances
+
 ### Choosing different models
 
 To see all available models:
