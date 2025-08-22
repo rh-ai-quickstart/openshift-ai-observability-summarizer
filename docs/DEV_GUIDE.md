@@ -55,21 +55,28 @@ summarizer/
 ### Local Development
 ```bash
 # Set up port-forwarding to cluster services
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
-# This runs ./scripts/local-dev.sh which sets up:
-# - Port-forwarding to Llamastack (8000:8000)
-# - Port-forwarding to llm-service (8001:8001)  
-# - Port-forwarding to Thanos (9090:9090)
+# If model is in different namespace:
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
+
+# This script sets up:
+# - Virtual environment activation (.venv)
+# - Port-forwarding to Llamastack (localhost:8321)
+# - Port-forwarding to Model service (localhost:8080)
+# - Port-forwarding to Thanos (localhost:9090)
+# - Metrics API (localhost:8000)
+# - Streamlit UI (localhost:8501)
 
 # Example:
-LLM_NAMESPACE=test make install-local
+./scripts/local-dev.sh -n default-ns
+./scripts/local-dev.sh -n default-ns -m model-ns  # Model in different namespace
 ```
 
-**Note**: The `LLM_NAMESPACE` environment variable is used by the `./scripts/local-dev.sh` script to:
-- Set up port-forwarding to the correct namespace
-- Configure the local development environment
-- Ensure all services are accessible from your local machine
+**Note**: The script automatically:
+- Activates Python virtual environment if `.venv` exists
+- Uses service-based port forwarding for better reliability
+- Supports separate namespaces for different services
 
 ## 🏗️ Architecture & Data Flow
 
@@ -233,7 +240,7 @@ Common models include:
 ### 1. Feature Development
 ```bash
 # 1. Set up local environment
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
 # 2. Make changes to source code
 
@@ -247,9 +254,9 @@ make build
 ### 2. Bug Fixing
 ```bash
 # 1. Setup local environment
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
-# 2. Activate virtual environment
+# 2. Activate virtual environment (for testing)
 uv sync --group dev
 source .venv/bin/activate
 
@@ -282,37 +289,40 @@ make uninstall NAMESPACE=test-namespace
 
 ### Setup Namespace
 ```bash
-export LLM_NAMESPACE=<TARGET_NAMESPACE>
+# Use the script with appropriate namespace parameters
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
+# or with separate model namespace:
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
 ```
 
 ### Port Forwarding
 ```bash
-# Manual port-forwarding (if make install-local fails)
-oc port-forward svc/llama-stack 8000:8000 -n $LLM_NAMESPACE &
-oc port-forward svc/llm-service 8001:8001 -n $LLM_NAMESPACE &
-oc port-forward svc/thanos-query 9090:9090 -n $LLM_NAMESPACE &
+# Manual port-forwarding (if script fails)
+# Note: Replace <pod-name> with actual pod names from 'oc get pods'
+oc port-forward pod/<thanos-pod-name> 9090:9090 -n openshift-monitoring &
+oc port-forward pod/<llamastack-pod-name> 8321:8321 -n <DEFAULT_NAMESPACE> &
+oc port-forward service/<model-service-name> 8080:8080 -n <MODEL_NAMESPACE> &
 ```
 
 ### Logs
 ```bash
-# View pod logs
-oc logs -f deployment/metrics-api -n $LLM_NAMESPACE
-oc logs -f deployment/metric-ui -n $LLM_NAMESPACE
-oc logs -f deployment/metric-alerting -n $LLM_NAMESPACE
+# View pod logs (replace with your actual namespace)
+oc logs -f deployment/metrics-api -n <DEFAULT_NAMESPACE>
+oc logs -f deployment/metric-ui -n <DEFAULT_NAMESPACE>
+oc logs -f deployment/metric-alerting -n <DEFAULT_NAMESPACE>
 ```
 
 ### Metrics
 ```bash
-
 # Access Prometheus metrics
-oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
+oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
 # Then visit http://localhost:8000/metrics
 ```
 
 ## 🛠️ Useful Makefile Targets
 
 ### Development
-- `LLM_NAMESPACE=<namespace> make install-local` - Set up local development environment
+- `./scripts/local-dev.sh -n <namespace>` - Set up local development environment
 - `make test` - Run unit tests with coverage
 - `make clean` - Clean up local images
 
@@ -340,10 +350,10 @@ oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
 #### Port Forwarding Fails
 ```bash
 # Check if pods are running
-oc get pods -n $LLM_NAMESPACE
+oc get pods -n <DEFAULT_NAMESPACE>
 
 # Restart port-forwarding
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 ```
 
 #### Tests Fail
@@ -371,13 +381,13 @@ make build
 #### Deployment Issues
 ```bash
 # Check namespace exists
-oc get namespace $LLM_NAMESPACE
+oc get namespace <DEFAULT_NAMESPACE>
 
 # Check Helm releases
-helm list -n $LLM_NAMESPACE
+helm list -n <DEFAULT_NAMESPACE>
 
 # View deployment events
-oc get events -n $LLM_NAMESPACE --sort-by='.lastTimestamp'
+oc get events -n <DEFAULT_NAMESPACE> --sort-by='.lastTimestamp'
 ```
 
 ## 🔒 Security Considerations
@@ -433,14 +443,13 @@ oc get events -n $LLM_NAMESPACE --sort-by='.lastTimestamp'
 - **Helm Charts**: `deploy/helm/`
 
 ### Key Commands
-- **Local Dev**: `LLM_NAMESPACE=<namespace> make install-local`
+- **Local Dev**: `./scripts/local-dev.sh -n <namespace>`
 - **Tests**: `uv run pytest -v`
 - **Build**: `make build`
 - **Deploy**: `make install NAMESPACE=ns`
 - **Status**: `make status NAMESPACE=ns`
 
 ### Environment Variables
-- `LLM_NAMESPACE` - Target OpenShift namespace
 - `REGISTRY` - Container registry (default: quay.io)
 - `VERSION` - Image version (default: 0.1.2)
 - `LLM` - LLM model ID for deployment

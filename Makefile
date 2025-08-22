@@ -436,10 +436,22 @@ list-models: depend
 .PHONY: install-local
 install-local:
 	@echo "🚀 Setting up local development environment..."
+	@if [ -z "$(NAMESPACE)" ]; then \
+		echo "❌ Error: NAMESPACE parameter is required"; \
+		echo "Usage: make install-local NAMESPACE=your-namespace"; \
+		echo "Optional: make install-local NAMESPACE=default-ns MODEL_NAMESPACE=model-ns"; \
+		exit 1; \
+	fi
+	@echo "📋 Using namespace: $(NAMESPACE)"
+	@if [ -n "$(MODEL_NAMESPACE)" ]; then echo "📋 Using model namespace: $(MODEL_NAMESPACE)"; fi
 	@bash -c '\
 		uv sync && \
 		chmod +x ./scripts/local-dev.sh && \
-		source .venv/bin/activate && ./scripts/local-dev.sh && \
+		if [ -n "$(MODEL_NAMESPACE)" ]; then \
+			./scripts/local-dev.sh -n $(NAMESPACE) -m $(MODEL_NAMESPACE); \
+		else \
+			./scripts/local-dev.sh -n $(NAMESPACE); \
+		fi && \
 		echo "✅ Local development environment setup completed" \
 	'
 
