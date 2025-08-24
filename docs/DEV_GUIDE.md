@@ -33,10 +33,23 @@ summarizer/
 │   │   └── thanos_service.py # Thanos integration
 │   ├── ui/                # Streamlit UI
 │   │   └── ui.py         # Multi-dashboard interface
+│   ├── mcp_server/        # Model Context Protocol server
+│   │   ├── api.py         # MCP API implementation
+│   │   ├── main.py        # HTTP server entrypoint
+│   │   ├── stdio_server.py # STDIO server for AI assistants
+│   │   ├── tools/         # MCP tools (observability_tools.py)
+│   │   └── integrations/  # AI assistant integration configs
 │   └── alerting/          # Alerting service
 │       └── alert_receiver.py # Alert handling
 ├── deploy/helm/           # Helm charts for deployment
+│   ├── mcp-server/        # MCP server Helm chart
+│   ├── metrics-api/       # Metrics API Helm chart
+│   ├── ui/                # UI Helm chart
+│   └── rag/               # RAG components (llama-stack, llm-service)
 ├── tests/                 # Test suite
+│   ├── mcp/               # MCP server tests
+│   ├── core/              # Core logic tests
+│   └── alerting/          # Alerting tests
 ├── scripts/               # Development and deployment scripts
 └── docs/                  # Documentation
 ```
@@ -84,8 +97,9 @@ summarizer/
 1. **Metrics API** (`src/api/metrics_api.py`): FastAPI backend serving metrics analysis and chat endpoints
 2. **UI** (`src/ui/ui.py`): Streamlit multi-dashboard frontend
 3. **Core Logic** (`src/core/`): Business logic modules for metrics processing and LLM integration
-4. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
-5. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
+4. **MCP Server** (`src/mcp_server/`): Model Context Protocol server for AI assistant integration
+5. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
+6. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
 
 ### Data Flow
 1. **Natural Language Question** → PromQL generation via LLM
@@ -144,6 +158,7 @@ make build
 make build-metrics-api    # FastAPI backend
 make build-ui            # Streamlit UI
 make build-alerting      # Alerting service
+make build-mcp-server    # MCP server
 
 # Build with custom tag
 make build TAG=v1.0.0
@@ -170,6 +185,10 @@ make install NAMESPACE=your-namespace SAFETY=llama-guard-3-8b
 # In the example given below, the model service (llama-3-2-3b-instruct-predictor) is running in "dev" cluster
 make install NAMESPACE=your-namespace \
   LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local:8080/v1
+
+# Deploy individual components
+make install-metric-mcp NAMESPACE=your-namespace    # Metrics API only
+make install-mcp-server NAMESPACE=your-namespace    # MCP server only
 ```
 
 ### Management
@@ -332,10 +351,13 @@ oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
 - `make build-metrics-api` - Build FastAPI backend
 - `make build-ui` - Build Streamlit UI
 - `make build-alerting` - Build alerting service
+- `make build-mcp-server` - Build MCP server
 
 ### Deployment
 - `make install` - Deploy to OpenShift
 - `make install-with-alerts` - Deploy with alerting
+- `make install-metric-mcp` - Deploy metrics API only
+- `make install-mcp-server` - Deploy MCP server only
 - `make status` - Check deployment status
 - `make uninstall` - Remove deployment
 
@@ -440,6 +462,7 @@ oc get events -n <DEFAULT_NAMESPACE> --sort-by='.lastTimestamp'
 - **Main API**: `src/api/metrics_api.py`
 - **Core Logic**: `src/core/llm_summary_service.py`
 - **UI**: `src/ui/ui.py`
+- **MCP Server**: `src/mcp_server/main.py`
 - **Tests**: `tests/`
 - **Helm Charts**: `deploy/helm/`
 
