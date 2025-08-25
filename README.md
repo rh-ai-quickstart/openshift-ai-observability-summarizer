@@ -167,16 +167,25 @@ This will install the project with the default LLM deployment, `llama-3-2-3b-ins
 
 ### Using an Existing Model
 
-To use an existing model instead of deploying a new one, specify `LLM_URL` to be `<model service url>:PORT/v1`:
+To use an existing model instead of deploying a new one, specify `LLM_URL` as the model service URL:
 
 ```bash
+# URL with port (no processing applied)
 make install LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local:8080/v1 NAMESPACE=your-namespace
+
+# URL without port (automatically adds :8080/v1)
+make install LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local NAMESPACE=your-namespace
 ```
+
+**URL Processing**: If the `LLM_URL` doesn't contain a port (`:PORT` format), the system will automatically append `:8080/v1` to the URL. This simplifies configuration while maintaining flexibility for custom ports.
+
+**Token Management**: When `LLM_URL` is specified, the system will not prompt for a Hugging Face token since you're using an existing model that doesn't require new model deployment.
 
 This is useful when:
 - You already have a model deployed in your cluster
 - You want to share a model across multiple namespaces
 - You prefer not to deploy redundant model instances
+- You want to avoid unnecessary token prompts for external models
 
 ### Choosing different models
 

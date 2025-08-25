@@ -181,10 +181,16 @@ make install NAMESPACE=your-namespace LLM_TOLERATION="nvidia.com/gpu"
 # Deploy with safety models (deploys default model)
 make install NAMESPACE=your-namespace SAFETY=llama-guard-3-8b
 
-# Use existing model (specify LLM_URL as <model service url>:PORT/v1)
-# In the example given below, the model service (llama-3-2-3b-instruct-predictor) is running in "dev" cluster
+# Use existing model (specify LLM_URL as model service URL)
+# Note: When LLM_URL is provided, HF_TOKEN will not be prompted since no new model deployment is needed
+
+# URL with port (no processing applied):
 make install NAMESPACE=your-namespace \
   LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local:8080/v1
+
+# URL without port (automatically adds :8080/v1):
+make install NAMESPACE=your-namespace \
+  LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local
 
 # Deploy individual components
 make install-metric-mcp NAMESPACE=your-namespace    # Metrics API only
@@ -209,6 +215,8 @@ make list-models
 - `PROMETHEUS_URL`: Thanos/Prometheus endpoint (default: http://localhost:9090)
 - `LLAMA_STACK_URL`: LLM backend URL (default: http://localhost:8321/v1/openai/v1)
 - `LLM_API_TOKEN`: API token for LLM service
+- `LLM_URL`: Use existing model URL (skips HF_TOKEN prompt and model deployment)
+- `HF_TOKEN`: Hugging Face token (auto-prompted only when LLM_URL is not set)
 - `MODEL_CONFIG`: JSON configuration for available models
 - `THANOS_TOKEN`: Authentication token (default: reads from service account)
 - `SLACK_WEBHOOK_URL`: Slack webhook for alerting notifications
