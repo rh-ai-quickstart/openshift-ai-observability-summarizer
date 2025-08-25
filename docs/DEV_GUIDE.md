@@ -33,10 +33,23 @@ summarizer/
 │   │   └── thanos_service.py # Thanos integration
 │   ├── ui/                # Streamlit UI
 │   │   └── ui.py         # Multi-dashboard interface
+│   ├── mcp_server/        # Model Context Protocol server
+│   │   ├── api.py         # MCP API implementation
+│   │   ├── main.py        # HTTP server entrypoint
+│   │   ├── stdio_server.py # STDIO server for AI assistants
+│   │   ├── tools/         # MCP tools (observability_tools.py)
+│   │   └── integrations/  # AI assistant integration configs
 │   └── alerting/          # Alerting service
 │       └── alert_receiver.py # Alert handling
 ├── deploy/helm/           # Helm charts for deployment
+│   ├── mcp-server/        # MCP server Helm chart
+│   ├── metrics-api/       # Metrics API Helm chart
+│   ├── ui/                # UI Helm chart
+│   └── rag/               # RAG components (llama-stack, llm-service)
 ├── tests/                 # Test suite
+│   ├── mcp/               # MCP server tests
+│   ├── core/              # Core logic tests
+│   └── alerting/          # Alerting tests
 ├── scripts/               # Development and deployment scripts
 └── docs/                  # Documentation
 ```
@@ -55,21 +68,28 @@ summarizer/
 ### Local Development
 ```bash
 # Set up port-forwarding to cluster services
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
-# This runs ./scripts/local-dev.sh which sets up:
-# - Port-forwarding to Llamastack (8000:8000)
-# - Port-forwarding to llm-service (8001:8001)  
-# - Port-forwarding to Thanos (9090:9090)
+# If model is in different namespace:
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
+
+# This script sets up:
+# - Virtual environment activation (.venv)
+# - Port-forwarding to Llamastack (localhost:8321)
+# - Port-forwarding to Model service (localhost:8080)
+# - Port-forwarding to Thanos (localhost:9090)
+# - Metrics API (localhost:8000)
+# - Streamlit UI (localhost:8501)
 
 # Example:
-LLM_NAMESPACE=test make install-local
+./scripts/local-dev.sh -n default-ns
+./scripts/local-dev.sh -n default-ns -m model-ns  # Model in different namespace
 ```
 
-**Note**: The `LLM_NAMESPACE` environment variable is used by the `./scripts/local-dev.sh` script to:
-- Set up port-forwarding to the correct namespace
-- Configure the local development environment
-- Ensure all services are accessible from your local machine
+**Note**: The script automatically:
+- Activates Python virtual environment if `.venv` exists
+- Uses service-based port forwarding for better reliability
+- Supports separate namespaces for different services
 
 ## 🏗️ Architecture & Data Flow
 
@@ -77,8 +97,9 @@ LLM_NAMESPACE=test make install-local
 1. **Metrics API** (`src/api/metrics_api.py`): FastAPI backend serving metrics analysis and chat endpoints
 2. **UI** (`src/ui/ui.py`): Streamlit multi-dashboard frontend
 3. **Core Logic** (`src/core/`): Business logic modules for metrics processing and LLM integration
-4. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
-5. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
+4. **MCP Server** (`src/mcp_server/`): Model Context Protocol server for AI assistant integration
+5. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
+6. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
 
 ### Data Flow
 1. **Natural Language Question** → PromQL generation via LLM
@@ -137,6 +158,7 @@ make build
 make build-metrics-api    # FastAPI backend
 make build-ui            # Streamlit UI
 make build-alerting      # Alerting service
+make build-mcp-server    # MCP server
 
 # Build with custom tag
 make build TAG=v1.0.0
@@ -144,24 +166,35 @@ make build TAG=v1.0.0
 
 ### Deployment
 ```bash
-# Deploy to OpenShift
+# Deploy to OpenShift (deploys default model)
 make install NAMESPACE=your-namespace
 
-# Deploy with alerting
+# Deploy with alerting (deploys default model)
 make install-with-alerts NAMESPACE=your-namespace
 
 # Deploy with specific LLM model
-make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
+make install NAMESPACE=your-namespace LLM=llama-3-2-1b-instruct
 
-# Deploy with GPU tolerations
-make install NAMESPACE=your-namespace \
-  LLM=llama-3-2-3b-instruct \
-  LLM_TOLERATION="nvidia.com/gpu"
+# Deploy with GPU tolerations (deploys default model)
+make install NAMESPACE=your-namespace LLM_TOLERATION="nvidia.com/gpu"
 
-# Deploy with safety models
+# Deploy with safety models (deploys default model)
+make install NAMESPACE=your-namespace SAFETY=llama-guard-3-8b
+
+# Use existing model (specify LLM_URL as model service URL)
+# Note: When LLM_URL is provided, HF_TOKEN will not be prompted since no new model deployment is needed
+
+# URL with port (no processing applied):
 make install NAMESPACE=your-namespace \
-  LLM=llama-3-2-3b-instruct \
-  SAFETY=llama-guard-3-8b
+  LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local:8080/v1
+
+# URL without port (automatically adds :8080/v1):
+make install NAMESPACE=your-namespace \
+  LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local
+
+# Deploy individual components
+make install-metric-mcp NAMESPACE=your-namespace    # Metrics API only
+make install-mcp-server NAMESPACE=your-namespace    # MCP server only
 ```
 
 ### Management
@@ -182,6 +215,8 @@ make list-models
 - `PROMETHEUS_URL`: Thanos/Prometheus endpoint (default: http://localhost:9090)
 - `LLAMA_STACK_URL`: LLM backend URL (default: http://localhost:8321/v1/openai/v1)
 - `LLM_API_TOKEN`: API token for LLM service
+- `LLM_URL`: Use existing model URL (skips HF_TOKEN prompt and model deployment)
+- `HF_TOKEN`: Hugging Face token (auto-prompted only when LLM_URL is not set)
 - `MODEL_CONFIG`: JSON configuration for available models
 - `THANOS_TOKEN`: Authentication token (default: reads from service account)
 - `SLACK_WEBHOOK_URL`: Slack webhook for alerting notifications
@@ -233,7 +268,7 @@ Common models include:
 ### 1. Feature Development
 ```bash
 # 1. Set up local environment
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
 # 2. Make changes to source code
 
@@ -247,9 +282,9 @@ make build
 ### 2. Bug Fixing
 ```bash
 # 1. Setup local environment
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
-# 2. Activate virtual environment
+# 2. Activate virtual environment (for testing)
 uv sync --group dev
 source .venv/bin/activate
 
@@ -282,37 +317,40 @@ make uninstall NAMESPACE=test-namespace
 
 ### Setup Namespace
 ```bash
-export LLM_NAMESPACE=<TARGET_NAMESPACE>
+# Use the script with appropriate namespace parameters
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
+# or with separate model namespace:
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
 ```
 
 ### Port Forwarding
 ```bash
-# Manual port-forwarding (if make install-local fails)
-oc port-forward svc/llama-stack 8000:8000 -n $LLM_NAMESPACE &
-oc port-forward svc/llm-service 8001:8001 -n $LLM_NAMESPACE &
-oc port-forward svc/thanos-query 9090:9090 -n $LLM_NAMESPACE &
+# Manual port-forwarding (if script fails)
+# Note: Replace <pod-name> with actual pod names from 'oc get pods'
+oc port-forward pod/<thanos-pod-name> 9090:9090 -n openshift-monitoring &
+oc port-forward pod/<llamastack-pod-name> 8321:8321 -n <DEFAULT_NAMESPACE> &
+oc port-forward service/<model-service-name> 8080:8080 -n <MODEL_NAMESPACE> &
 ```
 
 ### Logs
 ```bash
-# View pod logs
-oc logs -f deployment/metrics-api -n $LLM_NAMESPACE
-oc logs -f deployment/metric-ui -n $LLM_NAMESPACE
-oc logs -f deployment/metric-alerting -n $LLM_NAMESPACE
+# View pod logs (replace with your actual namespace)
+oc logs -f deployment/metrics-api -n <DEFAULT_NAMESPACE>
+oc logs -f deployment/metric-ui -n <DEFAULT_NAMESPACE>
+oc logs -f deployment/metric-alerting -n <DEFAULT_NAMESPACE>
 ```
 
 ### Metrics
 ```bash
-
 # Access Prometheus metrics
-oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
+oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
 # Then visit http://localhost:8000/metrics
 ```
 
 ## 🛠️ Useful Makefile Targets
 
 ### Development
-- `LLM_NAMESPACE=<namespace> make install-local` - Set up local development environment
+- `./scripts/local-dev.sh -n <namespace>` - Set up local development environment
 - `make test` - Run unit tests with coverage
 - `make clean` - Clean up local images
 
@@ -321,10 +359,13 @@ oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
 - `make build-metrics-api` - Build FastAPI backend
 - `make build-ui` - Build Streamlit UI
 - `make build-alerting` - Build alerting service
+- `make build-mcp-server` - Build MCP server
 
 ### Deployment
 - `make install` - Deploy to OpenShift
 - `make install-with-alerts` - Deploy with alerting
+- `make install-metric-mcp` - Deploy metrics API only
+- `make install-mcp-server` - Deploy MCP server only
 - `make status` - Check deployment status
 - `make uninstall` - Remove deployment
 
@@ -340,10 +381,10 @@ oc port-forward svc/metrics-api 8000:8000 -n $LLM_NAMESPACE
 #### Port Forwarding Fails
 ```bash
 # Check if pods are running
-oc get pods -n $LLM_NAMESPACE
+oc get pods -n <DEFAULT_NAMESPACE>
 
 # Restart port-forwarding
-LLM_NAMESPACE=<TARGET_NAMESPACE> make install-local
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 ```
 
 #### Tests Fail
@@ -371,13 +412,13 @@ make build
 #### Deployment Issues
 ```bash
 # Check namespace exists
-oc get namespace $LLM_NAMESPACE
+oc get namespace <DEFAULT_NAMESPACE>
 
 # Check Helm releases
-helm list -n $LLM_NAMESPACE
+helm list -n <DEFAULT_NAMESPACE>
 
 # View deployment events
-oc get events -n $LLM_NAMESPACE --sort-by='.lastTimestamp'
+oc get events -n <DEFAULT_NAMESPACE> --sort-by='.lastTimestamp'
 ```
 
 ## 🔒 Security Considerations
@@ -429,18 +470,18 @@ oc get events -n $LLM_NAMESPACE --sort-by='.lastTimestamp'
 - **Main API**: `src/api/metrics_api.py`
 - **Core Logic**: `src/core/llm_summary_service.py`
 - **UI**: `src/ui/ui.py`
+- **MCP Server**: `src/mcp_server/main.py`
 - **Tests**: `tests/`
 - **Helm Charts**: `deploy/helm/`
 
 ### Key Commands
-- **Local Dev**: `LLM_NAMESPACE=<namespace> make install-local`
+- **Local Dev**: `./scripts/local-dev.sh -n <namespace>`
 - **Tests**: `uv run pytest -v`
 - **Build**: `make build`
 - **Deploy**: `make install NAMESPACE=ns`
 - **Status**: `make status NAMESPACE=ns`
 
 ### Environment Variables
-- `LLM_NAMESPACE` - Target OpenShift namespace
 - `REGISTRY` - Container registry (default: quay.io)
 - `VERSION` - Image version (default: 0.1.2)
 - `LLM` - LLM model ID for deployment

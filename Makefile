@@ -40,7 +40,16 @@ endif
 POSTGRES_USER ?= postgres
 POSTGRES_PASSWORD ?= rag_password
 POSTGRES_DBNAME ?= rag_blueprint
-HF_TOKEN ?= $(shell bash -c 'read -r -p "Enter Hugging Face Token: " HF_TOKEN; echo $$HF_TOKEN')
+
+# HF_TOKEN is only required if LLM_URL is not set
+HF_TOKEN ?= $(shell \
+    if [ -n "$(LLM_URL)" ]; then \
+        echo ""; \
+    else \
+        bash -c 'read -r -p "Enter Hugging Face Token: " HF_TOKEN; echo $$HF_TOKEN'; \
+    fi \
+)
+
 RAG_CHART := rag
 METRIC_API_RELEASE_NAME ?= metrics-api
 METRIC_API_CHART_PATH ?= metrics-api
@@ -70,10 +79,13 @@ ALERTING_RELEASE_NAME ?= alerting
 OBSERVABILITY_NAMESPACE ?= observability-hub # currently hard-coded in instrumentation.yaml
 INSTRUMENTATION_PATH ?= observability/otel-collector/scripts/instrumentation.yaml
 
+# LLM URL processing constants
+DEFAULT_LLM_PORT_AND_PATH := :8080/v1
+
 # Helm argument templates
 
 helm_llm_service_args = \
-    --set llm-service.secret.hf_token=$(HF_TOKEN) \
+    $(if $(LLM_URL),,--set llm-service.secret.hf_token=$(HF_TOKEN)) \
     $(if $(DEVICE),--set llm-service.device='$(DEVICE)',) \
     $(if $(LLM),--set global.models.$(LLM).enabled=true,) \
     $(if $(SAFETY),--set global.models.$(SAFETY).enabled=true,) \
@@ -81,10 +93,21 @@ helm_llm_service_args = \
     $(if $(SAFETY_TOLERATION),--set-json global.models.$(SAFETY).tolerations='$(call TOLERATIONS_TEMPLATE,$(SAFETY_TOLERATION))',) \
     $(if $(RAW_DEPLOYMENT),--set llm-service.rawDeploymentMode=$(RAW_DEPLOYMENT),)
 
+# Process LLM_URL to add default port and /v1 if port is missing
+define process_llm_url
+$(if $(LLM_URL),$(shell \
+    if echo "$(LLM_URL)" | grep -q ":[0-9]"; then \
+        echo "$(LLM_URL)"; \
+    else \
+        echo "$(LLM_URL)$(DEFAULT_LLM_PORT_AND_PATH)"; \
+    fi \
+),)
+endef
+
 helm_llama_stack_args = \
     $(if $(LLM),--set global.models.$(LLM).enabled=true,) \
     $(if $(SAFETY),--set global.models.$(SAFETY).enabled=true,) \
-    $(if $(LLM_URL),--set global.models.$(LLM).url='$(LLM_URL)',) \
+    $(if $(LLM_URL),--set global.models.$(LLM).url='$(call process_llm_url)',) \
     $(if $(SAFETY_URL),--set global.models.$(SAFETY).url='$(SAFETY_URL)',) \
     $(if $(LLM_API_TOKEN),--set global.models.$(LLM).apiToken='$(LLM_API_TOKEN)',) \
     $(if $(SAFETY_API_TOKEN),--set global.models.$(SAFETY).apiToken='$(SAFETY_API_TOKEN)',) \
@@ -156,9 +179,10 @@ help:
 	@echo "  PLATFORM           - Target platform (default: linux/amd64)"
 	@echo "  BUILD_TOOL         - Build tool: docker or podman (auto-detected)"
 	@echo "  NAMESPACE          - OpenShift namespace for deployment"
-	@echo "  HF_TOKEN           - Hugging Face Token (will prompt if not provided)"
+	@echo "  HF_TOKEN           - Hugging Face Token (will prompt if not provided and LLM_URL not set)"
 	@echo "  DEVICE             - Deploy models on cpu or gpu (default)"
 	@echo "  LLM                - Model id (eg. llama-3-2-3b-instruct)"
+	@echo "  LLM_URL            - Use existing model URL (auto-adds :8080/v1 if no port specified)"
 	@echo "  SAFETY             - Safety model id"
 	@echo "  ALERTS             - Set to TRUE to install alerting with main deployment"
 	@echo "  SLACK_WEBHOOK_URL  - Slack Webhook URL for alerting (will prompt if not provided)"
@@ -297,8 +321,6 @@ install-metric-ui: namespace
 install-mcp-server: namespace
 	@echo "Deploying MCP Server"
 	@cd deploy/helm && helm upgrade --install $(MCP_SERVER_RELEASE_NAME) $(MCP_SERVER_CHART_PATH) -n $(NAMESPACE) \
-		--set image.repository=$(MCP_SERVER_IMAGE) \
-		--set image.tag=$(VERSION) \
 		$(if $(MCP_SERVER_ROUTE_HOST),--set route.host='$(MCP_SERVER_ROUTE_HOST)',)
 
 .PHONY: install-rag
@@ -436,10 +458,22 @@ list-models: depend
 .PHONY: install-local
 install-local:
 	@echo "🚀 Setting up local development environment..."
+	@if [ -z "$(NAMESPACE)" ]; then \
+		echo "❌ Error: NAMESPACE parameter is required"; \
+		echo "Usage: make install-local NAMESPACE=your-namespace"; \
+		echo "Optional: make install-local NAMESPACE=default-ns MODEL_NAMESPACE=model-ns"; \
+		exit 1; \
+	fi
+	@echo "📋 Using namespace: $(NAMESPACE)"
+	@if [ -n "$(MODEL_NAMESPACE)" ]; then echo "📋 Using model namespace: $(MODEL_NAMESPACE)"; fi
 	@bash -c '\
 		uv sync && \
 		chmod +x ./scripts/local-dev.sh && \
-		source .venv/bin/activate && ./scripts/local-dev.sh && \
+		if [ -n "$(MODEL_NAMESPACE)" ]; then \
+			./scripts/local-dev.sh -n $(NAMESPACE) -m $(MODEL_NAMESPACE); \
+		else \
+			./scripts/local-dev.sh -n $(NAMESPACE); \
+		fi && \
 		echo "✅ Local development environment setup completed" \
 	'
 

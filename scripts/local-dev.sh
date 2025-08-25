@@ -11,7 +11,6 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROMETHEUS_NAMESPACE="openshift-monitoring"
-LLM_NAMESPACE="${LLM_NAMESPACE:-test1}"
 METRIC_API_APP="metrics-api-app"
 THANOS_PORT=9090
 LLAMASTACK_PORT=8321
@@ -23,31 +22,106 @@ UI_PORT=8501
 echo -e "${BLUE}🚀 AI Observability Metric Summarizer - Local Development Setup${NC}"
 echo "=============================================================="
 
+# Function to display usage
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -n/-N NAMESPACE              Default namespace for pods (required)"
+    echo "  -m/-M NAMESPACE              Llama Model namespace (optional, use if model is in different namespace)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 -n default-ns                       # All pods/services in same namespace"
+    echo "  $0 -N default-ns                       # All pods/services in same namespace (uppercase)"
+    echo "  $0 -n default-ns -m model-ns           # Model in different namespace than other pods/services"
+}
+
+# Function to parse command line arguments
+parse_args() {
+    # Check if no arguments provided
+    if [ $# -eq 0 ]; then
+        usage
+        exit 2
+    fi
+
+    DEFAULT_NAMESPACE=""
+    LLAMA_MODEL_NAMESPACE=""
+
+    while getopts "n:N:m:M:" opt; do
+        case $opt in
+            n|N) DEFAULT_NAMESPACE="$OPTARG"
+                 ;;
+            m|M) LLAMA_MODEL_NAMESPACE="$OPTARG"
+                 ;;
+            *) echo -e "${RED}❌ INVALID option: [$OPTARG]${NC}"
+               usage
+               exit 1
+               ;;
+        esac
+    done
+
+    # Validate arguments
+    if [ -z "$DEFAULT_NAMESPACE" ]; then
+        echo -e "${RED}❌ Default namespace is required. Please specify using -n or -N${NC}"
+        usage
+        exit 1
+    fi
+
+    # Set llama model namespace to default if not provided
+    if [ -z "$LLAMA_MODEL_NAMESPACE" ]; then
+        LLAMA_MODEL_NAMESPACE="$DEFAULT_NAMESPACE"
+    fi
+}
+
 # Function to cleanup on exit
 cleanup() {
+    # Prevent multiple cleanup calls
+    if [ "$CLEANUP_DONE" = "true" ]; then
+        return
+    fi
+    CLEANUP_DONE=true
+
     echo -e "\n${YELLOW}🧹 Cleaning up services and port-forwards...${NC}"
+    ensure_port_free "$METRICS_API_PORT"
     pkill -f "oc port-forward" || true
     pkill -f "uvicorn.*metrics_api:app" || true
     pkill -f "streamlit run ui.py" || true
+
+    # Deactivate virtual environment if it was activated
+    if [ -n "$VIRTUAL_ENV" ]; then
+        echo -e "${BLUE}🐍 Deactivating virtual environment...${NC}"
+        deactivate
+    fi
+
     echo -e "${GREEN}✅ Cleanup complete${NC}"
 }
-trap cleanup EXIT INT TERM
 
-# Function to check if service exists
+# Function to check prerequisites and activate virtual environment
 check_prerequisites() {
     echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
-    
+
+    # Check for virtual environment and activate it
+    if [ -f ".venv/bin/activate" ]; then
+        echo -e "${BLUE}🐍 Activating Python virtual environment...${NC}"
+        source .venv/bin/activate
+        echo -e "${GREEN}✅ Virtual environment activated${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Virtual environment (.venv) not found${NC}"
+        echo -e "${YELLOW}   Please create virtual environment by following README or DEV_GUIDE${NC}"
+        exit 1
+    fi
+
     if ! command -v oc &> /dev/null; then
         echo -e "${RED}❌ OpenShift CLI (oc) is not installed${NC}"
         exit 1
     fi
-    
+
     if ! oc whoami &> /dev/null; then
         echo -e "${RED}❌ Not logged in to OpenShift cluster${NC}"
         echo -e "${YELLOW}   Please run: oc login${NC}"
         exit 1
     fi
-    
+
     echo -e "${GREEN}✅ Prerequisites check passed${NC}"
 }
 
@@ -71,23 +145,25 @@ start_port_forwards() {
     fi
     
     # Find LlamaStack pod
-    LLAMASTACK_POD=$(oc get pods -n "$LLM_NAMESPACE" -o name | grep -E "(llama-stack|llamastack)" | head -1 | cut -d'/' -f2 || echo "")
+    LLAMASTACK_POD=$(oc get pods -n "$DEFAULT_NAMESPACE" -o name | grep -E "(llama-stack|llamastack)" | head -1 | cut -d'/' -f2 || echo "")
     if [ -n "$LLAMASTACK_POD" ]; then
         echo -e "${GREEN}✅ Found LlamaStack pod: $LLAMASTACK_POD${NC}"
-        oc port-forward pod/"$LLAMASTACK_POD" "$LLAMASTACK_PORT:8321" -n "$LLM_NAMESPACE" &
+        oc port-forward pod/"$LLAMASTACK_POD" "$LLAMASTACK_PORT:8321" -n "$DEFAULT_NAMESPACE" &
         echo -e "${GREEN}   🦙 LlamaStack available at: http://localhost:$LLAMASTACK_PORT${NC}"
     else
-        echo -e "${YELLOW}⚠️  LlamaStack pod not found${NC}"
+        echo -e "${RED}❌  LlamaStack pod not found. Exiting...${NC}"
+        exit 1
     fi
     
-    # Find Llama Model pod
-    LLAMA_MODEL_POD=$(oc get pods -n "$LLM_NAMESPACE" -o name | grep -E "(llama-3|inference)" | grep -v stack | head -1 | cut -d'/' -f2 || echo "")
-    if [ -n "$LLAMA_MODEL_POD" ]; then
-        echo -e "${GREEN}✅ Found Llama Model pod: $LLAMA_MODEL_POD${NC}"
-        oc port-forward pod/"$LLAMA_MODEL_POD" "$LLAMA_MODEL_PORT:8080" -n "$LLM_NAMESPACE" &
+    # Find Llama Model service
+    LLAMA_MODEL_SERVICE=$(oc get services -n "$LLAMA_MODEL_NAMESPACE" -o name | grep -E "(llama-3|predictor)" | grep -v stack | head -1 | cut -d'/' -f2 || echo "")
+    if [ -n "$LLAMA_MODEL_SERVICE" ]; then
+        echo -e "${GREEN}✅ Found Llama Model service: $LLAMA_MODEL_SERVICE in [$LLAMA_MODEL_NAMESPACE] namespace${NC}"
+        oc port-forward service/"$LLAMA_MODEL_SERVICE" "$LLAMA_MODEL_PORT:8080" -n "$LLAMA_MODEL_NAMESPACE" &
         echo -e "${GREEN}   🤖 Llama Model available at: http://localhost:$LLAMA_MODEL_PORT${NC}"
     else
-        echo -e "${YELLOW}⚠️  Llama Model pod not found${NC}"
+        echo -e "${RED}❌  Llama Model service not found in namespace: $LLAMA_MODEL_NAMESPACE. Exiting...${NC}"
+        exit 1
     fi
     
     sleep 3  # Give port-forwards time to establish
@@ -114,14 +190,13 @@ ensure_port_free() {
 }
 
 # This function sets "MODEL_CONFIG" envrionment variable by reading it from "$METRIC_API_APP" deployment
-function set_model_config() {
+set_model_config() {
     # Find metrics-api-app deployment
-    # MODEL_CONFIG=$(oc get deploy 'metrics-api-app' -n"$LLM_NAMESPACE" -o json -o jsonpath='{.spec.template.spec.containers..env}' | jq '.[] | select(.name == "MODEL_CONFIG") | .value')
 
-    METRIC_API_DEPLOYMENT=$(oc get deploy "$METRIC_API_APP" -n "$LLM_NAMESPACE")
+    METRIC_API_DEPLOYMENT=$(oc get deploy "$METRIC_API_APP" -n "$DEFAULT_NAMESPACE")
     if [ -n "$METRIC_API_DEPLOYMENT" ]; then
         echo -e "${GREEN}✅ Found [$METRIC_API_APP] deployment: $METRIC_API_DEPLOYMENT${NC}"
-        export $(oc set env deployment/$METRIC_API_APP --list  -n "$LLM_NAMESPACE" | grep MODEL_CONFIG)
+        export $(oc set env deployment/$METRIC_API_APP --list  -n "$DEFAULT_NAMESPACE" | grep MODEL_CONFIG)
         if [ -n "$MODEL_CONFIG" ]; then
           echo -e "${GREEN}✅   MODEL_CONFIG set to: $MODEL_CONFIG${NC}"
         else
@@ -183,10 +258,17 @@ start_local_services() {
 
 # Main execution
 main() {
+    parse_args "$@"
     check_prerequisites
+
+    # Set cleanup trap only after successful prerequisite checks
+    trap cleanup EXIT INT TERM
+
     echo ""
     echo -e "${BLUE}--------------------------------${NC}"
-    echo -e "${BLUE}Namespace being used for setup -> LLM_NAMESPACE: $LLM_NAMESPACE${NC}"
+    echo -e "${BLUE}Namespaces being used for setup:${NC}"
+    echo -e "${BLUE}  DEFAULT_NAMESPACE: $DEFAULT_NAMESPACE${NC}"
+    echo -e "${BLUE}  LLAMA_MODEL_NAMESPACE: $LLAMA_MODEL_NAMESPACE${NC}"
     echo -e "${BLUE}--------------------------------${NC}\n"
 
     start_port_forwards
@@ -209,4 +291,4 @@ main() {
 }
 
 # Run main function
-main 
+main "$@"
