@@ -18,7 +18,7 @@ python setup_integration.py
 This will automatically:
 - 🔍 Detect your project paths and virtual environment
 - 📁 Backup any existing Claude Desktop configuration
-- ⚙️ Generate the configuration with all 5 MCP functions  
+- ⚙️ Generate the configuration with the MCP functions  
 - ✅ Validate the JSON and test the MCP server
 - 📋 Show you the next steps
 
@@ -32,7 +32,7 @@ cp src/mcp_server/integrations/claude-desktop-config.json \
    ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
-**Manual JSON (replace `$OBS_BASE_DIR` with your project path):**
+**Manual JSON (replace `$OBS_BASE_DIR` with your project path). Tool list shown should match registered tools (`list_models`, `list_namespaces`, `get_model_config`, `analyze_vllm`). Include these env vars:**
 
 ```json
 {
@@ -41,21 +41,22 @@ cp src/mcp_server/integrations/claude-desktop-config.json \
       "command": "$OBS_BASE_DIR/.venv/bin/obs-mcp-server",
       "args": ["--local"],
       "env": {
-        "PROMETHEUS_URL": "http://localhost:9090"
+        "PROMETHEUS_URL": "http://localhost:9090",
+        "LLAMA_STACK_URL": "http://localhost:8321/v1/openai/v1",
+        "MODEL_CONFIG": "<your model config JSON>",
+        "THANOS_TOKEN": "<oc whoami -t>"
       },
       "autoApprove": [
         "list_models",
-        "get_namespaces",
-        "get_metrics",
-        "get_alerts",
-        "analyze_metrics"
+        "list_namespaces",
+        "get_model_config",
+        "analyze_vllm"
       ],
       "alwaysAllow": [
         "list_models",
-        "get_namespaces",
-        "get_metrics",
-        "get_alerts",
-        "analyze_metrics"
+        "list_namespaces",
+        "get_model_config",
+        "analyze_vllm"
       ],
       "disabled": false
     }
@@ -66,7 +67,7 @@ cp src/mcp_server/integrations/claude-desktop-config.json \
 **⚠️ Important Notes:**
 - Replace `$OBS_BASE_DIR` with your actual project path (e.g., `/home/user/projects/openshift-ai-observability-summarizer`)
 - Make sure the `.venv/bin/obs-mcp-server` file exists and is executable
-- The configuration includes all 5 MCP functions with auto-approval
+- The configuration includes all MCP functions with auto-approval
 
 ### Portable Path Detection
 
@@ -96,6 +97,7 @@ No manual path configuration needed!
    - "What models are available?"
    - "What namespaces exist?"
    - "List models in namespace m3"
+   - "Analyze model 'myns | llama-3' for the last hour"
    - "Get GPU metrics for the last hour"
    - "Show me vLLM metrics"
    - "Get OpenShift metrics for 30 minutes"

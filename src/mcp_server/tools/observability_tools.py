@@ -10,7 +10,10 @@ import os
 from typing import Dict, Any, List, Optional
 
 # Import core observability services
-from core.metrics import get_models_helper, get_namespaces_helper
+from core.metrics import get_models_helper, get_namespaces_helper, get_vllm_metrics, fetch_metrics
+from core.llm_client import build_prompt, summarize_with_llm, extract_time_range_with_info
+from core.models import AnalyzeRequest
+from core.response_validator import ResponseType
 from core.config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 import requests
 from datetime import datetime
@@ -101,3 +104,80 @@ def get_model_config() -> List[Dict[str, Any]]:
         return _resp(response.strip())
     except Exception as e:
         return _resp(f"Error retrieving model configuration: {str(e)}", is_error=True)
+
+
+def analyze_vllm(
+    model_name: str,
+    summarize_model_id: str,
+    time_range: Optional[str] = None,
+    start_datetime: Optional[str] = None,
+    end_datetime: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Analyze vLLM metrics and summarize using LLM. Using the same core functions:
+    - get_vllm_metrics() to discover metrics
+    - fetch_metrics() to fetch time series
+    - build_prompt() to build the analysis prompt
+    - summarize_with_llm() to generate the summary
+
+    Returns an MCP-friendly text response containing model, prompt, summary,
+    and a compact metrics preview.
+    """
+    try:
+        # Resolve time range → start_ts/end_ts
+        # Resolve time range
+        if time_range:
+            # Natural language (e.g., "last 1h", "last 24h")
+            resolved_start, resolved_end, _info = extract_time_range_with_info(time_range, None, None)
+        elif start_datetime and end_datetime:
+            # ISO 8601 datetimes
+            try:
+                rs = int(datetime.fromisoformat(start_datetime.replace("Z", "+00:00")).timestamp())
+                re = int(datetime.fromisoformat(end_datetime.replace("Z", "+00:00")).timestamp())
+                resolved_start, resolved_end = rs, re
+            except Exception as e:
+                return _resp(f"Invalid ISO datetimes: {e}", is_error=True)
+        else:
+            # Default last 1 hour
+            now = int(datetime.utcnow().timestamp())
+            resolved_end = now
+            resolved_start = now - 3600
+
+        # Collect metrics
+        vllm_metrics = get_vllm_metrics()
+        metric_dfs: Dict[str, Any] = {
+            label: fetch_metrics(query, model_name, resolved_start, resolved_end)
+            for label, query in vllm_metrics.items()
+        }
+
+        # Build prompt and summarize
+        prompt = build_prompt(metric_dfs, model_name)
+        summary = summarize_with_llm(
+            prompt,
+            summarize_model_id,
+            ResponseType.VLLM_ANALYSIS,
+            api_key,
+        )
+
+        # Create a compact metrics preview (latest values)
+        preview_lines: List[str] = []
+        for label, df in metric_dfs.items():
+            try:
+                if df is not None and not df.empty and "value" in df.columns:
+                    latest_value = df["value"].iloc[-1]
+                    preview_lines.append(f"- {label}: {latest_value}")
+                else:
+                    preview_lines.append(f"- {label}: no data")
+            except Exception:
+                preview_lines.append(f"- {label}: error reading data")
+
+        content = (
+            f"Model: {model_name}\n\n"
+            f"Prompt Used:\n{prompt}\n\n"
+            f"Summary:\n{summary}\n\n"
+            f"Metrics Preview (latest values):\n" + "\n".join(preview_lines)
+        )
+
+        return _resp(content)
+    except Exception as e:
+        return _resp(f"Error during analysis: {str(e)}", is_error=True)
