@@ -118,17 +118,21 @@ def generate_claude_config(mcp_stdio_path: str) -> Dict[str, Any]:
                 # No args needed for stdio server
                 "env": {
                     "PROMETHEUS_URL": "http://localhost:9090",
-                    "MODEL_CONFIG": MODEL_CONFIG_DEFAULT
+                    "LLAMA_STACK_URL": "http://localhost:8321/v1/openai/v1",
+                    "MODEL_CONFIG": MODEL_CONFIG_DEFAULT,
+                    "THANOS_TOKEN": os.getenv("THANOS_TOKEN", "")
                 },
                 "autoApprove": [
                     "list_models",
                     "list_namespaces",
-                    "get_model_config"
+                    "get_model_config",
+                    "analyze_vllm"
                 ],
                 "alwaysAllow": [
                     "list_models", 
                     "list_namespaces",
-                    "get_model_config"
+                    "get_model_config",
+                    "analyze_vllm"
                 ],
                 "disabled": False
             }
