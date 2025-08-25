@@ -297,8 +297,6 @@ install-metric-ui: namespace
 install-mcp-server: namespace
 	@echo "Deploying MCP Server"
 	@cd deploy/helm && helm upgrade --install $(MCP_SERVER_RELEASE_NAME) $(MCP_SERVER_CHART_PATH) -n $(NAMESPACE) \
-		--set image.repository=$(MCP_SERVER_IMAGE) \
-		--set image.tag=$(VERSION) \
 		$(if $(MCP_SERVER_ROUTE_HOST),--set route.host='$(MCP_SERVER_ROUTE_HOST)',)
 
 .PHONY: install-rag

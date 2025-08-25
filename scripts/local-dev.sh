@@ -151,7 +151,8 @@ start_port_forwards() {
         oc port-forward pod/"$LLAMASTACK_POD" "$LLAMASTACK_PORT:8321" -n "$DEFAULT_NAMESPACE" &
         echo -e "${GREEN}   🦙 LlamaStack available at: http://localhost:$LLAMASTACK_PORT${NC}"
     else
-        echo -e "${YELLOW}⚠️  LlamaStack pod not found${NC}"
+        echo -e "${RED}❌  LlamaStack pod not found. Exiting...${NC}"
+        exit 1
     fi
     
     # Find Llama Model service
@@ -161,7 +162,8 @@ start_port_forwards() {
         oc port-forward service/"$LLAMA_MODEL_SERVICE" "$LLAMA_MODEL_PORT:8080" -n "$LLAMA_MODEL_NAMESPACE" &
         echo -e "${GREEN}   🤖 Llama Model available at: http://localhost:$LLAMA_MODEL_PORT${NC}"
     else
-        echo -e "${YELLOW}⚠️  Llama Model service not found in namespace: $LLAMA_MODEL_NAMESPACE${NC}"
+        echo -e "${RED}❌  Llama Model service not found in namespace: $LLAMA_MODEL_NAMESPACE. Exiting...${NC}"
+        exit 1
     fi
     
     sleep 3  # Give port-forwards time to establish
