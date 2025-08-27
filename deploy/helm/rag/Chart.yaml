@@ -8,10 +8,10 @@ appVersion: "1.16.0"
 dependencies:
   - name: llm-service
     version: 0.1.0
-    repository: https://rh-ai-kickstart.github.io/ai-architecture-charts
+    repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
   - name: llama-stack
     version: 0.2.9
-    repository: https://rh-ai-kickstart.github.io/ai-architecture-charts
+    repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
   - name: pgvector
     version: 0.1.0
-    repository: https://rh-ai-kickstart.github.io/ai-architecture-charts  
+    repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
