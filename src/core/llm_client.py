@@ -156,6 +156,15 @@ def summarize_with_llm(
         if LLM_API_TOKEN:
             headers["Authorization"] = f"Bearer {LLM_API_TOKEN}"
 
+        # Determine correct local model identifier: prefer serviceName if present
+        # summarize_model_id may be a human/registry id (e.g., "meta-llama/..."), while
+        # LlamaStack typically expects the backend service name (e.g., "llama-3-2-3b-instruct").
+        model_id_to_use = (
+            model_info.get("serviceName")
+            or model_info.get("modelName")
+            or summarize_model_id
+        )
+
         # Combine all messages into a single prompt
         prompt_text = ""
         if messages:
@@ -163,16 +172,54 @@ def summarize_with_llm(
                 prompt_text += f"{msg['role']}: {msg['content']}\n"
         prompt_text += prompt  # Add the current prompt
 
-        payload = {
-            "model": summarize_model_id,
-            "prompt": prompt_text,
-            "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
-            "max_tokens": max_tokens,
-        }
-        response_json = _make_api_request(
-            f"{LLAMA_STACK_URL}/completions", headers, payload, verify_ssl=VERIFY_SSL
-        )
-        
+        # Try multiple possible model identifiers to maximize compatibility
+        # LlamaStack may expect different model IDs than MODEL_CONFIG keys
+        # Priority: serviceName (LlamaStack backend) -> modelName (alt ID) -> summarize_model_id (user key)
+        candidate_ids = []
+        for candidate in [model_info.get("serviceName"), model_info.get("modelName"), summarize_model_id]:
+            if candidate and candidate not in candidate_ids:
+                candidate_ids.append(candidate)
+
+        last_err: Optional[Exception] = None
+        response_json = None
+        # Attempt each candidate model ID until one succeeds
+        for candidate_model_id in candidate_ids:
+            payload = {
+                "model": candidate_model_id,
+                "prompt": prompt_text,
+                "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
+                "max_tokens": max_tokens,
+            }
+            try:
+                response_json = _make_api_request(
+                    f"{LLAMA_STACK_URL}/completions", headers, payload, verify_ssl=VERIFY_SSL
+                )
+                break  # Success - stop trying other candidates
+            except requests.exceptions.HTTPError as http_err:  # type: ignore[name-defined]
+                # Parse error details to determine if we should try next candidate
+                try:
+                    status = http_err.response.status_code if http_err.response is not None else None
+                    body = http_err.response.text if http_err.response is not None else ""
+                except Exception:
+                    status, body = None, ""
+                
+                # Only retry for "model not found" errors; re-raise other HTTP errors immediately
+                if status in (400, 404) and ("Model" in body and "not found" in body):
+                    last_err = http_err
+                    continue  # Try next candidate
+                else:
+                    raise  # Non-model-related error, fail fast
+            except Exception as e:
+                # Network/connection errors - save and try next candidate
+                last_err = e
+                continue
+
+        if response_json is None:
+            # All model ID candidates failed
+            if last_err:
+                raise last_err
+            raise RuntimeError("Failed to obtain response from LlamaStack completions endpoint")
+
         raw_response = _validate_and_extract_response(
             response_json, is_external=False, provider="LLM"
         )

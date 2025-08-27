@@ -21,9 +21,11 @@ class ObservabilityMCPServer:
             list_models,
             list_namespaces,
             get_model_config,
+            analyze_vllm,
         )
 
         self.mcp.tool()(list_models)
         self.mcp.tool()(list_namespaces)
         self.mcp.tool()(get_model_config)
+        self.mcp.tool()(analyze_vllm)
 
