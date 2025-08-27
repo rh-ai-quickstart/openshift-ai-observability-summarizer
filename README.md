@@ -32,6 +32,7 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 - [Running Tests with Pytest](#running-tests-with-pytest)
 - [GitHub Actions CI/CD](#github-actions-cicd)
 - [Semantic Versioning](#semantic-versioning)
+- [Helm Charts Documentation](#helm-charts-documentation)
 - [Contributing](#contributing)
 - [Community](#community)
 - [License](#license)
@@ -603,6 +604,18 @@ PR with label "major:" → Major bump
 ```
 
 📖 **[Complete Semantic Versioning Documentation](docs/SEMANTIC_VERSIONING.md)** - Detailed rules, implementation, examples, and troubleshooting.
+
+---
+
+## Helm Charts Documentation
+
+The project uses Helm charts for OpenShift deployment with centralized image management. Both image repositories and versions are controlled through Makefile variables using Helm's `--set` override functionality:
+
+- **Image repositories**: Controlled via `REGISTRY`, `ORG`, and `IMAGE_PREFIX` variables
+- **Image versions**: Controlled via the `VERSION` variable
+- **Helm overrides**: `--set image.repository=$(IMAGE_NAME)` and `--set image.tag=$(VERSION)`
+
+📖 **[Complete Helm Charts Documentation](docs/HELM_CHARTS.md)** - Detailed information about Helm chart structure, image management, deployment patterns, and customization options.
 
 ---
 

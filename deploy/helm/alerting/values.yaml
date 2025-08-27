@@ -1,6 +1,6 @@
 image:
-  repository: quay.io/ecosystem-appeng/aiobs-metrics-alerting
-  tag: 0.1.5
+  repository: "overridden-by-makefile"
+  tag: "overridden-by-makefile"
   pullPolicy: IfNotPresent
 
 schedule: "*/1 * * * *" # cron job scheduled every minute
