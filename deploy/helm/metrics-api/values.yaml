@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: quay.io/ecosystem-appeng/aiobs-metrics-api
-  tag: 0.1.7
+  tag: 0.1.8
 
 service:
   type: ClusterIP
