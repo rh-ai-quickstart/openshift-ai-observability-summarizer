@@ -14,7 +14,7 @@ MAKEFLAGS += --no-print-directory
 REGISTRY ?= quay.io
 ORG ?= ecosystem-appeng
 IMAGE_PREFIX ?= aiobs
-VERSION ?= 0.1.5
+VERSION ?= 0.1.7
 PLATFORM ?= linux/amd64
 
 # Container image names
@@ -285,11 +285,6 @@ install-metric-mcp: namespace
 	@echo "Installing MCP by generating dynamic model configuration for $(LLM)"
 	@$(MAKE) generate-model-config LLM=$(LLM) > /dev/null 2>&1
 
-	# TODO (SG): Do we need to get the URL for the model - it's already set earlier in the script
-	@echo "Getting URL for model: $(LLM)"
-	@TMP_LLM_URL=$$(oc get inferenceservice $(LLM) -n $(NAMESPACE) -o jsonpath='{.status.url}'); \
-	echo "Detected TMP_LLM_URL for $(LLM): $$TMP_LLM_URL"
-
 	@echo "Checking ClusterRole grafana-prometheus-reader..."
 	@(echo "modelConfig:"; cat $(GEN_MODEL_CONFIG_PREFIX)-final_config.json | sed 's/^/  /') > $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
 	if oc get clusterrole grafana-prometheus-reader > /dev/null 2>&1; then \
@@ -419,30 +414,29 @@ uninstall:
 		echo "→ Detected alerting chart $(ALERTING_RELEASE_NAME). Uninstalling alerting..."; \
 		$(MAKE) uninstall-alerts NAMESPACE=$(NAMESPACE); \
 	fi
-	@echo "Deleting remaining pods in namespace $(NAMESPACE)"
-	- @oc delete pods -n $(NAMESPACE) --all
+
 	@echo "Uninstalling $(METRICS_UI_RELEASE_NAME) helm chart"
-	- @helm -n $(NAMESPACE) uninstall $(METRICS_UI_RELEASE_NAME)
+	- @helm -n $(NAMESPACE) uninstall $(METRICS_UI_RELEASE_NAME) --ignore-not-found
 	@echo "Uninstalling $(METRICS_API_RELEASE_NAME) helm chart"
-	- @helm -n $(NAMESPACE) uninstall $(METRICS_API_RELEASE_NAME)
+	- @helm -n $(NAMESPACE) uninstall $(METRICS_API_RELEASE_NAME) --ignore-not-found
 	@echo "Uninstalling $(MCP_SERVER_RELEASE_NAME) helm chart (if installed)"
-	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME)
+	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME) --ignore-not-found
+
 	@echo "Removing tracing instrumentation from namespace $(NAMESPACE)"
 	- @$(MAKE) remove-tracing NAMESPACE=$(NAMESPACE) || true
 	@echo "Uninstalling observability stack"
 	- @$(MAKE) uninstall-observability || true
-	@echo "Checking for any remaining resources in namespace $(NAMESPACE)..."
-	@echo "If you want to completely remove the namespace, run: oc delete project $(NAMESPACE)"
-	@echo "Remaining resources in namespace $(NAMESPACE):"
-	@echo "Listing pods..."
+
+	@echo "\nRemaining resources in namespace $(NAMESPACE):"
+	@echo " → Pods..."
 	@oc get pods -n $(NAMESPACE) || true
-	@echo "Listing services..."
+	@echo " → Services..."
 	@oc get svc -n $(NAMESPACE) || true
-	@echo "Listing routes..."
+	@echo " → Routes..."
 	@oc get routes -n $(NAMESPACE) || true
-	@echo "Listing secrets..."
+	@echo " → Secrets..."
 	@oc get secrets -n $(NAMESPACE) | grep huggingface-secret || true
-	@echo "Listing pvcs..."
+	@echo " → Pvcs..."
 	@oc get pvc -n $(NAMESPACE) || true
 	@echo "✅ Uninstallation completed"
 

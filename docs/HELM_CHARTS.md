@@ -15,6 +15,8 @@ This directory contains Helm charts for deploying the AI Observability Summarize
    - `METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-alerting`
    - `MCP_SERVER_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-mcp-server`
 
+   **Note**: The observability and rag charts use external images and are not automatically updated by the CI/CD pipeline.
+
 2. **Helm commands use `--set` for both repository and tag**:
    - `--set image.repository=$(METRICS_API_IMAGE)`
    - `--set image.tag=$(VERSION)`
@@ -22,17 +24,13 @@ This directory contains Helm charts for deploying the AI Observability Summarize
 3. **Values override defaults**: Helm automatically overrides values.yaml defaults
 4. **No file generation needed**: Direct helm command execution
 
-### Values Files
-- **`values.yaml`** - Contains placeholder values: `repository: "overridden-by-makefile"` and `tag: "overridden-by-makefile"`
-- **Image overrides**: Both repository and tag are set via Makefile variables in helm commands
-
 ### Automated Version Management
 
 The `VERSION` variable in the Makefile is **automatically updated** by the GitHub Actions CI/CD pipeline on every successful PR merge to `dev` or `main` branches using semantic versioning.
 
 **Manual Override**: You can still override the version for local development:
 ```bash
-VERSION=v1.2.3 make install NAMESPACE=my-namespace
+VERSION=1.2.3 make install NAMESPACE=my-namespace
 ```
 
 📖 **[GitHub Actions Documentation](GITHUB_ACTIONS.md)** - Complete details about automated version management, semantic versioning rules, and CI/CD workflows.
@@ -46,23 +44,25 @@ make install NAMESPACE=my-namespace
 
 ### Deploy with Custom Version
 ```bash
-VERSION=v1.0.0 make install NAMESPACE=my-namespace
+VERSION=1.0.0 make install NAMESPACE=my-namespace
 ```
 
 ## File Structure
 
 ```
 deploy/helm/
-├── ui/
-│   ├── values.yaml            # Default values (edit this)
-│   └── Chart.yaml
-├── metrics-api/
-│   ├── values.yaml            # Default values (edit this)
-│   └── Chart.yaml
 ├── alerting/
-│   ├── values.yaml            # Default values (edit this)
-│   └── Chart.yaml
-└── README.md                   # This file
+│   ├── Chart.yaml
+│   └── values.yaml            # Default values (edit this)
+├── mcp-server/
+│   ├── Chart.yaml
+│   └── values.yaml            # Default values (edit this)
+├── metrics-api/
+│   ├── Chart.yaml
+│   └── values.yaml            # Default values (edit this)
+└── ui/
+    ├── Chart.yaml
+    └── values.yaml            # Default values (edit this)
 ```
 
 ## Important Notes
@@ -77,10 +77,10 @@ deploy/helm/
 ```bash
 # Helm command with --set
 helm upgrade --install my-release ./chart \
-  --set image.tag=v1.0.0
+  --set image.tag=1.0.0
 
 # This overrides any image.tag value in values.yaml
-# If values.yaml has image.tag: 0.1.2, it becomes v1.0.0
+# If values.yaml has image.tag: 0.1.2, it becomes 1.0.0
 ```
 
 ## Benefits of This Approach
