@@ -51,10 +51,10 @@ HF_TOKEN ?= $(shell \
 )
 
 RAG_CHART := rag
-METRIC_API_RELEASE_NAME ?= metrics-api
-METRIC_API_CHART_PATH ?= metrics-api
-METRIC_UI_RELEASE_NAME ?= ui
-METRIC_UI_CHART_PATH ?= ui
+METRICS_API_RELEASE_NAME ?= metrics-api
+METRICS_API_CHART_PATH ?= metrics-api
+METRICS_UI_RELEASE_NAME ?= ui
+METRICS_UI_CHART_PATH ?= ui
 MCP_SERVER_RELEASE_NAME ?= mcp-server
 MCP_SERVER_CHART_PATH ?= mcp-server
 TOLERATIONS_TEMPLATE=[{"key":"$(1)","effect":"NoSchedule","operator":"Exists"}]
@@ -175,7 +175,7 @@ help:
 	@echo "  REGISTRY           - Container registry (default: quay.io)"
 	@echo "  ORG                - Account or org name (default: ecosystem-appeng)"
 	@echo "  IMAGE_PREFIX       - Image prefix (default: aiobs)"
-	@echo "  VERSION            - Image version (default: 0.1.0)"
+	@echo "  VERSION            - Image version (default: $(VERSION))"
 	@echo "  PLATFORM           - Target platform (default: linux/amd64)"
 	@echo "  BUILD_TOOL         - Build tool: docker or podman (auto-detected)"
 	@echo "  NAMESPACE          - OpenShift namespace for deployment"
@@ -285,23 +285,22 @@ install-metric-mcp: namespace
 	@echo "Installing MCP by generating dynamic model configuration for $(LLM)"
 	@$(MAKE) generate-model-config LLM=$(LLM) > /dev/null 2>&1
 
-	# TODO (SG): Do we need to get the URL for the model - it's already set earlier in the script
-	@echo "Getting URL for model: $(LLM)"
-	@TMP_LLM_URL=$$(oc get inferenceservice $(LLM) -n $(NAMESPACE) -o jsonpath='{.status.url}'); \
-	echo "Detected TMP_LLM_URL for $(LLM): $$TMP_LLM_URL"
-
 	@echo "Checking ClusterRole grafana-prometheus-reader..."
 	@(echo "modelConfig:"; cat $(GEN_MODEL_CONFIG_PREFIX)-final_config.json | sed 's/^/  /') > $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
 	if oc get clusterrole grafana-prometheus-reader > /dev/null 2>&1; then \
 		echo "ClusterRole exists. Deploying without creating Grafana role..."; \
-		cd deploy/helm && helm upgrade --install $(METRIC_API_RELEASE_NAME) $(METRIC_API_CHART_PATH) -n $(NAMESPACE) \
+		cd deploy/helm && helm upgrade --install $(METRICS_API_RELEASE_NAME) $(METRICS_API_CHART_PATH) -n $(NAMESPACE) \
 			--set rbac.createGrafanaRole=false \
+			--set image.repository=$(METRICS_API_IMAGE) \
+			--set image.tag=$(VERSION) \
 			--set-json listModels.modelId.enabledModelIds='$(LLM_JSON)' \
 			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
 	else \
 		echo "ClusterRole does not exist. Deploying and creating Grafana role..."; \
-		cd deploy/helm && helm upgrade --install $(METRIC_API_RELEASE_NAME) $(METRIC_API_CHART_PATH) -n $(NAMESPACE) \
+		cd deploy/helm && helm upgrade --install $(METRICS_API_RELEASE_NAME) $(METRICS_API_CHART_PATH) -n $(NAMESPACE) \
 			--set rbac.createGrafanaRole=true \
+			--set image.repository=$(METRICS_API_IMAGE) \
+			--set image.tag=$(VERSION) \
 			--set-json listModels.modelId.enabledModelIds='$(LLM_JSON)' \
 			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
 	fi
@@ -315,7 +314,9 @@ install-metric-mcp: namespace
 .PHONY: install-metric-ui
 install-metric-ui: namespace
 	@echo "Deploying Metric UI"
-	@cd deploy/helm && helm upgrade --install $(METRIC_UI_RELEASE_NAME) $(METRIC_UI_CHART_PATH) -n $(NAMESPACE)
+	@cd deploy/helm && helm upgrade --install $(METRICS_UI_RELEASE_NAME) $(METRICS_UI_CHART_PATH) -n $(NAMESPACE) \
+		--set image.repository=$(METRICS_UI_IMAGE) \
+		--set image.tag=$(VERSION)
 
 .PHONY: install-mcp-server
 install-mcp-server: namespace
@@ -440,30 +441,29 @@ uninstall:
 		echo "→ Detected alerting chart $(ALERTING_RELEASE_NAME). Uninstalling alerting..."; \
 		$(MAKE) uninstall-alerts NAMESPACE=$(NAMESPACE); \
 	fi
-	@echo "Deleting remaining pods in namespace $(NAMESPACE)"
-	- @oc delete pods -n $(NAMESPACE) --all
-	@echo "Uninstalling $(METRIC_UI_RELEASE_NAME) helm chart"
-	- @helm -n $(NAMESPACE) uninstall $(METRIC_UI_RELEASE_NAME)
-	@echo "Uninstalling $(METRIC_API_RELEASE_NAME) helm chart"
-	- @helm -n $(NAMESPACE) uninstall $(METRIC_API_RELEASE_NAME)
+
+	@echo "Uninstalling $(METRICS_UI_RELEASE_NAME) helm chart"
+	- @helm -n $(NAMESPACE) uninstall $(METRICS_UI_RELEASE_NAME) --ignore-not-found
+	@echo "Uninstalling $(METRICS_API_RELEASE_NAME) helm chart"
+	- @helm -n $(NAMESPACE) uninstall $(METRICS_API_RELEASE_NAME) --ignore-not-found
 	@echo "Uninstalling $(MCP_SERVER_RELEASE_NAME) helm chart (if installed)"
-	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME)
+	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME) --ignore-not-found
+
 	@echo "Removing tracing instrumentation from namespace $(NAMESPACE)"
 	- @$(MAKE) remove-tracing NAMESPACE=$(NAMESPACE) || true
 	@echo "Uninstalling observability stack"
 	- @$(MAKE) uninstall-observability || true
-	@echo "Checking for any remaining resources in namespace $(NAMESPACE)..."
-	@echo "If you want to completely remove the namespace, run: oc delete project $(NAMESPACE)"
-	@echo "Remaining resources in namespace $(NAMESPACE):"
-	@echo "Listing pods..."
+
+	@echo "\nRemaining resources in namespace $(NAMESPACE):"
+	@echo " → Pods..."
 	@oc get pods -n $(NAMESPACE) || true
-	@echo "Listing services..."
+	@echo " → Services..."
 	@oc get svc -n $(NAMESPACE) || true
-	@echo "Listing routes..."
+	@echo " → Routes..."
 	@oc get routes -n $(NAMESPACE) || true
-	@echo "Listing secrets..."
+	@echo " → Secrets..."
 	@oc get secrets -n $(NAMESPACE) | grep huggingface-secret || true
-	@echo "Listing pvcs..."
+	@echo " → Pvcs..."
 	@oc get pvc -n $(NAMESPACE) || true
 	@echo "✅ Uninstallation completed"
 
@@ -658,7 +658,9 @@ create-secret: namespace
 .PHONY: install-alerts
 install-alerts: patch-config create-secret 
 	@echo "Installing/Upgrading Helm chart $(ALERTING_RELEASE_NAME) in namespace $(NAMESPACE)..."
-	@cd deploy/helm && helm upgrade --install $(ALERTING_RELEASE_NAME) ./alerting --namespace $(NAMESPACE)
+	@cd deploy/helm && helm upgrade --install $(ALERTING_RELEASE_NAME) ./alerting --namespace $(NAMESPACE) \
+		--set image.repository=$(METRICS_ALERTING_IMAGE) \
+		--set image.tag=$(VERSION)
 	@echo "Alerting Helm chart deployment complete."
 
 .PHONY: uninstall-alerts
