@@ -1,38 +1,56 @@
-from unittest.mock import patch
+from contextlib import asynccontextmanager
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
 
-class _DummyASGIApp:
-    def __init__(self):
-        # Minimal callable to satisfy FastAPI(lifespan=...)
-        async def _lifespan(app):  # type: ignore[no-redef]
-            yield
+def _lifespan_ctx():
+    @asynccontextmanager
+    async def _lifespan(app):  # noqa: ARG001 - app unused
+        yield
 
-        self.lifespan = _lifespan
-
-
-class _DummyMCP:
-    def http_app(self, path: str):  # noqa: ARG002 - path unused in dummy
-        return _DummyASGIApp()
+    return _lifespan
 
 
-class _DummyServer:
-    def __init__(self):
-        self.mcp = _DummyMCP()
+def _reload_api_with_mocks(protocol: str | None = None):
+    import importlib
+    import mcp_server.settings as settings_mod
 
+    # Build server mock with mcp.http_app().lifespan
+    server_mock = Mock()
+    mcp_mock = Mock()
+    http_app_mock = Mock()
+    http_app_mock.lifespan = _lifespan_ctx()
+    mcp_mock.http_app.return_value = http_app_mock
+    server_mock.mcp = mcp_mock
 
-def _import_api_with_dummy_server():
-    with patch("mcp_server.mcp.ObservabilityMCPServer", _DummyServer):
-        import importlib
-        import mcp_server.api as api_module
+    patches = [patch("mcp_server.mcp.ObservabilityMCPServer", return_value=server_mock)]
 
-        importlib.reload(api_module)
-        return api_module
+    # If SSE, patch create_sse_app and set settings before reload
+    if protocol == "sse":
+        sse_app_mock = Mock()
+        sse_app_mock.lifespan = _lifespan_ctx()
+        patches.append(patch("fastmcp.server.http.create_sse_app", return_value=sse_app_mock))
+        # Persistently set protocol for the duration of this import
+        settings_mod.settings.MCP_TRANSPORT_PROTOCOL = "sse"
+
+    with patches[0]:
+        ctxs = []
+        try:
+            for p in patches[1:]:
+                ctxs.append(p.start())
+
+            import mcp_server.api as api_module
+
+            importlib.reload(api_module)
+            return api_module
+        finally:
+            for p in patches[1:]:
+                p.stop()
 
 
 def test_app_health_structure_and_defaults():
-    api = _import_api_with_dummy_server()
+    api = _reload_api_with_mocks()
     client = TestClient(api.app)
 
     resp = client.get("/health")
@@ -45,7 +63,7 @@ def test_app_health_structure_and_defaults():
 
 
 def test_health_protocol_switch_runtime():
-    api = _import_api_with_dummy_server()
+    api = _reload_api_with_mocks()
     client = TestClient(api.app)
 
     for proto in ["http", "sse", "streamable-http"]:
@@ -53,5 +71,14 @@ def test_health_protocol_switch_runtime():
             resp = client.get("/health")
             assert resp.status_code == 200
             assert resp.json()["transport_protocol"] == proto
+
+
+def test_sse_transport_wiring_on_import():
+    # Reload module with protocol forced to sse and SSE app patched
+    api = _reload_api_with_mocks(protocol="sse")
+    client = TestClient(api.app)
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["transport_protocol"] == "sse"
 
 
