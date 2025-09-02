@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-import mcp_server.tools.observability_tools as tools
+import mcp_server.tools.observability_tools_openshift as tools
 
 
 def _texts(result):
@@ -8,7 +8,7 @@ def _texts(result):
 
 
 @patch(
-    "mcp_server.tools.observability_tools.analyze_openshift_metrics",
+    "mcp_server.tools.observability_tools_openshift.analyze_openshift_metrics",
     return_value={
         "llm_summary": "OK",
         "scope": "cluster_wide",
@@ -32,7 +32,7 @@ def test_analyze_openshift_cluster_wide_success(_):
 
 
 @patch(
-    "mcp_server.tools.observability_tools.analyze_openshift_metrics",
+    "mcp_server.tools.observability_tools_openshift.analyze_openshift_metrics",
     return_value={
         "llm_summary": "OK",
         "scope": "namespace_scoped",
@@ -82,4 +82,40 @@ def test_analyze_openshift_missing_namespace_for_namespace_scope():
     text = "\n".join(_texts(out))
     assert "Namespace is required" in text
 
+
+
+# --- Test MCP tools: metric groups ---
+
+@patch(
+    "mcp_server.tools.observability_tools_openshift.get_openshift_metrics",
+    return_value={
+        "Fleet Overview": {},
+        "GPU & Accelerators": {},
+    },
+)
+def test_list_openshift_metric_groups_success(_):
+    out = tools.list_openshift_metric_groups()
+    text = "\n".join(_texts(out))
+    assert "Available OpenShift Metric Groups (cluster-wide):" in text
+    assert "Fleet Overview" in text
+    assert "GPU & Accelerators" in text
+
+
+@patch(
+    "mcp_server.tools.observability_tools_openshift.get_openshift_metrics",
+    return_value={},
+)
+def test_list_openshift_metric_groups_empty(_):
+    out = tools.list_openshift_metric_groups()
+    text = "\n".join(_texts(out))
+    assert "No OpenShift metric groups available" in text
+
+
+def test_list_openshift_namespace_metric_groups():
+    out = tools.list_openshift_namespace_metric_groups()
+    text = "\n".join(_texts(out))
+    assert "Available OpenShift Namespace Metric Groups:" in text
+    assert "Workloads & Pods" in text
+    assert "Storage & Networking" in text
+    assert "Application Services" in text
 

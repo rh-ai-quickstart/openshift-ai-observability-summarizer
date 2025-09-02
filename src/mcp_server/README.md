@@ -11,6 +11,8 @@ The MCP server provides the following tools:
 - **`get_model_config`** - Get available LLM models for summarization and analysis
 - **`analyze_vllm`** - Analyze vLLM metrics for a model and summarize with an LLM
 - **`analyze_openshift`** - Analyze OpenShift metrics by category and scope, returning an LLM summary
+- **`list_openshift_metric_groups`** - List all cluster-wide OpenShift metric categories
+- **`list_openshift_namespace_metric_groups`** - List OpenShift categories that support namespace-scoped analysis
 
 ## 📋 Prerequisites
 
@@ -107,6 +109,60 @@ Explicit tool invocation (for MCP Inspector or advanced users):
 }
 ```
 
+### Analyze OpenShift Metrics
+- "Analyze OpenShift Fleet Overview for the last hour."
+- "Analyze OpenShift Workloads & Pods in namespace myns from 12:00 to 13:00 UTC."
+
+Explicit tool invocation:
+```json
+{
+  "tool": "analyze_openshift",
+  "args": {
+    "metric_category": "Fleet Overview",
+    "scope": "cluster_wide",
+    "time_range": "last 1h",
+    "summarize_model_id": "meta-llama/Llama-3.2-3B-Instruct"
+  }
+}
+```
+
+Namespace-scoped example:
+```json
+{
+  "tool": "analyze_openshift",
+  "args": {
+    "metric_category": "Workloads & Pods",
+    "scope": "namespace_scoped",
+    "namespace": "myns",
+    "start_datetime": "2025-01-01T00:00:00Z",
+    "end_datetime": "2025-01-01T01:00:00Z",
+    "summarize_model_id": "meta-llama/Llama-3.2-3B-Instruct"
+  }
+}
+```
+
+### List OpenShift Metric Groups
+```json
+{ "tool": "list_openshift_metric_groups" }
+```
+Returns a bullet list of available cluster-wide categories, e.g.:
+- Fleet Overview
+- Services & Networking
+- Jobs & Workloads
+- Storage & Config
+- Workloads & Pods
+- GPU & Accelerators
+- Storage & Networking
+- Application Services
+
+### List OpenShift Namespace Metric Groups
+```json
+{ "tool": "list_openshift_namespace_metric_groups" }
+```
+Returns namespace-capable categories:
+- Workloads & Pods
+- Storage & Networking
+- Application Services
 
 
 #### Model identifiers quick guide (MCP)
@@ -175,6 +231,8 @@ Troubleshooting tips:
 | `get_model_config` | Gets LLM models for summarization | Internal/external model configurations |
 | `analyze_vllm` |  fetch metrics, build prompt, summarize | Text summary with prompt and metrics preview |
 | `analyze_openshift` | Analyze metrics for a given category/scope | Text block with LLM summary and context |
+| `list_openshift_metric_groups` | Lists cluster-wide OpenShift categories | Bullet list of categories |
+| `list_openshift_namespace_metric_groups` | Lists namespace-capable categories | Bullet list of categories |
 
 The vLLM discovery tools query Prometheus metrics using identical logic as the main metrics API. The model config tool reads environment configuration for LLM models. 
 

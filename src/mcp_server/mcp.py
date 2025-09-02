@@ -22,7 +22,11 @@ class ObservabilityMCPServer:
             list_namespaces,
             get_model_config,
             analyze_vllm,
+        )
+        from .tools.observability_tools_openshift import (
             analyze_openshift,
+            list_openshift_metric_groups,
+            list_openshift_namespace_metric_groups,
         )
 
         self.mcp.tool()(list_models)
@@ -30,4 +34,6 @@ class ObservabilityMCPServer:
         self.mcp.tool()(get_model_config)
         self.mcp.tool()(analyze_vllm)
         self.mcp.tool()(analyze_openshift)
+        self.mcp.tool()(list_openshift_metric_groups)
+        self.mcp.tool()(list_openshift_namespace_metric_groups)
 
