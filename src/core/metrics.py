@@ -18,6 +18,8 @@ from fastapi import HTTPException
 from .llm_client import summarize_with_llm
 from .response_validator import ResponseType
 from .llm_client import build_openshift_prompt
+NAMESPACE_SCOPED = "namespace_scoped"
+
 
 
 def get_models_helper() -> List[str]:
@@ -604,7 +606,7 @@ def analyze_openshift_metrics(
         openshift_metrics = get_openshift_metrics()
 
         # Validate metric category based on scope
-        if scope == "namespace_scoped" and namespace:
+        if scope == NAMESPACE_SCOPED and namespace:
             namespace_metrics = get_namespace_specific_metrics(metric_category)
             if not namespace_metrics:
                 if metric_category not in openshift_metrics:
@@ -617,7 +619,7 @@ def analyze_openshift_metrics(
                 raise HTTPException(status_code=400, detail=f"Invalid metric category: {metric_category}")
             metrics_to_fetch = openshift_metrics[metric_category]
 
-        namespace_for_query = namespace if scope == "namespace_scoped" else None
+        namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
 
         # Fetch metrics
         metric_dfs: Dict[str, Any] = {}
@@ -630,7 +632,7 @@ def analyze_openshift_metrics(
 
         # Build scope description
         scope_description = f"{scope.replace('_', ' ').title()}"
-        if scope == "namespace_scoped" and namespace:
+        if scope == NAMESPACE_SCOPED and namespace:
             scope_description += f" ({namespace})"
 
         # Build OpenShift metrics prompt and summarize
