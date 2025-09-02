@@ -19,6 +19,7 @@ from .llm_client import summarize_with_llm
 from .response_validator import ResponseType
 from .llm_client import build_openshift_prompt
 NAMESPACE_SCOPED = "namespace_scoped"
+CLUSTER_WIDE = "cluster_wide"
 
 
 

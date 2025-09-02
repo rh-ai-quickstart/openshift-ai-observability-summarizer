@@ -17,7 +17,7 @@ from core.metrics import get_models_helper, get_namespaces_helper, get_vllm_metr
 from core.llm_client import build_prompt, summarize_with_llm, extract_time_range_with_info
 from core.models import AnalyzeRequest
 from core.response_validator import ResponseType
-from core.metrics import analyze_openshift_metrics, NAMESPACE_SCOPED
+from core.metrics import analyze_openshift_metrics, NAMESPACE_SCOPED, CLUSTER_WIDE
 from core.config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 import requests
 from datetime import datetime
@@ -249,7 +249,7 @@ def analyze_openshift(
         A text block with the LLM summary and basic metadata.
     """
     try:
-        if scope not in ("cluster_wide", NAMESPACE_SCOPED):
+        if scope not in (CLUSTER_WIDE, NAMESPACE_SCOPED):
             return _resp("Invalid scope. Use 'cluster_wide' or 'namespace_scoped'.")
         if scope == NAMESPACE_SCOPED and not namespace:
             return _resp("Namespace is required when scope is 'namespace_scoped'.")
