@@ -24,6 +24,7 @@ from mcp_client_helper import (
     is_double_encoded_mcp_response,
     extract_from_double_encoded_response,
     analyze_openshift_mcp,
+    chat_openshift_mcp,
     parse_analyze_response,
 )
 # Add current directory to Python path for consistent imports
@@ -1503,30 +1504,45 @@ elif page == "OpenShift Metrics":
             if st.button("Ask OpenShift Assistant"):
                 with st.spinner("OpenShift assistant is thinking..."):
                     try:
-                        reply = requests.post(
-                            f"{API_URL}/chat-openshift",
-                            json={
-                                "metric_category": st.session_state[
-                                    "openshift_metric_category"
-                                ],
-                                "question": openshift_question,
-                                "scope": st.session_state["openshift_scope"],
-                                "namespace": st.session_state["openshift_namespace"],
-                                "start_ts": selected_start,
-                                "end_ts": selected_end,
-                                "summarize_model_id": multi_model_name,
-                                "api_key": api_key,
-                            },
+                        response_data = chat_openshift_mcp(
+                            metric_category=st.session_state["openshift_metric_category"],
+                            question=openshift_question,
+                            scope=st.session_state["openshift_scope"],
+                            namespace=st.session_state["openshift_namespace"],
+                            start_ts=selected_start,
+                            end_ts=selected_end,
+                            summarize_model_id=multi_model_name,
+                            api_key=api_key,
                         )
-                        reply.raise_for_status()
-                        response_data = reply.json()
-                        st.markdown("**Assistant's Response:**")
-                        st.markdown(response_data["summary"])
-                        if response_data.get("promql"):
-                            st.markdown("**Generated PromQL:**")
-                            st.code(response_data["promql"], language="yaml")
-                    except requests.exceptions.HTTPError as http_err:
-                        handle_http_error(http_err.response, "OpenShift chat failed")
+                        # Centralized error handling similar to analyze flow
+                        if handle_client_or_mcp_error(response_data, "OpenShift chat"):
+                            clear_session_state()
+                            st.stop()
+
+                        # Normalize response to dict {promql, summary}
+                        if isinstance(response_data, list):
+                            text = extract_text_from_mcp_result(response_data) or ""
+                            try:
+                                parsed = json.loads(text) if text else {}
+                                response_data = parsed if isinstance(parsed, dict) else {"promql": "", "summary": text}
+                            except Exception:
+                                response_data = {"promql": "", "summary": text or ""}
+                        elif not isinstance(response_data, dict):
+                            response_data = {"promql": "", "summary": str(response_data)}
+
+                        if not response_data:
+                            st.error("❌ OpenShift chat failed - no data returned")
+                            clear_session_state()
+                            st.stop()
+
+                        if response_data:
+                            st.markdown("**Assistant's Response:**")
+                            st.markdown(response_data.get("summary", "No response received"))
+                            if response_data.get("promql"):
+                                st.markdown("**Generated PromQL:**")
+                                st.code(response_data["promql"], language="yaml")
+                        else:
+                            st.error("❌ No response received from OpenShift assistant")
                     except Exception as e:
                         st.error(f"❌ OpenShift chat failed: {e}")
 

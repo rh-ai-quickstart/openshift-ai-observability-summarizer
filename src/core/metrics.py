@@ -864,11 +864,11 @@ def chat_openshift_metrics(
     )
     metric_dfs: Dict[str, Any] = {}
     for label, query in metrics_to_fetch.items():
-        try:
-            df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
-            metric_dfs[label] = df
-        except Exception:
-            metric_dfs[label] = pd.DataFrame()
+        # Allow Prometheus connectivity/request exceptions to propagate so callers
+        # (e.g., MCP tools) can surface structured PROMETHEUS_ERROR instead of
+        # falling back to a generic "no data" message.
+        df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
+        metric_dfs[label] = df
 
     # If no data at all, avoid LLM call and return helpful message
     has_any_data = any(isinstance(df, pd.DataFrame) and not df.empty for df in metric_dfs.values())
