@@ -118,4 +118,3 @@ def test_list_openshift_namespace_metric_groups():
     assert "Storage & Networking" in text
     assert "Application Services" in text
 
-
