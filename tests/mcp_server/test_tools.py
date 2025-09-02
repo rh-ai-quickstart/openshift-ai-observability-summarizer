@@ -67,3 +67,4 @@ def test_analyze_vllm_success(_, __, ___, ____, _____):
     assert "PROMPT" in text
     assert "SUMMARY" in text
     assert "Metrics Preview" in text
+
