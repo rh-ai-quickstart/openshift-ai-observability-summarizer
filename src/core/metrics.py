@@ -598,8 +598,7 @@ def analyze_openshift_metrics(
     summarize_model_id: Optional[str],
     api_key: Optional[str],
 ) -> Dict[str, Any]:
-    """Core analyze-openshift logic extracted from API.
-
+    """
     Returns a dict matching the API response fields (health_prompt, llm_summary, metrics, etc.).
     Raises HTTPException for client (400) and server (500) errors.
     """

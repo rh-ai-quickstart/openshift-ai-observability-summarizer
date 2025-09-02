@@ -217,7 +217,7 @@ def analyze_openshift(
     summarize_model_id: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Analyze OpenShift metrics for a category and scope using the Metrics API logic.
+    """Analyze OpenShift metrics for a category and scope.
 
     Args:
         metric_category: Must be one of the defined categories below.
