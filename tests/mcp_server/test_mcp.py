@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 @patch("mcp_server.mcp.get_python_logger")
 @patch("mcp_server.mcp.force_reconfigure_all_loggers")
 @patch("fastmcp.FastMCP", autospec=True)
-def test_observability_mcp_server_registers_four_tools_and_reconfigures(
+def test_observability_mcp_server_registers_tools_and_reconfigures(
     MockFastMCP, mock_reconfigure, mock_get_logger
 ):
     # Arrange: create FastMCP instance mock and make tool() act like a decorator
@@ -28,7 +28,7 @@ def test_observability_mcp_server_registers_four_tools_and_reconfigures(
 
     # Assert
     assert server.mcp is mcp_instance
-    assert call_counter["count"] == 4  # four tools registered
+    assert call_counter["count"] == 5  # four tools registered
     mock_get_logger.assert_called_once()
     mock_reconfigure.assert_called_once()
 
