@@ -18,6 +18,7 @@ LLAMA_MODEL_PORT=8080
 # Metrics API (FastAPI) port for local dev; can override via METRICS_API_PORT
 METRICS_API_PORT=${METRICS_API_PORT:-8000}
 UI_PORT=8501
+MCP_PORT=${MCP_PORT:-8085}
 
 echo -e "${BLUE}🚀 AI Observability Metric Summarizer - Local Development Setup${NC}"
 echo "=============================================================="
@@ -83,8 +84,10 @@ cleanup() {
 
     echo -e "\n${YELLOW}🧹 Cleaning up services and port-forwards...${NC}"
     ensure_port_free "$METRICS_API_PORT"
+    ensure_port_free "$MCP_PORT"
     pkill -f "oc port-forward" || true
     pkill -f "uvicorn.*metrics_api:app" || true
+    pkill -f "mcp_server.main" || true
     pkill -f "streamlit run ui.py" || true
 
     # Deactivate virtual environment if it was activated
@@ -221,6 +224,7 @@ start_local_services() {
     export LLAMA_STACK_URL="http://localhost:$LLAMASTACK_PORT/v1/openai/v1"
     export THANOS_TOKEN="$TOKEN"
     export METRICS_API_URL="http://localhost:$METRICS_API_PORT"
+    export MCP_URL="http://localhost:$MCP_PORT"
     export PROM_URL="http://localhost:$THANOS_PORT"
     
     # macOS weasyprint support
@@ -228,26 +232,51 @@ start_local_services() {
 
     set_model_config
     
-    # Start MCP service
+    # Start Metrics API backend
     echo -e "${BLUE}🔧 Starting Metrics API backend...${NC}"
     ensure_port_free "$METRICS_API_PORT"
     (cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $METRICS_API_PORT --reload > log.txt) &
     MCP_PID=$!
     
-    # Wait for MCP to start
+    # Wait for Metrics API to start
     sleep 3
     
-    # Test MCP service
+    # Test Metrics API service
     if curl -s --connect-timeout 5 "http://localhost:$METRICS_API_PORT/models" > /dev/null; then
         echo -e "${GREEN}✅ Metrics API backend started successfully${NC}"
     else
         echo -e "${RED}❌ Metrics API backend failed to start${NC}"
         exit 1
     fi
+
+    # Start MCP server (HTTP transport)
+    echo -e "${BLUE}🧩 Starting MCP Server (HTTP)...${NC}"
+    ensure_port_free "$MCP_PORT"
+    (cd src && \
+      MCP_TRANSPORT_PROTOCOL=http \
+      MODEL_CONFIG="$MODEL_CONFIG" \
+      PROMETHEUS_URL="$PROMETHEUS_URL" \
+      LLAMA_STACK_URL="$LLAMA_STACK_URL" \
+      THANOS_TOKEN="$THANOS_TOKEN" \
+      python3 -m mcp_server.main > mcp_log.txt) &
+    MCP_SRV_PID=$!
+
+    # Wait for MCP server to start
+    sleep 3
+
+    # Test MCP server health
+    if curl -s --connect-timeout 5 "http://localhost:$MCP_PORT/health" | grep -q '"status"'; then
+        echo -e "${GREEN}✅ MCP Server started successfully on port $MCP_PORT${NC}"
+    else
+        echo -e "${RED}❌ MCP Server failed to start${NC}"
+        exit 1
+    fi
     
     # Start Streamlit UI
     echo -e "${BLUE}🎨 Starting Streamlit UI...${NC}"
-    (cd src/ui && streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true) &
+    (cd src/ui && \
+      MCP_SERVER_URL="http://localhost:$MCP_PORT" \
+      streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true) &
     UI_PID=$!
     
     # Wait for UI to start
@@ -278,6 +307,8 @@ main() {
     echo -e "\n${BLUE}📋 Services Available:${NC}"
     echo -e "   ${YELLOW}🎨 Streamlit UI: http://localhost:$UI_PORT${NC}"
     echo -e "   ${YELLOW}🔧 Metrics API: http://localhost:$METRICS_API_PORT/docs${NC}"
+    echo -e "   ${YELLOW}🧩 MCP Server (health): http://localhost:$MCP_PORT/health${NC}"
+    echo -e "   ${YELLOW}🧩 MCP HTTP Endpoint: http://localhost:$MCP_PORT/mcp${NC}"
     echo -e "   ${YELLOW}📊 Prometheus: http://localhost:$THANOS_PORT${NC}"
     echo -e "   ${YELLOW}🦙 LlamaStack: http://localhost:$LLAMASTACK_PORT${NC}"
     echo -e "   ${YELLOW}🤖 Llama Model: http://localhost:$LLAMA_MODEL_PORT${NC}"

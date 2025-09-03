@@ -9,6 +9,7 @@ import base64
 import matplotlib.pyplot as plt
 import io
 import time
+from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp
 
 # --- Config ---
 API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
@@ -41,32 +42,31 @@ page = st.sidebar.radio(
 # --- Shared Utilities ---
 @st.cache_data(ttl=300)
 def get_models():
-    """Fetch available models from API"""
+    """Fetch available models from MCP server only"""
     try:
-        res = requests.get(f"{API_URL}/models")
-        return res.json()
+        models = get_models_mcp()
+        if models:
+            return models
+        else:
+            st.sidebar.warning("⚠️ No models found in MCP server")
+            return []
     except Exception as e:
-        st.sidebar.error(f"Error fetching models: {e}")
+        st.sidebar.error(f"❌ MCP Error: {str(e)}")
         return []
 
 
 @st.cache_data(ttl=300)
 def get_namespaces():
-    """Fetch available namespaces from API"""
+    """Fetch available namespaces from MCP server only"""
     try:
-        res = requests.get(f"{API_URL}/namespaces")
-        namespace_data = res.json()
-        # Extract just the namespace names for the dropdown
-        if isinstance(namespace_data, list) and len(namespace_data) > 0:
-            if isinstance(namespace_data[0], dict) and 'name' in namespace_data[0]:
-                # New format with name/displayName objects
-                return [ns['name'] for ns in namespace_data]
-            else:
-                # Old format with just strings
-                return namespace_data
-        return []
+        namespaces = get_namespaces_mcp()
+        if namespaces:
+            return namespaces
+        else:
+            st.sidebar.warning("⚠️ No namespaces found in MCP server")
+            return []
     except Exception as e:
-        st.sidebar.error(f"Error fetching namespaces: {e}")
+        st.sidebar.error(f"❌ MCP Error: {str(e)}")
         return []
 
 
@@ -83,16 +83,16 @@ def get_multi_models():
 
 @st.cache_data(ttl=300)
 def get_model_config():
-    """Fetch model configuration from API"""
+    """Fetch model configuration from MCP server only"""
     try:
-        res = requests.get(f"{API_URL}/model_config")
-        if res.status_code == 200:
-            return res.json()
+        config = get_model_config_mcp()
+        if config:
+            return config
         else:
-            st.sidebar.error(f"API returned status {res.status_code}")
+            st.sidebar.warning("⚠️ No model config found in MCP server")
             return {}
     except Exception as e:
-        st.sidebar.error(f"Error fetching model config: {e}")
+        st.sidebar.error(f"❌ MCP Error: {str(e)}")
         return {}
 
 
