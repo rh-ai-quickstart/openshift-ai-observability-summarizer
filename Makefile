@@ -152,8 +152,8 @@ help:
 	@echo "  install-ingestion-pipeline - Install extra ingestion pipelines"
 	@echo ""
 	@echo "Tracing:"
-	@echo "  install-observability - Install TempoStack and OpenTelemetry Collector for tracing"
-	@echo "  setup-tracing - Enable auto-instrumentation for tracing in target namespace"
+	@echo "  install-observability - Install TempoStack and OpenTelemetry Collector (idempotent)"
+	@echo "  setup-tracing - Enable auto-instrumentation for tracing in target namespace (idempotent)"
 	@echo "  remove-tracing - Disable auto-instrumentation for tracing in target namespace"
 	@echo "  uninstall-observability - Uninstall observability components (Tempo and OTEL Collector)"
 	@echo ""
@@ -374,7 +374,7 @@ install: namespace depend validate-llm install-rag install-metric-mcp install-me
 		echo "ALERTS flag is set to TRUE. Installing alerting..."; \
 		$(MAKE) install-alerts NAMESPACE=$(NAMESPACE); \
 	fi
-	@echo "Installing OpenTelemetry Collector and Tempo..."
+
 	@$(MAKE) install-observability
 	@$(MAKE) setup-tracing NAMESPACE=$(NAMESPACE)
 	@echo "Installation complete."
@@ -449,10 +449,21 @@ uninstall:
 	@echo "Uninstalling $(MCP_SERVER_RELEASE_NAME) helm chart (if installed)"
 	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME) --ignore-not-found
 
-	@echo "Removing tracing instrumentation from namespace $(NAMESPACE)"
-	- @$(MAKE) remove-tracing NAMESPACE=$(NAMESPACE) || true
-	@echo "Uninstalling observability stack"
-	- @$(MAKE) uninstall-observability || true
+	@if [ "$(UNINSTALL_OBSERVABILITY)" = "true" ]; then \
+		echo "Removing tracing instrumentation from namespace $(NAMESPACE)"; \
+		$(MAKE) remove-tracing NAMESPACE=$(NAMESPACE) || true; \
+		echo "Uninstalling observability stack"; \
+		$(MAKE) uninstall-observability || true; \
+	else \
+		echo "\n❌ WARNING: UNINSTALL_OBSERVABILITY is not set to 'true'"; \
+		echo "   Skipping removal of shared observability infrastructure to protect other teams."; \
+		echo "   This infrastructure (TempoStack, OTel Collector) is shared by multiple applications.\n"; \
+		echo "   To remove observability infrastructure, run:"; \
+		echo "     → make uninstall NAMESPACE=$(NAMESPACE) UNINSTALL_OBSERVABILITY=true\n"; \
+		echo "   Or remove components individually:"; \
+		echo "     → make remove-tracing NAMESPACE=$(NAMESPACE)"; \
+		echo "     → make uninstall-observability"; \
+	fi
 
 	@echo "\nRemaining resources in namespace $(NAMESPACE):"
 	@echo " → Pods..."
@@ -709,22 +720,36 @@ validate-llm:
 
 .PHONY: install-observability
 install-observability:
-	@echo "Installing TempoStack and MinIO in namespace $(OBSERVABILITY_NAMESPACE)"
-	@cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
-		--namespace $(OBSERVABILITY_NAMESPACE) \
-		--create-namespace \
-		--set global.namespace=$(OBSERVABILITY_NAMESPACE)
+	@echo "→ Checking if OpenTelemetry Collector and Tempo already exist in namespace $(OBSERVABILITY_NAMESPACE)"
+	@if helm list -n $(OBSERVABILITY_NAMESPACE) 2>/dev/null | grep -q "^tempo\s"; then \
+		echo "  → TempoStack already installed, skipping..."; \
+	else \
+		echo "Installing TempoStack and MinIO in namespace $(OBSERVABILITY_NAMESPACE)"; \
+		cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
+			--namespace $(OBSERVABILITY_NAMESPACE) \
+			--create-namespace \
+			--set global.namespace=$(OBSERVABILITY_NAMESPACE); \
+	fi
 
-	@echo "Installing Open Telemetry Collector in namespace $(OBSERVABILITY_NAMESPACE)"
-	@cd deploy/helm && helm upgrade --install otel-collector ./observability/otel-collector \
-		--namespace $(OBSERVABILITY_NAMESPACE) \
-		--create-namespace \
-		--set global.namespace=$(OBSERVABILITY_NAMESPACE)
+	@if helm list -n $(OBSERVABILITY_NAMESPACE) 2>/dev/null | grep -q "^otel-collector\s"; then \
+		echo "  → OpenTelemetry Collector already installed, skipping..."; \
+	else \
+		echo "Installing Open Telemetry Collector in namespace $(OBSERVABILITY_NAMESPACE)"; \
+		cd deploy/helm && helm upgrade --install otel-collector ./observability/otel-collector \
+			--namespace $(OBSERVABILITY_NAMESPACE) \
+			--create-namespace \
+			--set global.namespace=$(OBSERVABILITY_NAMESPACE); \
+	fi
 
 .PHONY: setup-tracing
 setup-tracing: namespace
-	@echo "Setting up auto-instrumentation for tracing in namespace $(NAMESPACE)"
-	@cd deploy/helm && oc apply -f $(INSTRUMENTATION_PATH) -n $(NAMESPACE)
+	@echo "→ Setting up auto-instrumentation for tracing in namespace $(NAMESPACE)"
+	@if oc get instrumentation python-instrumentation -n $(NAMESPACE) >/dev/null 2>&1; then \
+		echo "  → Instrumentation already exists in namespace $(NAMESPACE), skipping..."; \
+	else \
+		echo "  → Applying instrumentation configuration to namespace $(NAMESPACE)"; \
+		cd deploy/helm && oc apply -f $(INSTRUMENTATION_PATH) -n $(NAMESPACE); \
+	fi
 	@oc annotate namespace $(NAMESPACE) instrumentation.opentelemetry.io/inject-python="true" --overwrite
 
 .PHONY: remove-tracing
