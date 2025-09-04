@@ -29,6 +29,7 @@ class ObservabilityMCPServer:
             analyze_openshift,
             list_openshift_metric_groups,
             list_openshift_namespace_metric_groups,
+            chat_openshift,
         )
 
         self.mcp.tool()(list_models)
@@ -40,4 +41,5 @@ class ObservabilityMCPServer:
         self.mcp.tool()(analyze_openshift)
         self.mcp.tool()(list_openshift_metric_groups)
         self.mcp.tool()(list_openshift_namespace_metric_groups)
+        self.mcp.tool()(chat_openshift)
 

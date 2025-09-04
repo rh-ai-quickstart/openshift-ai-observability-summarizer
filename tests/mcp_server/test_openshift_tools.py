@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
 import mcp_server.tools.observability_openshift_tools as tools
+import json
+import pandas as pd
 
 
 def _texts(result):
@@ -117,4 +119,71 @@ def test_list_openshift_namespace_metric_groups():
     assert "Workloads & Pods" in text
     assert "Storage & Networking" in text
     assert "Application Services" in text
+
+
+# --- Test MCP tool: chat_openshift ---
+
+@patch("mcp_server.tools.observability_openshift_tools.get_openshift_metrics", return_value={
+    "Fleet Overview": {
+        "Pods Running": "sum(kube_pod_status_phase{phase='Running'})"
+    }
+})
+@patch("mcp_server.tools.observability_openshift_tools.fetch_openshift_metrics", return_value=pd.DataFrame({"value": [1.0]}))
+@patch("mcp_server.tools.observability_openshift_tools.build_openshift_prompt", return_value="SUMMARYCTX")
+@patch("mcp_server.tools.observability_openshift_tools.summarize_with_llm", return_value='{"promql":"sum(up)","summary":"OK"}')
+def test_chat_openshift_success_cluster_wide(_, __, ___, ____):
+    out = tools.chat_openshift(
+        metric_category="Fleet Overview",
+        question="How are pods?",
+        scope="cluster_wide",
+        time_range="last 1h",
+        summarize_model_id="summarizer",
+        api_key="key",
+    )
+    text = "\n".join(_texts(out))
+    payload = json.loads(text)
+    assert payload.get("promql") == "sum(up)"
+    assert payload.get("summary") == "OK"
+
+
+@patch("mcp_server.tools.observability_openshift_tools.get_openshift_metrics", return_value={
+    "Fleet Overview": {
+        "Pods Running": "sum(kube_pod_status_phase{phase='Running'})"
+    }
+})
+@patch("mcp_server.tools.observability_openshift_tools.fetch_openshift_metrics", return_value=pd.DataFrame())
+@patch("mcp_server.tools.observability_openshift_tools.summarize_with_llm")
+def test_chat_openshift_no_data_bypasses_llm(mock_llm, _fetch, _metrics):
+    out = tools.chat_openshift(
+        metric_category="Fleet Overview",
+        question="How are pods?",
+        scope="cluster_wide",
+        time_range="last 1h",
+    )
+    text = "\n".join(_texts(out))
+    payload = json.loads(text)
+    assert payload.get("promql") == ""
+    assert "No metric data found" in payload.get("summary", "")
+    mock_llm.assert_not_called()
+
+
+def test_chat_openshift_invalid_scope_tool():
+    out = tools.chat_openshift(
+        metric_category="Fleet Overview",
+        question="q",
+        scope="bad_scope",
+    )
+    text = "\n".join(_texts(out))
+    assert "Invalid scope" in text
+
+
+def test_chat_openshift_missing_namespace_for_namespace_scope_tool():
+    out = tools.chat_openshift(
+        metric_category="Fleet Overview",
+        question="q",
+        scope="namespace_scoped",
+        namespace=None,
+    )
+    text = "\n".join(_texts(out))
+    assert "Namespace is required" in text
 

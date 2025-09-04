@@ -23,6 +23,23 @@ CLUSTER_WIDE = "cluster_wide"
 
 
 
+def _auth_headers() -> Dict[str, str]:
+    """Create Authorization headers only when a plausible token is present.
+
+    Avoid sending a default file path or empty string as a token to local
+    Prometheus, which can cause request failures in some setups.
+    """
+    try:
+        token = (THANOS_TOKEN or "").strip()
+        if not token:
+            return {}
+        # Heuristic: if token looks like a filesystem path, skip auth header
+        if token.startswith("/") or token.lower().startswith("file:"):
+            return {}
+        return {"Authorization": f"Bearer {token}"}
+    except Exception:
+        return {}
+
 def get_models_helper() -> List[str]:
     """
     Get list of available vLLM models from Prometheus metrics.
@@ -31,7 +48,7 @@ def get_models_helper() -> List[str]:
         List of model names in format "namespace | model_name"
     """
     try:
-        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        headers = _auth_headers()
 
         # Try multiple vLLM metrics with longer time windows
         vllm_metrics_to_check = [
@@ -96,7 +113,7 @@ def get_namespaces_helper() -> List[str]:
         Sorted list of namespace names
     """
     try:
-        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+        headers = _auth_headers()
 
         # Try multiple vLLM metrics with longer time windows
         vllm_metrics_to_check = [
@@ -629,7 +646,6 @@ def analyze_openshift_metrics(
                 metric_dfs[label] = df
             except Exception:
                 metric_dfs[label] = pd.DataFrame()
-
         # Build scope description
         scope_description = f"{scope.replace('_', ' ').title()}"
         if scope == NAMESPACE_SCOPED and namespace:
@@ -698,7 +714,7 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
                 model_name = model_name.strip()
                 promql_query = f'{query}{{model_name="{model_name}"}}'
 
-    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+    headers = _auth_headers()
     try:
         response = requests.get(
             f"{PROMETHEUS_URL}/api/v1/query_range",
@@ -739,7 +755,7 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
 
 def fetch_openshift_metrics(query, start, end, namespace=None):
     """Fetch OpenShift metrics with optional namespace filtering"""
-    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
+    headers = _auth_headers()
 
     # Add namespace filter to the query if specified
     if namespace:
