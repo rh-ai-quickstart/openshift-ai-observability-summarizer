@@ -34,15 +34,18 @@ The workflow determines version bumps in this **order of priority**:
 ## How It Works
 
 1. **Trigger**: When PRs are merged to `main` or `dev` branches, or manually via `workflow_dispatch`
+   - **Version file updates**: Only occur when pushing to `dev` branch
+   - **Container builds**: Occur for both `main` and `dev` branches
 2. **Version calculation**: Analyzes PR labels and PR title **first**, then falls back to commit messages to determine bump type
 3. **Version increment**: Increments from the current version in Makefile (or starts from `0.1.1` if no version exists)
 4. **Container images**: Builds and pushes images to `quay.io/ecosystem-appeng/{IMAGE_PREFIX}-{component}:{version}` (e.g., `quay.io/ecosystem-appeng/aiobs-metrics-api:1.2.3`)
-5. **Auto-update**: Updates version in:
+5. **Auto-update**: Updates version files **only when pushing to `dev` branch**:
    - `deploy/helm/metrics-api/values.yaml`
    - `deploy/helm/ui/values.yaml` 
    - `deploy/helm/alerting/values.yaml`
+   - `deploy/helm/mcp-server/values.yaml`
    - `Makefile` VERSION variable
-6. **Git commit**: Commits version updates automatically
+6. **Git commit**: Commits version updates automatically to `dev` branch
 
 ## Version Bump Examples
 
@@ -184,18 +187,18 @@ fi
 
 ### Files Updated Automatically
 
-When a new version is calculated, these files are automatically updated:
+When a new version is calculated and pushing to `dev` branch, these files are automatically updated:
 
 1. **Helm Charts:**
    - `deploy/helm/metrics-api/values.yaml`
    - `deploy/helm/ui/values.yaml`
    - `deploy/helm/alerting/values.yaml`
+   - `deploy/helm/mcp-server/values.yaml`
 
 2. **Build Configuration:**
    - `Makefile` (VERSION variable)
 
-3. **Git Tags:**
-   - New version tag is created automatically
+**Note**: _Version file updates only occur when pushing to the `dev` branch. When pushing to `main` branch, container images are built with the calculated version but version files remain unchanged._
 
 ### Container Image Naming
 
@@ -243,7 +246,9 @@ git commit -m "docs: update API documentation for new endpoints"
 ### Common Issues
 
 1. **Wrong version bump**: Check commit message keywords
-2. **Version not updating**: Ensure PR is merged to `main` or `dev`
+2. **Version not updating**:
+   - For `dev` branch: Ensure PR is merged to `dev`
+   - For `main` branch: Version files are not auto-updated (uses existing versions)
 3. **Build failures**: Check container registry permissions
 4. **Git conflicts**: Resolve conflicts in version update commits
 
