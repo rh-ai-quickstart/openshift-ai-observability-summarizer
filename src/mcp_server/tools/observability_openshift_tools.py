@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 import os
 
-from .observability_tools import _resp, resolve_time_range
+from .observability_vllm_tools import _resp, resolve_time_range
 from core.metrics import (
     analyze_openshift_metrics,
     NAMESPACE_SCOPED,

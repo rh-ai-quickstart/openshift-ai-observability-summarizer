@@ -1,11 +1,12 @@
-"""Observability tools for OpenShift AI monitoring and analysis.
+"""Observability tools for OpenShift AI monitoring and analysis (vLLM-focused).
 
-This module provides MCP tools for interacting with OpenShift AI observability data:
+This module provides MCP tools for interacting with observability data:
 - list_models: Get available AI models
 - list_namespaces: List monitored namespaces
 - get_model_config: Show configured LLM models for summarization
 - analyze_vllm: Analyze vLLM metrics and summarize using LLM
-- analyze_openshift: Analyze OpenShift metrics by category/scope using API logic
+
+OpenShift-specific tools live in observability_openshift_tools.py
 """
 
 import json
@@ -32,27 +33,34 @@ def resolve_time_range(
     time_range: Optional[str] = None,
     start_datetime: Optional[str] = None,
     end_datetime: Optional[str] = None,
+    start_ts: Optional[int] = None,
+    end_ts: Optional[int] = None,
 ) -> tuple[int, int]:
     """Resolve various time inputs into start/end epoch seconds.
 
     Precedence:
-    1) time_range natural language → use extract_time_range_with_info
-    2) ISO datetime strings (start_datetime/end_datetime)
-    3) Default to last 1 hour
+    1) Explicit epoch timestamps (start_ts/end_ts)
+    2) time_range natural language → use extract_time_range_with_info
+    3) ISO datetime strings (start_datetime/end_datetime)
+    4) Default to last 1 hour
     """
     try:
-        # 1) Natural language time range
-        if time_range:
-            start_ts, end_ts, _info = extract_time_range_with_info(time_range, None, None)
-            return start_ts, end_ts
+        # 1) Explicit epoch timestamps if provided
+        if start_ts is not None and end_ts is not None:
+            return int(start_ts), int(end_ts)
 
-        # 2) ISO datetime strings
+        # 2) Natural language time range
+        if time_range:
+            start_ts2, end_ts2, _info = extract_time_range_with_info(time_range, None, None)
+            return start_ts2, end_ts2
+
+        # 3) ISO datetime strings
         if start_datetime and end_datetime:
             rs = int(datetime.fromisoformat(start_datetime.replace("Z", "+00:00")).timestamp())
             re = int(datetime.fromisoformat(end_datetime.replace("Z", "+00:00")).timestamp())
             return rs, re
 
-        # 3) Default: last 1 hour
+        # 4) Default: last 1 hour
         now = int(datetime.utcnow().timestamp())
         return now - 3600, now
     except Exception:
@@ -207,7 +215,4 @@ def analyze_vllm(
     except Exception as e:
         return _resp(f"Error during analysis: {str(e)}", is_error=True)
 
-"""
-This module intentionally keeps non-OpenShift tools only.
-OpenShift-specific MCP tools are moved to observability_tools_openshift.py
-"""
+
