@@ -31,10 +31,10 @@ The project uses 5 GitHub Actions workflows with the following execution order a
        - aiobs-metrics-ui
        - aiobs-metrics-alerting
        - aiobs-mcp-server
-     - Updates Helm charts and Makefile with new version (**`dev` branch only**)
+     - Updates Helm charts and Makefile with new version (**non-main branches only**)
    - **Image naming:** Semantic versions (e.g., `0.1.2`, `1.0.0`)
    - **Version priority:** PR Labels → PR Title → Commit Messages
-   - **Version updates:** _Only occur when pushing to `dev` branch_
+   - **Version updates:** _Only occur when pushing to non-main branches_
    - **Dependencies:** None - runs after merge
 
 4. **Deploy to OpenShift** (`.github/workflows/deploy.yml`)
