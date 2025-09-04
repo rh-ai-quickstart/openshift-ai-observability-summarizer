@@ -274,6 +274,20 @@ def chat_metrics(req: ChatMetricsRequest):
 @app.post("/chat-openshift")
 def chat_openshift(req: OpenShiftChatRequest):
     """Chat about OpenShift metrics for a specific category"""
+    # Call MCP tool implementation with epoch timestamps directly
+    mcp_out = mcp_chat_openshift(
+        metric_category=req.metric_category,
+        question=req.question,
+        scope=req.scope,
+        namespace=req.namespace,
+        start_ts=req.start_ts,
+        end_ts=req.end_ts,
+        summarize_model_id=req.summarize_model_id,
+        api_key=req.api_key,
+    )
+    text = "\n".join([p.get("text", "") for p in mcp_out]).strip()
+
+    # Expect JSON payload from the MCP tool
     try:
         # Validate inputs
         openshift_metrics = get_openshift_metrics()
