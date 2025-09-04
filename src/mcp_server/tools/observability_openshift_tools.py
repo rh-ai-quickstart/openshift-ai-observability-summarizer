@@ -2,6 +2,8 @@ from typing import Dict, Any, List, Optional
 import os
 import json
 import core.metrics as core_metrics
+import re
+import pandas as pd
 
 from .observability_vllm_tools import _resp, resolve_time_range
 from core.metrics import (
@@ -9,7 +11,13 @@ from core.metrics import (
     chat_openshift_metrics,
     NAMESPACE_SCOPED,
     CLUSTER_WIDE,
+    get_openshift_metrics,
+    get_namespace_specific_metrics,
+    fetch_openshift_metrics,
 )
+from core.llm_client import build_openshift_prompt, summarize_with_llm
+from core.response_validator import ResponseType
+from core.config import MODEL_CONFIG
 
 def analyze_openshift(
     metric_category: str,

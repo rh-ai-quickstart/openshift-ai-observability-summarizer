@@ -313,7 +313,6 @@ def analyze_vllm(
     except Exception as e:
         return _resp(f"Error during analysis: {str(e)}", is_error=True)
 
-<<<<<<< HEAD
 
 def calculate_metrics(
     metrics_data_json: str,
@@ -393,5 +392,3 @@ def calculate_metrics(
 
     except Exception as e:
         return _resp(f"Error calculating metrics: {str(e)}", is_error=True)
-=======
->>>>>>> f104ac2 (feat: [APPENG-3503] MCP Transition - OpenShift Metric: add tools for metric groups)
