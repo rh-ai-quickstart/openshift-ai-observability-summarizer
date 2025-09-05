@@ -50,13 +50,16 @@ spec:
                 secretKeyRef:
                   name: mcp-analyzer
                   key: token
+            - name: LLM_URL
+              value: "http://llama-3-2-3b-instruct-predictor.{{ .Release.Namespace }}.svc.cluster.local:8080/v1/openai/v1"
+            - name: LLM_API_TOKEN
+              value: "{{ .Values.llm.apiToken }}"
             {{- if .Values.llm.url }}
             - name: LLAMA_STACK_URL
               value: "{{ .Values.llm.url }}"
-            {{- end }}
-            {{- if .Values.llm.apiToken }}
-            - name: LLM_API_TOKEN
-              value: "{{ .Values.llm.apiToken }}"
+            {{- else }}
+            - name: LLAMA_STACK_URL
+              value: "http://llamastack.{{ .Release.Namespace }}.svc.cluster.local:8321/v1/openai/v1"
             {{- end }}
             - name: MODEL_CONFIG
               value: '{{ .Values.modelConfig | toJson }}'

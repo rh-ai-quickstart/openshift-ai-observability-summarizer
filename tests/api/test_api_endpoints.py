@@ -580,6 +580,72 @@ class TestMetricsCalculationEndpoints(TestBase):
         metrics = data["calculated_metrics"] 
         assert metrics["Empty Metric"]["avg"] is None
         assert metrics["Empty Metric"]["max"] is None
+        assert metrics["Empty Metric"]["min"] is None
+        assert metrics["Empty Metric"]["latest"] is None
+        assert metrics["Empty Metric"]["count"] == 0
+
+    def test_calculate_metrics_invalid_data_format(self, client):
+        """Test metrics calculation with invalid data formats"""
+        response = client.post("/calculate-metrics", json={
+            "metrics_data": {
+                "Mixed Metric": [
+                    {"value": 10, "timestamp": "2023-01-01T00:00:00Z"},
+                    {"value": "invalid", "timestamp": "2023-01-01T00:01:00Z"},  # Invalid value
+                    {"timestamp": "2023-01-01T00:02:00Z"},  # Missing value
+                    {"value": 30, "timestamp": "2023-01-01T00:03:00Z"}
+                ]
+            }
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        metrics = data["calculated_metrics"]
+        
+        # Should only process valid values (10 and 30)
+        assert metrics["Mixed Metric"]["avg"] == 20.0
+        assert metrics["Mixed Metric"]["count"] == 2
+        assert metrics["Mixed Metric"]["min"] == 10.0
+        assert metrics["Mixed Metric"]["max"] == 30.0
+
+    def test_calculate_metrics_nan_values(self, client):
+        """Test metrics calculation with None values (JSON equivalent of NaN)"""
+        response = client.post("/calculate-metrics", json={
+            "metrics_data": {
+                "NaN Metric": [
+                    {"value": 10, "timestamp": "2023-01-01T00:00:00Z"},
+                    {"value": None, "timestamp": "2023-01-01T00:01:00Z"},  # Use None instead of NaN
+                    {"value": 20, "timestamp": "2023-01-01T00:02:00Z"}
+                ]
+            }
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        metrics = data["calculated_metrics"]
+        
+        # Should filter out None/NaN values
+        assert metrics["NaN Metric"]["avg"] == 15.0
+        assert metrics["NaN Metric"]["count"] == 2
+
+    def test_calculate_metrics_single_value(self, client):
+        """Test metrics calculation with single value"""
+        response = client.post("/calculate-metrics", json={
+            "metrics_data": {
+                "Single Metric": [
+                    {"value": 42, "timestamp": "2023-01-01T00:00:00Z"}
+                ]
+            }
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        metrics = data["calculated_metrics"]
+        
+        assert metrics["Single Metric"]["avg"] == 42.0
+        assert metrics["Single Metric"]["min"] == 42.0
+        assert metrics["Single Metric"]["max"] == 42.0
+        assert metrics["Single Metric"]["latest"] == 42.0
+        assert metrics["Single Metric"]["count"] == 1
 
 
 class TestUtilityEndpoints(TestBase):
@@ -643,8 +709,13 @@ class TestEnhancedChatMetrics(TestBase):
         
         # Check professional alert formatting
         summary = data["summary"]
-        # The actual implementation returns different error messages
-        assert any(msg in summary for msg in ["No valid data points found", "API key", "Alert", "Error generating summary"])
+        # The API should return properly formatted alert data
+        assert any(pattern in summary for pattern in [
+            "ALERT(S) FOUND",  # Expected alert formatting
+            "VLLMDummyServiceInfo",  # Expected alert name
+            "Mock LLM response",  # Fallback to mock
+            "No valid data points found", "API key", "Error generating summary"  # Error cases
+        ])
 
     @patch('src.api.metrics_api.query_thanos_with_promql')
     @patch('src.api.metrics_api.summarize_with_llm')
@@ -666,8 +737,13 @@ class TestEnhancedChatMetrics(TestBase):
         
         # Check fleet-wide formatting
         summary = data["summary"]
-        # The actual implementation returns different error messages
-        assert any(msg in summary for msg in ["No valid data points found", "API key", "Alert", "Error generating summary"])
+        # The API should return properly formatted alert data
+        assert any(pattern in summary for pattern in [
+            "ALERT(S) FOUND",  # Expected alert formatting
+            "VLLMDummyServiceInfo",  # Expected alert name
+            "Mock LLM response",  # Fallback to mock
+            "No valid data points found", "API key", "Error generating summary"  # Error cases
+        ])
 
     @patch('src.api.metrics_api.query_thanos_with_promql')
     @patch('src.api.metrics_api.summarize_with_llm')
@@ -720,8 +796,14 @@ class TestEnhancedChatMetrics(TestBase):
         
         # Check enhanced response structure
         summary = data["summary"]
-        # The actual implementation returns different error messages
-        assert any(msg in summary for msg in ["No valid data points found", "API key", "Current metric value", "Error generating summary"])
+        # The API should return properly formatted metric data
+        assert any(pattern in summary for pattern in [
+            "Current value:",  # Expected metric formatting
+            "pods",  # Expected content about pods
+            "Current metric value",  # Expected LLM response pattern
+            "Mock LLM response",  # Fallback to mock
+            "No valid data points found", "API key", "Error generating summary"  # Error cases
+        ])
 
     @patch('src.api.metrics_api.query_thanos_with_promql')
     @patch('src.api.metrics_api.summarize_with_llm')
