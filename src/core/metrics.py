@@ -892,7 +892,6 @@ def chat_openshift_metrics(
     llm_response = summarize_with_llm(
         prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
     )
-
     # Parse JSON content robustly (handles extra text and fenced code blocks)
     promql = ""
     summary = llm_response
