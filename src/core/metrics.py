@@ -17,7 +17,11 @@ from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 from fastapi import HTTPException
 from .llm_client import summarize_with_llm
 from .response_validator import ResponseType
-from .llm_client import build_openshift_prompt
+from .llm_client import (
+    build_openshift_prompt,
+    build_openshift_metrics_context,
+    build_openshift_chat_prompt,
+)
 NAMESPACE_SCOPED = "namespace_scoped"
 CLUSTER_WIDE = "cluster_wide"
 
@@ -39,6 +43,91 @@ def _auth_headers() -> Dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
     except Exception:
         return {}
+
+
+def extract_first_json_object_from_text(text: str) -> Optional[Dict[str, Any]]:
+    """Extract a JSON object from arbitrary text, robust to extra prose and nesting.
+
+    Strategy:
+    - Prefer fenced code blocks (```json ... ``` or ``` ... ```)
+    - Scan text with a bracket-depth parser that respects strings/escapes
+    - Parse all candidates; if a list at top-level, select the first dict
+    - Prefer dicts containing promql/summary; else choose the largest
+    """
+    candidates = []  # list of tuples: (raw_str, parsed_dict)
+
+    def _try_add(parsed_obj, raw_str: str):
+        # If a list, pick the first dict element
+        if isinstance(parsed_obj, list):
+            for el in parsed_obj:
+                if isinstance(el, dict):
+                    candidates.append((raw_str, el))
+                    return
+        elif isinstance(parsed_obj, dict):
+            candidates.append((raw_str, parsed_obj))
+
+    def _collect_from_string(source: str):
+        # Try whole string
+        try:
+            _try_add(json.loads(source), source)
+        except Exception:
+            pass
+
+        # Depth-aware scan for JSON objects
+        n = len(source)
+        i = 0
+        while i < n:
+            if source[i] == '{':
+                depth = 0
+                in_str = False
+                esc = False
+                j = i
+                while j < n:
+                    ch = source[j]
+                    if in_str:
+                        if esc:
+                            esc = False
+                        elif ch == '\\':
+                            esc = True
+                        elif ch == '"':
+                            in_str = False
+                    else:
+                        if ch == '"':
+                            in_str = True
+                        elif ch == '{':
+                            depth += 1
+                        elif ch == '}':
+                            depth -= 1
+                            if depth == 0:
+                                segment = source[i : j + 1]
+                                try:
+                                    _try_add(json.loads(segment), segment)
+                                except Exception:
+                                    pass
+                                break
+                    j += 1
+                i = j
+            i += 1
+
+    # 1) Fenced code blocks
+    for block in re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE):
+        _collect_from_string(block)
+
+    # 2) Whole text
+    _collect_from_string(text)
+
+    if not candidates:
+        return None
+
+    def _score(item):
+        raw, obj = item
+        keys = {str(k).lower() for k in obj.keys()}
+        has_promql = 1 if ("promql" in keys or "promqls" in keys) else 0
+        has_summary = 1 if ("summary" in keys) else 0
+        return (has_promql + has_summary, len(raw))
+
+    best = max(candidates, key=_score)
+    return best[1]
 
 def get_models_helper() -> List[str]:
     """
@@ -619,67 +708,155 @@ def analyze_openshift_metrics(
     Returns a dict matching the API response fields (health_prompt, llm_summary, metrics, etc.).
     Raises HTTPException for client (400) and server (500) errors.
     """
-    try:
-        openshift_metrics = get_openshift_metrics()
+    openshift_metrics = get_openshift_metrics()
 
-        # Validate metric category based on scope
-        if scope == NAMESPACE_SCOPED and namespace:
-            namespace_metrics = get_namespace_specific_metrics(metric_category)
-            if not namespace_metrics:
-                if metric_category not in openshift_metrics:
-                    raise HTTPException(status_code=400, detail=f"Invalid metric category: {metric_category}")
-                metrics_to_fetch = openshift_metrics[metric_category]
-            else:
-                metrics_to_fetch = namespace_metrics
+    # Select metric set based on scope (validation handled by caller)
+    if scope == NAMESPACE_SCOPED and namespace:
+        namespace_metrics = get_namespace_specific_metrics(metric_category)
+        if not namespace_metrics:
+            metrics_to_fetch = openshift_metrics.get(metric_category, {})
         else:
-            if metric_category not in openshift_metrics:
-                raise HTTPException(status_code=400, detail=f"Invalid metric category: {metric_category}")
-            metrics_to_fetch = openshift_metrics[metric_category]
+            metrics_to_fetch = namespace_metrics
+    else:
+        metrics_to_fetch = openshift_metrics.get(metric_category, {})
 
-        namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
+    namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
 
-        # Fetch metrics
-        metric_dfs: Dict[str, Any] = {}
-        for label, query in metrics_to_fetch.items():
-            try:
-                df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
-                metric_dfs[label] = df
-            except Exception:
-                metric_dfs[label] = pd.DataFrame()
-        # Build scope description
-        scope_description = f"{scope.replace('_', ' ').title()}"
-        if scope == NAMESPACE_SCOPED and namespace:
-            scope_description += f" ({namespace})"
+    # Fetch metrics
+    metric_dfs: Dict[str, Any] = {}
+    for label, query in metrics_to_fetch.items():
+        try:
+            df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
+            metric_dfs[label] = df
+        except Exception:
+            metric_dfs[label] = pd.DataFrame()
+    # Build scope description
+    scope_description = f"{scope.replace('_', ' ').title()}"
+    if scope == NAMESPACE_SCOPED and namespace:
+        scope_description += f" ({namespace})"
 
-        # Build OpenShift metrics prompt and summarize
-        prompt = build_openshift_prompt(
-            metric_dfs, metric_category, namespace_for_query, scope_description
-        )
-        summary = summarize_with_llm(
-            prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
-        )
-
-        # Serialize metric DataFrames
-        serialized_metrics: Dict[str, Any] = {}
-        for label, df in metric_dfs.items():
+    # Build OpenShift metrics prompt and summarize
+    prompt = build_openshift_prompt(
+        metric_dfs, metric_category, namespace_for_query, scope_description
+    )
+    summary = summarize_with_llm(
+        prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
+    )
+ 
+    # Serialize metric DataFrames
+    serialized_metrics: Dict[str, Any] = {}
+    for label, df in metric_dfs.items():
             if "timestamp" not in df.columns:
                 df["timestamp"] = pd.Series(dtype="datetime64[ns]")
             if "value" not in df.columns:
                 df["value"] = pd.Series(dtype="float")
             serialized_metrics[label] = df[["timestamp", "value"]].to_dict(orient="records")
 
+    return {
+        "metric_category": metric_category,
+        "scope": scope,
+        "namespace": namespace,
+        "health_prompt": prompt,
+        "llm_summary": summary,
+        "metrics": serialized_metrics,
+    }
+
+
+def chat_openshift_metrics(
+    metric_category: str,
+    question: str,
+    scope: str,
+    namespace: Optional[str],
+    start_ts: int,
+    end_ts: int,
+    summarize_model_id: Optional[str],
+    api_key: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Build a chat-oriented OpenShift analysis:
+    - Validates inputs (raises HTTPException on errors)
+    - Fetches metrics per category/scope
+    - Builds prompt and invokes LLM
+    - Parses LLM JSON to extract promql and summary
+    Returns dict with at least: {"promql": str, "summary": str}
+    """
+    openshift_metrics = get_openshift_metrics()
+
+    # Select metrics without raising (validation is done by callers)
+    if scope == NAMESPACE_SCOPED and namespace:
+        namespace_metrics = get_namespace_specific_metrics(metric_category)
+        metrics_to_fetch = namespace_metrics if namespace_metrics else openshift_metrics.get(metric_category, {})
+    else:
+        metrics_to_fetch = openshift_metrics.get(metric_category, {})
+
+    # Fetch metrics
+    namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
+    metric_dfs: Dict[str, Any] = {}
+    for label, query in metrics_to_fetch.items():
+        try:
+            df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
+            metric_dfs[label] = df
+        except Exception:
+            metric_dfs[label] = pd.DataFrame()
+
+    # If no data at all, avoid LLM call and return helpful message
+    has_any_data = any(isinstance(df, pd.DataFrame) and not df.empty for df in metric_dfs.values())
+    if not has_any_data:
         return {
-            "metric_category": metric_category,
-            "scope": scope,
-            "namespace": namespace,
-            "health_prompt": prompt,
-            "llm_summary": summary,
-            "metrics": serialized_metrics,
+            "promql": "",
+            "summary": (
+                "No metric data found for the selected category/scope in the time window. "
+                "Try a broader window (e.g., last 6h) or a different category."
+            ),
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    # Build scope description and prompt
+    scope_description = f"{scope.replace('_', ' ').title()}"
+    if scope == NAMESPACE_SCOPED and namespace:
+        scope_description += f" ({namespace})"
+
+    metrics_data_summary = build_openshift_metrics_context(
+        metric_dfs, metric_category, namespace_for_query, scope_description
+    )
+
+    chat_scope_value = "fleet_wide" if scope == CLUSTER_WIDE else "namespace_specific"
+    prompt = build_openshift_chat_prompt(
+        question=question,
+        metrics_context=metrics_data_summary,
+        time_range_info=None,
+        chat_scope=chat_scope_value,
+        target_namespace=namespace_for_query if scope == NAMESPACE_SCOPED else None,
+        alerts_context="",
+    )
+
+    llm_response = summarize_with_llm(
+        prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
+    )
+  
+    # Parse JSON content robustly (handles extra text and fenced code blocks)
+    promql = ""
+    summary = llm_response
+    parsed = extract_first_json_object_from_text(llm_response)
+    if isinstance(parsed, dict):
+        # Allow both a single promql and a list of promqls (take first)
+        promql_value = parsed.get("promql")
+        if not promql_value and isinstance(parsed.get("promqls"), list) and parsed["promqls"]:
+            promql_value = parsed["promqls"][0]
+        promql = (promql_value or "").strip() if isinstance(promql_value, str) else (promql_value or "")
+        if not isinstance(promql, str):
+            promql = ""
+        summary = (parsed.get("summary") or llm_response).strip()
+
+        # Add namespace filter when needed
+        if promql and namespace and "namespace=" not in promql:
+            if "{" in promql:
+                promql = promql.replace("{", f'{{namespace="{namespace}", ', 1)
+            else:
+                promql = f'{promql}{{namespace="{namespace}"}}'
+    return {
+        "promql": promql,
+        "summary": summary,
+    }
 
 
 # --- Metric Fetching Functions ---

@@ -28,7 +28,7 @@ def test_observability_mcp_server_registers_tools_and_reconfigures(
 
     # Assert
     assert server.mcp is mcp_instance
-    assert call_counter["count"] == 9  # 9 MCP tools registered (6 vLLM + 3 OpenShift)
+    assert call_counter["count"] == 10  # 10 MCP tools registered (6 vLLM + 4 OpenShift)
     mock_get_logger.assert_called_once()
     mock_reconfigure.assert_called_once()
 

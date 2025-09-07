@@ -47,6 +47,7 @@ from core.metrics import (
     fetch_openshift_metrics,
     get_namespaces_helper,
     analyze_openshift_metrics,
+    chat_openshift_metrics,
 )
 from core.analysis import (
     detect_anomalies,
@@ -107,9 +108,7 @@ from core.llm_summary_service import (
     generate_llm_summary,
 )
 from core.config import CHAT_SCOPE_FLEET_WIDE, FLEET_WIDE_DISPLAY
-from mcp_server.tools.observability_openshift_tools import (
-    chat_openshift as mcp_chat_openshift,
-)
+from core.metrics import get_openshift_metrics, get_namespace_specific_metrics, NAMESPACE_SCOPED, CLUSTER_WIDE
 
 
 app = FastAPI()
@@ -273,31 +272,59 @@ def chat_metrics(req: ChatMetricsRequest):
 @app.post("/chat-openshift")
 def chat_openshift(req: OpenShiftChatRequest):
     """Chat about OpenShift metrics for a specific category"""
-    # Call MCP tool implementation with epoch timestamps directly
-    mcp_out = mcp_chat_openshift(
-        metric_category=req.metric_category,
-        question=req.question,
-        scope=req.scope,
-        namespace=req.namespace,
-        start_ts=req.start_ts,
-        end_ts=req.end_ts,
-        summarize_model_id=req.summarize_model_id,
-        api_key=req.api_key,
-    )
-    text = "\n".join([p.get("text", "") for p in mcp_out]).strip()
-
-    # Expect JSON payload from the MCP tool
     try:
-        payload = json.loads(text) if text else {}
-        return {"promql": payload.get("promql", ""), "summary": payload.get("summary", "")}
-    except json.JSONDecodeError:
-        # Fallback: return whole text as summary
-        return {"promql": "", "summary": text}
+        # Validate inputs
+        openshift_metrics = get_openshift_metrics()
+        if req.scope not in (CLUSTER_WIDE, NAMESPACE_SCOPED):
+            raise HTTPException(status_code=400, detail="Invalid scope. Use 'cluster_wide' or 'namespace_scoped'.")
+        if req.scope == NAMESPACE_SCOPED and not req.namespace:
+            raise HTTPException(status_code=400, detail="Namespace is required when scope is 'namespace_scoped'.")
+
+        if req.scope == NAMESPACE_SCOPED and req.namespace:
+            namespace_metrics = get_namespace_specific_metrics(req.metric_category)
+            if not namespace_metrics:
+                if req.metric_category not in openshift_metrics:
+                    raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+        else:
+            if req.metric_category not in openshift_metrics:
+                raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+
+        result = chat_openshift_metrics(
+            metric_category=req.metric_category,
+            question=req.question,
+            scope=req.scope,
+            namespace=req.namespace,
+            start_ts=req.start_ts,
+            end_ts=req.end_ts,
+            summarize_model_id=req.summarize_model_id,
+            api_key=req.api_key,
+        )
+        return {"promql": result.get("promql", ""), "summary": result.get("summary", "")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/analyze-openshift")
 def analyze_openshift(req: OpenShiftAnalyzeRequest):
     """Analyze OpenShift metrics for a specific category and scope"""
+    # Input validation
+    openshift_metrics = get_openshift_metrics()
+    if req.scope not in (CLUSTER_WIDE, NAMESPACE_SCOPED):
+        raise HTTPException(status_code=400, detail="Invalid scope. Use 'cluster_wide' or 'namespace_scoped'.")
+    if req.scope == NAMESPACE_SCOPED and not req.namespace:
+        raise HTTPException(status_code=400, detail="Namespace is required when scope is 'namespace_scoped'.")
+
+    if req.scope == NAMESPACE_SCOPED and req.namespace:
+        namespace_metrics = get_namespace_specific_metrics(req.metric_category)
+        if not namespace_metrics:
+            if req.metric_category not in openshift_metrics:
+                raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+    else:
+        if req.metric_category not in openshift_metrics:
+            raise HTTPException(status_code=400, detail=f"Invalid metric category: {req.metric_category}")
+
     return analyze_openshift_metrics(
         metric_category=req.metric_category,
         scope=req.scope,

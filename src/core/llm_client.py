@@ -100,7 +100,6 @@ def summarize_with_llm(
         LLM-generated summary text (cleaned if validation enabled)
     """
     headers = {"Content-Type": "application/json"}
-
     # Get model configuration
     model_info = MODEL_CONFIG.get(summarize_model_id, {})
     is_external = model_info.get("external", False)
@@ -171,7 +170,6 @@ def summarize_with_llm(
             for msg in messages:
                 prompt_text += f"{msg['role']}: {msg['content']}\n"
         prompt_text += prompt  # Add the current prompt
-
         # Try multiple possible model identifiers to maximize compatibility
         # LlamaStack may expect different model IDs than MODEL_CONFIG keys
         # Priority: serviceName (LlamaStack backend) -> modelName (alt ID) -> summarize_model_id (user key)
@@ -349,6 +347,43 @@ Stop after you have answered question 4 and do not add explainations or notes.
 """.strip()
 
 
+def build_openshift_metrics_context(
+    metric_dfs, metric_category, namespace=None, scope_description=None
+):
+    """
+    Build metrics-only context for OpenShift chat (no analysis questions).
+
+    Returns a header and bullet list of metric summaries without any
+    instruction section. Intended for chat-oriented prompts.
+    """
+    if scope_description:
+        scope = scope_description
+    else:
+        scope = f"namespace **{namespace}**" if namespace else "cluster-wide"
+
+    header = (
+        f"You are an expert in OpenShift platform monitoring and operations. "
+        f"You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n"
+        f"📊 **Metrics**:\n"
+    )
+
+    lines = []
+    for label, df in metric_dfs.items():
+        if df.empty:
+            lines.append(f"- {label}: No data")
+            continue
+        avg = df["value"].mean()
+        latest = df["value"].iloc[-1] if not df.empty else 0
+        trend = "stable"  # Placeholder until describe_trend is available
+        anomaly = "normal"  # Placeholder until detect_anomalies is available
+        lines.append(
+            f"- {label}: Avg={avg:.2f}, Latest={latest:.2f}, Trend={trend}, {anomaly}"
+        )
+
+    return f"""{header}
+{chr(10).join(lines)}
+""".strip()
+
 def build_openshift_chat_prompt(
     question: str,
     metrics_context: str,
@@ -395,7 +430,7 @@ Use time range syntax `[{time_range_syntax}]` in PromQL queries where appropriat
 """
 
     return f"""
-You are a Senior Site Reliability Engineer (SRE) expert in OpenShift/Kubernetes observability. Your task is to analyze the provided metrics and answer the user's question with precise, actionable insights.
+You are a senior Site Reliability Engineer (SRE) analyzing OpenShift/Kubernetes metrics and answering the user's question with precise, actionable insights.
 
 {scope_context}{time_context}{common_metrics}
 
@@ -405,10 +440,11 @@ You are a Senior Site Reliability Engineer (SRE) expert in OpenShift/Kubernetes 
 **Current Alert Status:**
 {alerts_context.strip()}
 
-{{
-  "promqls": ["ALERTS"],
-  "summary": "Answer to: {question}"
-}}
+User Question: {question}
+
+Provide a concise technical analysis focusing on operational insights and recommendations.
+Respond with JSON format: {{"promql": "relevant_query_if_applicable", "summary": "your_analysis"}}.
+
 """.strip()
 
 

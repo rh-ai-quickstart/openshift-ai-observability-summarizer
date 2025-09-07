@@ -182,6 +182,7 @@ cython_debug/
 
 # log files
 src/api/log.txt
+src/mcp_log.txt
 
 # TMP directory (if any)
 TMP/
