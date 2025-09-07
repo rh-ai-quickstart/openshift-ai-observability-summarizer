@@ -123,15 +123,8 @@ def test_list_openshift_namespace_metric_groups():
 
 # --- Test MCP tool: chat_openshift ---
 
-@patch("mcp_server.tools.observability_openshift_tools.get_openshift_metrics", return_value={
-    "Fleet Overview": {
-        "Pods Running": "sum(kube_pod_status_phase{phase='Running'})"
-    }
-})
-@patch("mcp_server.tools.observability_openshift_tools.fetch_openshift_metrics", return_value=pd.DataFrame({"value": [1.0]}))
-@patch("mcp_server.tools.observability_openshift_tools.build_openshift_prompt", return_value="SUMMARYCTX")
-@patch("mcp_server.tools.observability_openshift_tools.summarize_with_llm", return_value='{"promql":"sum(up)","summary":"OK"}')
-def test_chat_openshift_success_cluster_wide(_, __, ___, ____):
+@patch("mcp_server.tools.observability_openshift_tools.chat_openshift_metrics", return_value={"promql": "sum(up)", "summary": "OK"})
+def test_chat_openshift_success_cluster_wide(_):
     out = tools.chat_openshift(
         metric_category="Fleet Overview",
         question="How are pods?",
@@ -146,14 +139,8 @@ def test_chat_openshift_success_cluster_wide(_, __, ___, ____):
     assert payload.get("summary") == "OK"
 
 
-@patch("mcp_server.tools.observability_openshift_tools.get_openshift_metrics", return_value={
-    "Fleet Overview": {
-        "Pods Running": "sum(kube_pod_status_phase{phase='Running'})"
-    }
-})
-@patch("mcp_server.tools.observability_openshift_tools.fetch_openshift_metrics", return_value=pd.DataFrame())
-@patch("mcp_server.tools.observability_openshift_tools.summarize_with_llm")
-def test_chat_openshift_no_data_bypasses_llm(mock_llm, _fetch, _metrics):
+@patch("mcp_server.tools.observability_openshift_tools.chat_openshift_metrics", return_value={"promql": "", "summary": "No metric data found for the selected category/scope in the time window."})
+def test_chat_openshift_no_data_bypasses_llm(_):
     out = tools.chat_openshift(
         metric_category="Fleet Overview",
         question="How are pods?",
@@ -164,7 +151,7 @@ def test_chat_openshift_no_data_bypasses_llm(mock_llm, _fetch, _metrics):
     payload = json.loads(text)
     assert payload.get("promql") == ""
     assert "No metric data found" in payload.get("summary", "")
-    mock_llm.assert_not_called()
+    # No LLM call occurs in the tool; core produced the no-data response
 
 
 def test_chat_openshift_invalid_scope_tool():

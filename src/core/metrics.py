@@ -918,6 +918,136 @@ def chat_openshift_metrics(
     }
 
 
+def chat_openshift_metrics(
+    metric_category: str,
+    question: str,
+    scope: str,
+    namespace: Optional[str],
+    start_ts: int,
+    end_ts: int,
+    summarize_model_id: Optional[str],
+    api_key: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Build a chat-oriented OpenShift analysis:
+    - Validates inputs (raises HTTPException on errors)
+    - Fetches metrics per category/scope
+    - Builds prompt and invokes LLM
+    - Parses LLM JSON to extract promql and summary
+    Returns dict with at least: {"promql": str, "summary": str}
+    """
+    try:
+        openshift_metrics = get_openshift_metrics()
+
+        # Validate metric category based on scope
+        if scope not in (CLUSTER_WIDE, NAMESPACE_SCOPED):
+            raise HTTPException(status_code=400, detail="Invalid scope. Use 'cluster_wide' or 'namespace_scoped'.")
+        if scope == NAMESPACE_SCOPED and not namespace:
+            raise HTTPException(status_code=400, detail="Namespace is required when scope is 'namespace_scoped'.")
+
+        if scope == NAMESPACE_SCOPED and namespace:
+            namespace_metrics = get_namespace_specific_metrics(metric_category)
+            if not namespace_metrics:
+                if metric_category not in openshift_metrics:
+                    raise HTTPException(status_code=400, detail=f"Invalid metric category: {metric_category}")
+                metrics_to_fetch = openshift_metrics[metric_category]
+            else:
+                metrics_to_fetch = namespace_metrics
+        else:
+            if metric_category not in openshift_metrics:
+                raise HTTPException(status_code=400, detail=f"Invalid metric category: {metric_category}")
+            metrics_to_fetch = openshift_metrics[metric_category]
+
+        # Fetch metrics
+        namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
+        metric_dfs: Dict[str, Any] = {}
+        for label, query in metrics_to_fetch.items():
+            try:
+                df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
+                metric_dfs[label] = df
+            except Exception:
+                metric_dfs[label] = pd.DataFrame()
+
+        # If no data at all, avoid LLM call and return helpful message
+        has_any_data = any(isinstance(df, pd.DataFrame) and not df.empty for df in metric_dfs.values())
+        if not has_any_data:
+            return {
+                "promql": "",
+                "summary": (
+                    "No metric data found for the selected category/scope in the time window. "
+                    "Try a broader window (e.g., last 6h) or a different category."
+                ),
+            }
+
+        # Build scope description and prompt
+        scope_description = f"{scope.replace('_', ' ').title()}"
+        if scope == NAMESPACE_SCOPED and namespace:
+            scope_description += f" ({namespace})"
+
+        metrics_data_summary = build_openshift_prompt(
+            metric_dfs, metric_category, namespace_for_query, scope_description
+        )
+
+        context_description = (
+            f"OpenShift {metric_category} metrics for **{scope_description}**"
+        )
+        prompt = (
+            f"You are a senior Site Reliability Engineer (SRE) analyzing {context_description}.\n\n"
+            f"Current Metrics:\n{metrics_data_summary}\n\n"
+            f"User Question: {question}\n\n"
+            f"Provide a concise technical response focusing on operational insights and recommendations. "
+            f"Respond with JSON format: {{\"promql\": \"relevant_query_if_applicable\", \"summary\": \"your_analysis\"}}"
+        )
+
+        llm_response = summarize_with_llm(
+            prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
+        )
+
+        # Parse JSON content robustly (handles extra text and fenced code blocks)
+        import re as _re
+        import json as _json
+
+        promql = ""
+        summary = llm_response
+        def _extract_first_json_object(text: str):
+            # 1) Fenced code blocks with optional json hint
+            fenced = _re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text, _re.IGNORECASE)
+            for block in fenced:
+                try:
+                    return _json.loads(block)
+                except Exception:
+                    continue
+            # 2) Any JSON-like object candidates (non-greedy)
+            for m in _re.finditer(r"\{[\s\S]*?\}", text):
+                cand = m.group(0)
+                try:
+                    return _json.loads(cand)
+                except Exception:
+                    continue
+            return None
+
+        parsed = _extract_first_json_object(llm_response)
+        if isinstance(parsed, dict):
+            promql = (parsed.get("promql") or "").strip()
+            summary = (parsed.get("summary") or llm_response).strip()
+
+            # Add namespace filter when needed
+            if promql and namespace and "namespace=" not in promql:
+                if "{" in promql:
+                    promql = promql.replace("{", f'{{namespace="{namespace}", ', 1)
+                else:
+                    promql = f'{promql}{{namespace="{namespace}"}}'
+
+        return {
+            "promql": promql,
+            "summary": summary,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- Metric Fetching Functions ---
 
 def fetch_metrics(query, model_name, start, end, namespace=None):
