@@ -58,7 +58,41 @@ def analyze_openshift(
         if scope == NAMESPACE_SCOPED and ns_desc:
             header += f" (namespace={ns_desc})"
 
-        content = f"{header}\n\n{summary}".strip()
+        # Attach structured payload so UI can render metric grids
+        def _serialize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
+            out: Dict[str, Any] = {}
+            try:
+                for label, rows in (metrics or {}).items():
+                    safe_rows = []
+                    if isinstance(rows, list):
+                        for r in rows:
+                            if isinstance(r, dict):
+                                ts = r.get("timestamp")
+                                val = r.get("value")
+                                # Convert timestamp to ISO string when possible
+                                if hasattr(ts, "isoformat"):
+                                    ts_str = ts.isoformat()
+                                    if not ts_str.endswith("Z"):
+                                        ts_str += "Z"
+                                else:
+                                    ts_str = str(ts) if ts is not None else ""
+                                try:
+                                    val_num = float(val) if val is not None else None
+                                except Exception:
+                                    val_num = None
+                                safe_rows.append({"timestamp": ts_str, "value": val_num})
+                    out[label] = safe_rows
+            except Exception:
+                return {}
+            return out
+
+        structured = {
+            "health_prompt": result.get("health_prompt", ""),
+            "llm_summary": summary,
+            "metrics": _serialize_metrics(result.get("metrics", {})),
+        }
+
+        content = f"{header}\n\n{summary}\n\nSTRUCTURED_DATA:\n{json.dumps(structured)}".strip()
         return _resp(content)
     except Exception as e:
         return _resp(f"Error running analyze_openshift: {str(e)}", is_error=True)

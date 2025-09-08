@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8085")
 
 
+def epoch_to_iso(epoch_seconds: int) -> str:
+    """Convert epoch seconds to ISO8601 with trailing 'Z' (UTC)."""
+    try:
+        return datetime.utcfromtimestamp(int(epoch_seconds)).isoformat() + "Z"
+    except Exception:
+        # Fallback to current time if input invalid
+        return datetime.utcnow().isoformat() + "Z"
+
+
 class MCPClientHelper:
     """Helper class to call MCP server using FastMCP client (simple like example)."""
 
@@ -90,7 +99,23 @@ class MCPClientHelper:
     def call_tool_sync(self, tool_name: str, parameters: Dict[str, Any] = None) -> Any:
         """Sync wrapper for Streamlit - runs the async fastmcp call."""
         try:
+            # Preferred path
             return asyncio.run(self._call_tool_async(tool_name, parameters))
+        except RuntimeError as e:
+            # Handle "asyncio.run() cannot be called from a running event loop"
+            try:
+                loop = asyncio.new_event_loop()
+                try:
+                    asyncio.set_event_loop(loop)
+                    return loop.run_until_complete(self._call_tool_async(tool_name, parameters))
+                finally:
+                    try:
+                        loop.close()
+                    except Exception:
+                        pass
+            except Exception as inner_e:
+                logger.error(f"Error calling MCP tool '{tool_name}' with new event loop: {inner_e}")
+                return None
         except Exception as e:
             logger.error(f"Error calling MCP tool '{tool_name}': {e}")
             return None
@@ -266,8 +291,8 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
         clean_model_name = model_name.split(" | ")[1] if " | " in model_name else model_name
 
         # Prepare parameters for MCP tool (use ISO datetime instead of epoch timestamps)
-        start_datetime_iso = datetime.utcfromtimestamp(start_ts).isoformat() + "Z"
-        end_datetime_iso = datetime.utcfromtimestamp(end_ts).isoformat() + "Z"
+        start_datetime_iso = epoch_to_iso(start_ts)
+        end_datetime_iso = epoch_to_iso(end_ts)
 
         parameters = {
             "model_name": clean_model_name,
@@ -298,6 +323,39 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
     except Exception as e:
         logger.error(f"Error analyzing vLLM metrics via MCP: {e}")
         return {}
+
+
+def analyze_openshift_mcp(
+    metric_category: str,
+    scope: str,
+    namespace: Optional[str],
+    start_ts: int,
+    end_ts: int,
+    summarize_model_id: str,
+    api_key: Optional[str] = None,
+) -> str:
+    """Analyze OpenShift metrics via MCP analyze_openshift tool using ISO datetimes."""
+    try:
+        if not mcp_client.check_server_health():
+            return ""
+
+        params = {
+            "metric_category": metric_category,
+            "scope": scope,
+            "namespace": namespace or "",
+            "start_datetime": epoch_to_iso(start_ts),
+            "end_datetime": epoch_to_iso(end_ts),
+            "summarize_model_id": summarize_model_id,
+        }
+        if api_key:
+            params["api_key"] = api_key
+
+        result = mcp_client.call_tool_sync("analyze_openshift", params)
+        return extract_text_from_mcp_result(result) or ""
+    except Exception as e:
+        logger.error(f"Error analyzing OpenShift via MCP: {e}")
+        return ""
+
 
 
 def calculate_metrics_mcp(metrics_data: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:

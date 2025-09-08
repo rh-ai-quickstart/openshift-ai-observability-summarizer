@@ -450,7 +450,7 @@ You are a Senior Site Reliability Engineer (SRE) analyzing OpenShift/Kubernetes 
 
 User Question: {question}
 
-Provide a concise technical analysis focusing on operational insights and recommendations.
+Provide a concise technical analysis focusing on operational insights and recommendations using only the metrics and data provided.
 Respond with JSON format: {{"promql": "relevant_query_if_applicable", "summary": "your_analysis"}}.
 
 """.strip()

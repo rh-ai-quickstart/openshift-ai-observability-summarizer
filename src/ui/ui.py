@@ -1,6 +1,7 @@
 # main_page.py - AI Observability Metric Summarizer (vLLM + OpenShift)
 import streamlit as st
 import requests
+import json
 from datetime import datetime
 import pandas as pd
 import os
@@ -9,7 +10,20 @@ import base64
 import matplotlib.pyplot as plt
 import io
 import time
-from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp, analyze_vllm_mcp, calculate_metrics_mcp, get_vllm_metrics_mcp
+from mcp_client_helper import (
+    mcp_client,
+    get_namespaces_mcp,
+    get_models_mcp,
+    get_model_config_mcp,
+    analyze_vllm_mcp,
+    calculate_metrics_mcp,
+    get_vllm_metrics_mcp,
+    extract_text_from_mcp_result,
+    is_double_encoded_mcp_response,
+    extract_from_double_encoded_response,
+    analyze_openshift_mcp,
+    parse_analyze_response,
+)
 
 # --- Config ---
 API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
@@ -98,34 +112,37 @@ def get_model_config():
 
 @st.cache_data(ttl=300)
 def get_openshift_metric_groups():
-    """Fetch available OpenShift metric groups from API"""
+    """Fetch available OpenShift metric groups via MCP"""
     try:
-        res = requests.get(f"{API_URL}/openshift-metric-groups")
-        return res.json()
+        if not mcp_client.check_server_health():
+            return []
+        result = mcp_client.call_tool_sync("list_openshift_metric_groups")
+        return mcp_client.parse_list_response(result)
     except Exception as e:
-        st.sidebar.error(f"Error fetching metric groups: {e}")
+        st.sidebar.error(f"Error fetching metric groups (MCP): {e}")
         return []
 
 
 @st.cache_data(ttl=300)
 def get_openshift_namespace_metric_groups():
-    """Fetch available OpenShift namespace-specific metric groups from API"""
+    """Fetch available OpenShift namespace-specific metric groups via MCP"""
     try:
-        res = requests.get(f"{API_URL}/openshift-namespace-metric-groups")
-        return res.json()
+        if not mcp_client.check_server_health():
+            return []
+        result = mcp_client.call_tool_sync("list_openshift_namespace_metric_groups")
+        return mcp_client.parse_list_response(result)
     except Exception as e:
-        st.sidebar.error(f"Error fetching namespace metric groups: {e}")
+        st.sidebar.error(f"Error fetching namespace metric groups (MCP): {e}")
         return []
 
 
 @st.cache_data(ttl=300)
 def get_openshift_namespaces():
-    """Fetch available OpenShift namespaces from API"""
+    """Fetch available OpenShift namespaces via MCP"""
     try:
-        res = requests.get(f"{API_URL}/openshift-namespaces")
-        return res.json()
+        return get_namespaces_mcp() or ["default"]
     except Exception as e:
-        st.sidebar.error(f"Error fetching OpenShift namespaces: {e}")
+        st.sidebar.error(f"Error fetching OpenShift namespaces (MCP): {e}")
         return ["default"]
 
 
@@ -1207,36 +1224,38 @@ elif page == "OpenShift Metrics":
         )
         with st.spinner(f"Running {analysis_type}..."):
             try:
-                # Get parameters for OpenShift analysis
-                params = {
-                    "metric_category": selected_metric_category,  # Specific category
-                    "scope": scope_type.lower()
-                    .replace("-", "_")
-                    .replace(" ", "_"),  # "cluster_wide" or "namespace_scoped"
-                    "namespace": selected_openshift_namespace,  # None for cluster-wide
+                # Call MCP analyze_openshift using ISO timestamps
+                result_text = analyze_openshift_mcp(
+                    metric_category=selected_metric_category,
+                    scope=scope_type.lower().replace("-", "_").replace(" ", "_"),
+                    namespace=selected_openshift_namespace,
+                    start_ts=selected_start,
+                    end_ts=selected_end,
+                    summarize_model_id=multi_model_name,
+                    api_key=api_key,
+                )
+                # Parse minimal fields back from MCP text
+                result = parse_analyze_response(result_text) if result_text else {}
+
+                # Store results in session state
+                st.session_state["openshift_prompt"] = result["health_prompt"]
+                st.session_state["openshift_summary"] = result["llm_summary"]
+                st.session_state["openshift_metric_category"] = selected_metric_category
+                st.session_state["openshift_scope"] = scope_type.lower().replace("-", "_").replace(" ", "_")
+                st.session_state["openshift_namespace"] = selected_openshift_namespace
+                st.session_state["openshift_metric_data"] = result.get("metrics", {})
+                st.session_state["openshift_analysis_type"] = analysis_type
+
+                # Store analysis parameters for report generation
+                st.session_state["analysis_params"] = {
+                    "metric_category": selected_metric_category,
+                    "scope": st.session_state["openshift_scope"],
+                    "namespace": selected_openshift_namespace,
                     "start_ts": selected_start,
                     "end_ts": selected_end,
                     "summarize_model_id": multi_model_name,
                     "api_key": api_key,
                 }
-
-                response = requests.post(f"{API_URL}/analyze-openshift", json=params)
-                response.raise_for_status()
-                result = response.json()
-
-                # Store results in session state
-                st.session_state["openshift_prompt"] = result["health_prompt"]
-                st.session_state["openshift_summary"] = result["llm_summary"]
-                st.session_state["openshift_metric_category"] = params[
-                    "metric_category"
-                ]
-                st.session_state["openshift_scope"] = params["scope"]
-                st.session_state["openshift_namespace"] = params["namespace"]
-                st.session_state["openshift_metric_data"] = result.get("metrics", {})
-                st.session_state["openshift_analysis_type"] = analysis_type
-
-                # Store analysis parameters for report generation
-                st.session_state["analysis_params"] = params
 
                 # Enable download button for OpenShift analysis
                 st.session_state["analysis_performed"] = True
