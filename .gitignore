@@ -183,5 +183,8 @@ cython_debug/
 # log files
 src/api/log.txt
 
+# helm charts dir
+charts/
+
 # TMP directory (if any)
 TMP/

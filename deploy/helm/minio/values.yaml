@@ -1,0 +1,28 @@
+# MinIO chart for Tempo trace storage only
+
+minio:
+  # Main MinIO configuration
+  image: quay.io/minio/minio
+  imagePullPolicy: IfNotPresent
+  storage: 12Gi  # Optimized for Tempo trace storage
+
+  # Service configuration
+  service:
+    name: minio
+    ports:
+      api: 9000
+      console: 9001
+
+  # Root credentials (admin access) - used by MinIO chart
+  secret:
+    user: admin
+    password: minio123
+    host: minio
+    port: "9000"
+
+  # Tempo bucket configuration
+  tempo:
+    bucketName: tempo  # Will be overridden by MINIO_BUCKET from Makefile
+    credentials:
+      user: minio_tempo_user
+      password: minio_tempo_password

@@ -40,6 +40,12 @@ endif
 POSTGRES_USER ?= postgres
 POSTGRES_PASSWORD ?= rag_password
 POSTGRES_DBNAME ?= rag_blueprint
+# MinIO configuration for Tempo trace storage
+MINIO_USER ?= minio_tempo_user
+MINIO_PASSWORD ?= minio_tempo_password
+MINIO_HOST ?= minio
+MINIO_PORT ?= 9000
+MINIO_BUCKET ?= tempo
 
 # HF_TOKEN is only required if LLM_URL is not set
 HF_TOKEN ?= $(shell \
@@ -118,6 +124,15 @@ helm_pgvector_args = \
     --set pgvector.secret.user=$(POSTGRES_USER) \
     --set pgvector.secret.password=$(POSTGRES_PASSWORD) \
     --set pgvector.secret.dbname=$(POSTGRES_DBNAME)
+
+helm_minio_args = \
+    --set minio.secret.user=$(MINIO_USER) \
+    --set minio.secret.password=$(MINIO_PASSWORD) \
+    --set minio.secret.host=$(MINIO_HOST) \
+    --set-string minio.secret.port=$(MINIO_PORT) \
+    --set minio.tempo.credentials.user=$(MINIO_USER) \
+    --set minio.tempo.credentials.password=$(MINIO_PASSWORD) \
+    --set minio.tempo.bucketName=$(MINIO_BUCKET)
 
 .PHONY: help
 help:
@@ -358,6 +373,7 @@ install-rag: namespace
 	@$(eval LLM_SERVICE_ARGS := $(call helm_llm_service_args))
 	@$(eval LLAMA_STACK_ARGS := $(call helm_llama_stack_args))
 	@$(eval PGVECTOR_ARGS := $(call helm_pgvector_args))
+
 	@echo "Installing $(RAG_CHART) helm chart (backend services only)"
 	@cd deploy/helm && helm -n $(NAMESPACE) upgrade --install $(RAG_CHART) $(RAG_CHART) \
 	--atomic --timeout 25m \
@@ -435,8 +451,8 @@ uninstall:
 	@echo "🗑️  Uninstalling from OpenShift namespace: $(NAMESPACE)"
 	@echo "Uninstalling $(RAG_CHART) helm chart"
 	- @helm -n $(NAMESPACE) uninstall $(RAG_CHART) --ignore-not-found
-	@echo "Removing pgvector and minio PVCs from $(NAMESPACE)"
-	- @oc get pvc -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^(pg|minio)-data' | xargs -I {} oc delete pvc -n $(NAMESPACE) {} ||:
+	@echo "Removing pgvector PVCs from $(NAMESPACE)"
+	- @oc delete pvc -n $(NAMESPACE) -l app.kubernetes.io/name=pgvector ||:
 	@if helm list -n $(NAMESPACE) -q | grep -q "^$(ALERTING_RELEASE_NAME)$$"; then \
 		echo "→ Detected alerting chart $(ALERTING_RELEASE_NAME). Uninstalling alerting..."; \
 		$(MAKE) uninstall-alerts NAMESPACE=$(NAMESPACE); \
@@ -724,7 +740,7 @@ install-observability:
 	@if helm list -n $(OBSERVABILITY_NAMESPACE) 2>/dev/null | grep -q "^tempo\s"; then \
 		echo "  → TempoStack already installed, skipping..."; \
 	else \
-		echo "Installing TempoStack and MinIO in namespace $(OBSERVABILITY_NAMESPACE)"; \
+		echo "Installing TempoStack in namespace $(OBSERVABILITY_NAMESPACE)"; \
 		cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
 			--namespace $(OBSERVABILITY_NAMESPACE) \
 			--create-namespace \
@@ -760,6 +776,32 @@ remove-tracing: namespace
 
 .PHONY: uninstall-observability
 uninstall-observability:
-	@echo "Uninstalling TempoStack and MinIO and Otel Collector in namespace $(OBSERVABILITY_NAMESPACE)"
+	@echo "Uninstalling TempoStack and Otel Collector in namespace $(OBSERVABILITY_NAMESPACE)"
 	@helm uninstall tempo -n $(OBSERVABILITY_NAMESPACE)
 	@helm uninstall otel-collector -n $(OBSERVABILITY_NAMESPACE)
+
+
+.PHONY: install-minio
+install-minio:
+	@$(eval MINIO_ARGS := $(call helm_minio_args))
+
+	@echo "→ Checking if MinIO already exists in namespace $(MINIO_NAMESPACE)"
+	@if helm list -n $(MINIO_NAMESPACE) 2>/dev/null | grep -q "^$(MINIO_CHART)\s"; then \
+		echo "  → MinIO already installed, skipping..."; \
+	else \
+		echo "Installing $(MINIO_CHART) helm chart"; \
+		cd deploy/helm && helm -n $(MINIO_NAMESPACE) upgrade --install $(MINIO_CHART) $(MINIO_CHART) \
+		--atomic --timeout 5m \
+		$(MINIO_ARGS); \
+		oc wait -n $(MINIO_NAMESPACE) --for=condition=Ready --timeout=5m inferenceservice --all ||:; \
+		echo "$(MINIO_CHART) installed successfully"; \
+	fi
+
+
+.PHONY: uninstall-minio
+uninstall-minio:
+	@echo "Removing minio PVCs from $(MINIO_NAMESPACE)"
+	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=minio ||:
+
+	@echo "Uninstalling $(MINIO_CHART) in namespace $(MINIO_NAMESPACE)"
+	@helm -n $(MINIO_NAMESPACE) uninstall $(MINIO_CHART) --ignore-not-found

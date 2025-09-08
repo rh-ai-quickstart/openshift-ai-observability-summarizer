@@ -37,34 +37,25 @@ tempoStack:
         # ingress:
         #   type: route
 
-# MinIO storage configuration
+# MinIO storage configuration - now using shared MinIO instance
 minio:
-  # MinIO deployment settings
-  image: quay.io/minio/minio
-  imagePullPolicy: Always
+  # Use shared MinIO instance instead of dedicated deployment
+  enabled: false  # Disable dedicated MinIO deployment
   
-  # Storage configuration
-  storage:
-    size: 12Gi
-    storageClass: ""  # Use default storage class
-  
-  # MinIO service configuration
-  service:
-    name: minio-tempo-svc
+  # Reference to shared MinIO instance
+  shared:
+    serviceName: minio
+    namespace: observability-hub
     ports:
       api: 9000
       console: 9001
   
-  # MinIO credentials (TEST VALUES - CHANGE IN PRODUCTION)
-  credentials:
-    rootUser: admin
-    rootPassword: minio123
-  
-  # S3 configuration for Tempo
+  # S3 configuration for Tempo (points to shared MinIO)
   s3:
-    accessKeyId: admin
-    accessKeySecret: minio123
+    accessKeyId: minio_tempo_user
+    accessKeySecret: minio_tempo_password
     bucket: tempo
+    endpoint: http://minio.observability-hub.svc.cluster.local:9000
 
 # RBAC configuration
 rbac:
