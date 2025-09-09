@@ -1,26 +1,23 @@
 # MinIO chart for Tempo trace storage only
+# Using external chart from rh-ai-quickstart.github.io/ai-architecture-charts
 
 minio:
-  # Main MinIO configuration
-  image: quay.io/minio/minio
-  imagePullPolicy: IfNotPresent
-  storage: 12Gi  # Optimized for Tempo trace storage
+  # Override naming to match our chart name
+  nameOverride: "minio-observability-storage"
+  fullnameOverride: "minio-observability-storage"
 
-  # Service configuration
-  service:
-    name: minio
-    ports:
-      api: 9000
-      console: 9001
-
-  # Root credentials (admin access) - used by MinIO chart
+  # Root credentials (admin access) - these override the upstream chart's defaults
   secret:
-    user: admin
-    password: minio123
-    host: minio
+    user: minio_tempo_user
+    password: minio_tempo_password
+    host: minio-observability-storage
     port: "9000"
 
-  # Tempo bucket configuration
+  # Disable upstream chart's bucket creation - we'll handle it ourselves
+  sampleFileUpload:
+    enabled: false
+
+  # Tempo bucket configuration (for reference)
   tempo:
     bucketName: tempo  # Will be overridden by MINIO_BUCKET from Makefile
     credentials:

@@ -44,7 +44,7 @@ minio:
   
   # Reference to shared MinIO instance
   shared:
-    serviceName: minio
+    serviceName: minio-observability-storage
     namespace: observability-hub
     ports:
       api: 9000
@@ -55,7 +55,7 @@ minio:
     accessKeyId: minio_tempo_user
     accessKeySecret: minio_tempo_password
     bucket: tempo
-    endpoint: http://minio.observability-hub.svc.cluster.local:9000
+    endpoint: http://minio-observability-storage.observability-hub.svc.cluster.local:9000
 
 # RBAC configuration
 rbac:

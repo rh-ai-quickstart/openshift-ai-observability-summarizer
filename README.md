@@ -69,7 +69,9 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 - Custom alert thresholds and conditions
 
 ### **6. Distributed Tracing Integration**
-- Tracing support with OpenTelemetry and Tempo to monitor request flows across your AI services.
+- **Complete Observability Stack**: MinIO storage + TempoStack + OpenTelemetry Collector + auto-instrumentation
+- **Tracing support** with OpenTelemetry and Tempo to monitor request flows across your AI services
+- **Flexible deployment**: Install complete stack or individual components as needed
 
 ### **6. AI Assistant Integration (MCP Server)**
 - **Model Context Protocol (MCP) server** for AI assistants (Claude Desktop, Cursor IDE)
@@ -226,6 +228,45 @@ make install NAMESPACE=your-namespace \
 make install NAMESPACE=your-namespace ALERTS=TRUE
 ```
 Enabling alerting will deploy alert rules, a cron job to monitor vLLM metrics, and AI-powered Slack notifications.
+
+### Observability Stack Management
+
+The project includes a complete observability stack with flexible deployment options:
+
+#### **Complete Stack Installation**
+```bash
+# Install complete observability stack (MinIO + TempoStack + OTEL + tracing)
+# Note: NAMESPACE is required for tracing setup
+make install-observability NAMESPACE=your-namespace
+
+# Uninstall complete observability stack
+# Note: NAMESPACE is required for tracing removal
+make uninstall-observability NAMESPACE=your-namespace
+```
+
+#### **Individual Component Management**
+```bash
+# Install individual components
+make install-minio                                           # MinIO storage only (uses observability-hub namespace)
+make install-observability-core                             # TempoStack + OTEL only (uses observability-hub namespace)
+make setup-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
+
+# Uninstall individual components
+make uninstall-minio                                         # MinIO storage only (uses observability-hub namespace)
+make uninstall-observability-core                           # TempoStack + OTEL only (uses observability-hub namespace)
+make remove-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
+```
+
+#### **NAMESPACE Requirements**
+- **Complete Stack**: `install-observability` and `uninstall-observability` require NAMESPACE for tracing components
+- **Storage & Core**: `install-minio`, `uninstall-minio`, `install-observability-core`, `uninstall-observability-core` use hardcoded `observability-hub` namespace
+- **Tracing Only**: `setup-tracing` and `remove-tracing` require NAMESPACE parameter
+
+#### **Observability Features**
+- **MinIO**: S3-compatible object storage for trace data
+- **TempoStack**: Multitenant trace storage and analysis
+- **OpenTelemetry Collector**: Distributed tracing collection
+- **Auto-instrumentation**: Automatic Python application tracing
 
 ### Accessing the Application
 

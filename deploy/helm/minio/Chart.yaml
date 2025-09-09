@@ -1,0 +1,12 @@
+apiVersion: v2
+name: minio-observability-storage
+description: MinIO object storage for observability data (Tempo traces, Loki logs)
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+dependencies:
+  - name: minio
+    version: 0.1.0
+    repository: https://rh-ai-quickstart.github.io/ai-architecture-charts
+

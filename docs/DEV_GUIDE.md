@@ -197,6 +197,55 @@ make install-metric-mcp NAMESPACE=your-namespace    # Metrics API only
 make install-mcp-server NAMESPACE=your-namespace    # MCP server only
 ```
 
+### Observability Stack Management
+
+The project includes a comprehensive observability stack with flexible deployment options:
+
+#### **Complete Observability Stack**
+```bash
+# Install complete observability stack (MinIO + TempoStack + OTEL + tracing)
+# Note: NAMESPACE is required for tracing setup
+make install-observability NAMESPACE=your-namespace
+
+# Uninstall complete observability stack
+# Note: NAMESPACE is required for tracing removal
+make uninstall-observability NAMESPACE=your-namespace
+```
+
+#### **Individual Observability Components**
+```bash
+# Install individual components
+make install-minio                                           # MinIO storage only (uses observability-hub namespace)
+make install-observability-core                             # TempoStack + OTEL only (uses observability-hub namespace)
+make setup-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
+
+# Uninstall individual components
+make uninstall-minio                                         # MinIO storage only (uses observability-hub namespace)
+make uninstall-observability-core                           # TempoStack + OTEL only (uses observability-hub namespace)
+make remove-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
+```
+
+#### **NAMESPACE Requirements**
+- **`install-observability` / `uninstall-observability`**: Require NAMESPACE for tracing components
+- **`install-minio` / `uninstall-minio`**: Use hardcoded `observability-hub` namespace
+- **`install-observability-core` / `uninstall-observability-core`**: Use hardcoded `observability-hub` namespace  
+- **`setup-tracing` / `remove-tracing`**: Require NAMESPACE parameter
+
+#### **MinIO Chart Simplification**
+The MinIO chart has been simplified to use a single template file (`minio-simple.yaml`) that:
+- Deploys MinIO as a StatefulSet with built-in bucket creation
+- Uses MinIO's native `mc` client for bucket and user management
+- Eliminates the need for separate initialization jobs
+- Reduces complexity from 7 template files to 2 (including helpers)
+- Provides more reliable and maintainable MinIO deployment
+
+#### **Observability Stack Features**
+- **MinIO**: S3-compatible object storage for trace data persistence
+- **TempoStack**: Multitenant trace storage and analysis with OpenShift integration
+- **OpenTelemetry Collector**: Distributed tracing collection and forwarding
+- **Auto-instrumentation**: Automatic Python application tracing setup
+- **Dependency Management**: Proper installation/uninstallation order with dependency chains
+
 ### Management
 ```bash
 # Check deployment status
@@ -368,6 +417,16 @@ oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
 - `make install-mcp-server` - Deploy MCP server only
 - `make status` - Check deployment status
 - `make uninstall` - Remove deployment
+
+### Observability Stack
+- `make install-observability` - Install complete observability stack
+- `make uninstall-observability` - Uninstall complete observability stack
+- `make install-minio` - Install MinIO storage only
+- `make uninstall-minio` - Uninstall MinIO storage only
+- `make install-observability-core` - Install TempoStack + OTEL only
+- `make uninstall-observability-core` - Uninstall TempoStack + OTEL only
+- `make setup-tracing` - Enable auto-instrumentation
+- `make remove-tracing` - Disable auto-instrumentation
 
 ### Configuration
 - `make config` - Show current configuration

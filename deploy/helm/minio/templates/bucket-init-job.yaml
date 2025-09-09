@@ -1,57 +1,64 @@
-# Job to initialize MinIO buckets and service accounts
+{{- if .Values.minio.tempo.bucketName }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: minio-bucket-init
+  name: {{ .Release.Name }}-bucket-init
+  namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "minio.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ include "minio.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: bucket-init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
     metadata:
       labels:
-        {{- include "minio.labels" . | nindent 8 }}
+        app.kubernetes.io/name: {{ include "minio.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: bucket-init
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 1001160000
+        runAsGroup: 1001160000
+        fsGroup: 1001160000
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: bucket-init
-        image: quay.io/minio/mc:latest
+        image: minio/mc:latest
         command:
         - /bin/sh
         - -c
         - |
-          echo "🔧 Initializing MinIO for Tempo trace storage..."
-          
-          # Wait for MinIO to be ready
-          echo "⏳ Waiting for MinIO to be ready..."
-          until mc alias set myminio http://{{ .Values.minio.service.name }}:{{ .Values.minio.service.ports.api }} {{ .Values.minio.secret.user }} {{ .Values.minio.secret.password }}; do
-            echo "Waiting for MinIO..."
+          set -e
+          echo "Waiting for MinIO to be ready..."
+          until mc alias set myminio http://{{ include "minio.fullname" . }}:9000 {{ .Values.minio.secret.user }} {{ .Values.minio.secret.password }}; do
+            echo "Still waiting for MinIO..."
             sleep 5
           done
-          echo "✅ MinIO connection established"
-          
-          # Create Tempo bucket
-          echo "📁 Creating Tempo bucket: {{ .Values.minio.tempo.bucketName }}"
-          mc mb myminio/{{ .Values.minio.tempo.bucketName }} || echo "Bucket {{ .Values.minio.tempo.bucketName }} already exists"
-          
-          # Create Tempo service account
-          echo "👤 Creating Tempo service account..."
-          if ! mc admin user svcacct list myminio {{ .Values.minio.tempo.credentials.user }} | grep -q "{{ .Values.minio.tempo.credentials.user }}"; then
-            mc admin user svcacct add myminio {{ .Values.minio.tempo.credentials.user }} --access-key {{ .Values.minio.tempo.credentials.user }} --secret-key {{ .Values.minio.tempo.credentials.password }}
-            echo "✅ Tempo service account created"
-          else
-            echo "✅ Tempo service account already exists"
-          fi
-          
-          # Set bucket policy for Tempo
-          echo "🔒 Setting bucket policy for Tempo..."
-          mc anonymous set download myminio/{{ .Values.minio.tempo.bucketName }} || true
-          
-          echo "🎉 MinIO initialization complete for Tempo!"
+          echo "MinIO is ready. Creating bucket: {{ .Values.minio.tempo.bucketName }}"
+          mc mb myminio/{{ .Values.minio.tempo.bucketName }} || echo "Bucket may already exist"
+          echo "Bucket creation completed successfully"
         env:
-        - name: MINIO_ROOT_USER
-          value: {{ .Values.minio.secret.user | quote }}
-        - name: MINIO_ROOT_PASSWORD
-          value: {{ .Values.minio.secret.password | quote }}
-      backoffLimit: 3
+        - name: MC_CONFIG_DIR
+          value: /tmp/.mc
+        securityContext:
+          runAsUser: 1001160000
+          runAsGroup: 1001160000
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+{{- end }}
