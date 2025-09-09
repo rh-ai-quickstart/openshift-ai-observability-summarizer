@@ -31,19 +31,33 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
     steps:
+      - name: Determine target branch
+        id: target-branch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "target_branch=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
+            echo "Using workflow_run head_branch: ${{ github.event.workflow_run.head_branch }}"
+          else
+            echo "target_branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "Using current ref: ${{ github.ref_name }}"
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ steps.target-branch.outputs.target_branch }}
+          fetch-depth: 0
 
       - name: Show branch and commit info
         run: |
           echo "::group::Repository Information"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Commit SHA: ${{ github.sha }}"
+          echo "Target Branch: ${{ steps.target-branch.outputs.target_branch }}"
+          echo "Actual git branch: $(git branch --show-current)"
           echo "Event: ${{ github.event_name }}"
           echo "Repository: ${{ github.repository }}"
           echo "Actor: ${{ github.actor }}"
+          echo "Workflow run head branch: ${{ github.event.workflow_run.head_branch }}"
+          echo "Workflow run head sha: ${{ github.event.workflow_run.head_sha }}"
           echo "::endgroup::"
 
       - name: Install OpenShift CLI
@@ -64,4 +78,8 @@ jobs:
           NAMESPACE: ${{ env.NAMESPACE }}
         run: |
           # Run make target from root dir
+          echo "Deploying app from branch: `git branch --show-current`"
+          echo "Grepping version/tag from Makefile and values.yaml"
+          grep "^VERSION" Makefile
+          find deploy -name "values.yaml" -exec grep -H 'tag: ' {} \;
           make install
