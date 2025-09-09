@@ -820,4 +820,4 @@ uninstall-minio:
 	@helm -n $(MINIO_NAMESPACE) uninstall $(MINIO_CHART) --ignore-not-found
 
 	@echo "Removing minio PVCs from $(MINIO_NAMESPACE)"
-	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=minio --timeout=30s ||:
+	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=$(MINIO_CHART) --timeout=30s ||:
