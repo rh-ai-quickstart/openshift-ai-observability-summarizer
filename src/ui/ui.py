@@ -313,8 +313,8 @@ def get_metrics_data_and_list():
         "GPU Power Usage (Watts)",
         "P95 Latency (s)",
         "GPU Usage (%)",
-        "GPU Memory Usage (GB)",
         "Output Tokens Created",
+        "Prompt Tokens Created",
     ]
     return metric_data, metrics
 
@@ -968,8 +968,8 @@ if page == "vLLM Metric Summarizer":
                     "GPU Power Usage (Watts)",
                     "P95 Latency (s)",
                     "GPU Usage (%)",
-                    "GPU Memory Usage (GB)",
                     "Output Tokens Created",
+                    "Prompt Tokens Created",
                 ]
 
             # Check if this is a new deployment with no data

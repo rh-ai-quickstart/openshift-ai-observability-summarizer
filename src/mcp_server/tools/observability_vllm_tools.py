@@ -26,6 +26,12 @@ from core.config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 import requests
 from datetime import datetime
 
+# Import structured logger from MCP server utilities
+from mcp_server.utils.pylogger import get_python_logger
+
+# Configure structured logging
+logger = get_python_logger()
+
 
 def _resp(content: str, is_error: bool = False) -> List[Dict[str, Any]]:
     """Helper to format MCP tool responses consistently."""
@@ -66,7 +72,10 @@ def resolve_time_range(
         # 4) Default: last 1 hour
         now = int(datetime.utcnow().timestamp())
         return now - 3600, now
-    except Exception:
+    except Exception as e:
+        # Log the error for debugging
+        logger.error(f"Error in resolve_time_range: {e}")
+        logger.error(f"Inputs: time_range={time_range}, start_datetime={start_datetime}, end_datetime={end_datetime}")
         # Safe fallback to last 1 hour on any parsing error
         now = int(datetime.utcnow().timestamp())
         return now - 3600, now
@@ -223,6 +232,8 @@ def analyze_vllm(
     time_range: Optional[str] = None,
     start_datetime: Optional[str] = None,
     end_datetime: Optional[str] = None,
+    start_ts: Optional[int] = None,
+    end_ts: Optional[int] = None,
     api_key: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Analyze vLLM metrics and summarize using LLM. Using the same core functions:
@@ -240,6 +251,8 @@ def analyze_vllm(
             time_range=time_range,
             start_datetime=start_datetime,
             end_datetime=end_datetime,
+            start_ts=start_ts,
+            end_ts=end_ts,
         )
 
         # Collect metrics

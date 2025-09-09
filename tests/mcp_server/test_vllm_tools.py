@@ -276,5 +276,3 @@ def test_get_vllm_metrics_tool_error(mock_get_vllm_metrics):
     texts = _texts(result)
     
     assert "Error retrieving vLLM metrics: Connection error" in "\n".join(texts)
-
-
