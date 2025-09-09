@@ -56,8 +56,6 @@ jobs:
           echo "Event: ${{ github.event_name }}"
           echo "Repository: ${{ github.repository }}"
           echo "Actor: ${{ github.actor }}"
-          echo "Workflow run head branch: ${{ github.event.workflow_run.head_branch }}"
-          echo "Workflow run head sha: ${{ github.event.workflow_run.head_sha }}"
           echo "::endgroup::"
 
       - name: Install OpenShift CLI
