@@ -430,7 +430,7 @@ Use time range syntax `[{time_range_syntax}]` in PromQL queries where appropriat
 """
 
     return f"""
-You are a senior Site Reliability Engineer (SRE) analyzing OpenShift/Kubernetes metrics and answering the user's question with precise, actionable insights.
+You are a Senior Site Reliability Engineer (SRE) analyzing OpenShift/Kubernetes metrics and answering the user's question with precise, actionable insights.
 
 {scope_context}{time_context}{common_metrics}
 
