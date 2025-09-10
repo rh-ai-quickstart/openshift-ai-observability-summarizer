@@ -11,7 +11,7 @@ import os
 import json
 import re
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 from fastapi import HTTPException
@@ -695,6 +695,29 @@ def get_namespace_specific_metrics(category):
     return namespace_aware_metrics.get(category, {})
 
 
+def _select_openshift_metrics_for_scope(
+    metric_category: str,
+    scope: str,
+    namespace: Optional[str],
+) -> Tuple[Dict[str, str], Optional[str]]:
+    """Select metrics dict and namespace filter based on scope/category.
+
+    Returns (metrics_to_fetch, namespace_for_query)
+    """
+    openshift_metrics = get_openshift_metrics()
+
+    if scope == NAMESPACE_SCOPED and namespace:
+        namespace_metrics = get_namespace_specific_metrics(metric_category)
+        metrics_to_fetch = (
+            namespace_metrics if namespace_metrics else openshift_metrics.get(metric_category, {})
+        )
+    else:
+        metrics_to_fetch = openshift_metrics.get(metric_category, {})
+
+    namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
+    return metrics_to_fetch, namespace_for_query
+
+
 def analyze_openshift_metrics(
     metric_category: str,
     scope: str,
@@ -708,19 +731,9 @@ def analyze_openshift_metrics(
     Returns a dict matching the API response fields (health_prompt, llm_summary, metrics, etc.).
     Raises HTTPException for client (400) and server (500) errors.
     """
-    openshift_metrics = get_openshift_metrics()
-
-    # Select metric set based on scope (validation handled by caller)
-    if scope == NAMESPACE_SCOPED and namespace:
-        namespace_metrics = get_namespace_specific_metrics(metric_category)
-        if not namespace_metrics:
-            metrics_to_fetch = openshift_metrics.get(metric_category, {})
-        else:
-            metrics_to_fetch = namespace_metrics
-    else:
-        metrics_to_fetch = openshift_metrics.get(metric_category, {})
-
-    namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
+    metrics_to_fetch, namespace_for_query = _select_openshift_metrics_for_scope(
+        metric_category, scope, namespace
+    )
 
     # Fetch metrics
     metric_dfs: Dict[str, Any] = {}
@@ -780,17 +793,10 @@ def chat_openshift_metrics(
     - Parses LLM JSON to extract promql and summary
     Returns dict with at least: {"promql": str, "summary": str}
     """
-    openshift_metrics = get_openshift_metrics()
-
     # Select metrics without raising (validation is done by callers)
-    if scope == NAMESPACE_SCOPED and namespace:
-        namespace_metrics = get_namespace_specific_metrics(metric_category)
-        metrics_to_fetch = namespace_metrics if namespace_metrics else openshift_metrics.get(metric_category, {})
-    else:
-        metrics_to_fetch = openshift_metrics.get(metric_category, {})
-
-    # Fetch metrics
-    namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
+    metrics_to_fetch, namespace_for_query = _select_openshift_metrics_for_scope(
+        metric_category, scope, namespace
+    )
     metric_dfs: Dict[str, Any] = {}
     for label, query in metrics_to_fetch.items():
         try:
@@ -832,7 +838,7 @@ def chat_openshift_metrics(
     llm_response = summarize_with_llm(
         prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
     )
-  
+
     # Parse JSON content robustly (handles extra text and fenced code blocks)
     promql = ""
     summary = llm_response
