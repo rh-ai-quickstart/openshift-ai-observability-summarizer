@@ -40,9 +40,9 @@ endif
 POSTGRES_USER ?= postgres
 POSTGRES_PASSWORD ?= rag_password
 POSTGRES_DBNAME ?= rag_blueprint
-# MinIO configuration for Tempo trace storage
-MINIO_USER ?= minio_tempo_user
-MINIO_PASSWORD ?= minio_tempo_password
+# MinIO configuration for observability storage (traces, logs, metrics)
+MINIO_USER ?= observability_user
+MINIO_PASSWORD ?= observability_password
 MINIO_HOST ?= minio
 MINIO_PORT ?= 9000
 # MinIO bucket configuration (comma-separated list)
@@ -214,6 +214,8 @@ help:
 	@echo "  SAFETY             - Safety model id"
 	@echo "  ALERTS             - Set to TRUE to install alerting with main deployment"
 	@echo "  SLACK_WEBHOOK_URL  - Slack Webhook URL for alerting (will prompt if not provided)"
+	@echo "  MINIO_USER         - MinIO username for observability storage (default: observability_user)"
+	@echo "  MINIO_PASSWORD     - MinIO password for observability storage (default: observability_password)"
 	@echo "  MINIO_BUCKETS      - Comma-separated list of MinIO buckets to create (default: tempo,loki)"
 	@echo ""
 

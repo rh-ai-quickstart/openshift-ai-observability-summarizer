@@ -52,8 +52,8 @@ This will create:
 - **Deployment**: Uses the shared `minio-observability-storage` instance
 - **Service**: `minio-observability-storage` ClusterIP service on port 9000
 - **Credentials**: References the shared MinIO credentials
-  - User: `minioadmin` (default MinIO admin user)
-  - Password: `minioadmin` (default MinIO admin password)
+  - User: `observability_user` (default MinIO user)
+  - Password: `observability_password` (default MinIO password)
   - Bucket: `tempo` (created automatically via dynamic bucket creation)
 
 ### TempoStack Configuration
