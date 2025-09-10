@@ -398,7 +398,7 @@ install-rag: namespace
 
 
 .PHONY: install
-install: namespace depend validate-llm install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs install-observability-stack
+install: namespace depend validate-llm install-observability-stack install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs
 	@if [ "$(ALERTS)" = "TRUE" ]; then \
 		echo "ALERTS flag is set to TRUE. Installing alerting..."; \
 		$(MAKE) install-alerts NAMESPACE=$(NAMESPACE); \
@@ -413,7 +413,7 @@ install-with-alerts:
 		exit 1; \
 	fi
 	@echo "🚀 Deploying to OpenShift namespace: $(NAMESPACE) with alerting"
-	@$(MAKE) namespace depend validate-llm install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs install-alerts install-observability-stack NAMESPACE=$(NAMESPACE)
+	@$(MAKE) namespace depend validate-llm install-observability-stack install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs install-alerts NAMESPACE=$(NAMESPACE)
 	@echo "✅ Deployment with alerting completed"
 
 # Delete all jobs in the namespace
