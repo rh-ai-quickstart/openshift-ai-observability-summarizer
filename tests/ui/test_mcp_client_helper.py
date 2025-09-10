@@ -265,6 +265,51 @@ class TestMCPClientHelper:
         assert "GPU Temperature (°C)" in result["metrics"]
         assert len(result["metrics"]["GPU Temperature (°C)"]) == 1
 
+    @patch('ui.mcp_client_helper.mcp_client')
+    def test_analyze_vllm_mcp_passes_iso_datetimes(self, mock_client):
+        """Ensure analyze_vllm_mcp sends start/end as ISO8601 datetimes to MCP tool"""
+        mock_client.check_server_health.return_value = True
+
+        # Minimal valid MCP response
+        structured_data = {
+            "health_prompt": "P",
+            "llm_summary": "S",
+            "metrics": {}
+        }
+        response_text = f"Done\n\nSTRUCTURED_DATA:\n{json.dumps(structured_data)}"
+        mock_client.call_tool_sync.return_value = [{"type": "text", "text": response_text}]
+
+        # Inputs
+        start_ts = 1700000000
+        end_ts = 1700003600
+
+        from datetime import datetime
+        expected_start = datetime.utcfromtimestamp(start_ts).isoformat() + "Z"
+        expected_end = datetime.utcfromtimestamp(end_ts).isoformat() + "Z"
+
+        # Call
+        _ = mcp_helper.analyze_vllm_mcp(
+            model_name="dev | my-model",
+            summarize_model_id="summarizer-x",
+            start_ts=start_ts,
+            end_ts=end_ts,
+            api_key=None,
+        )
+
+        # Assert tool call parameters
+        assert mock_client.call_tool_sync.called
+        tool_name, params = mock_client.call_tool_sync.call_args[0]
+        assert tool_name == "analyze_vllm"
+
+        # Validate datetime fields present and epoch fields absent
+        assert "start_datetime" in params
+        assert "end_datetime" in params
+        assert "start_ts" not in params
+        assert "end_ts" not in params
+
+        assert params["start_datetime"] == expected_start
+        assert params["end_datetime"] == expected_end
+
     def test_parse_analyze_response_structured_data(self):
         """Test parsing analyze response with structured data"""
         structured_data = {

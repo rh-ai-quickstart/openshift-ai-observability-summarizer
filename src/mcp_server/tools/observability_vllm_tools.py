@@ -42,34 +42,27 @@ def resolve_time_range(
     time_range: Optional[str] = None,
     start_datetime: Optional[str] = None,
     end_datetime: Optional[str] = None,
-    start_ts: Optional[int] = None,
-    end_ts: Optional[int] = None,
 ) -> tuple[int, int]:
     """Resolve various time inputs into start/end epoch seconds.
 
     Precedence:
-    1) Explicit epoch timestamps (start_ts/end_ts)
-    2) time_range natural language → use extract_time_range_with_info
-    3) ISO datetime strings (start_datetime/end_datetime)
-    4) Default to last 1 hour
+    1) time_range natural language → use extract_time_range_with_info
+    2) ISO datetime strings (start_datetime/end_datetime)
+    3) Default to last 1 hour
     """
     try:
-        # 1) Explicit epoch timestamps if provided
-        if start_ts is not None and end_ts is not None:
-            return int(start_ts), int(end_ts)
-
-        # 2) Natural language time range
+        # 1) Natural language time range
         if time_range:
             start_ts2, end_ts2, _info = extract_time_range_with_info(time_range, None, None)
             return start_ts2, end_ts2
 
-        # 3) ISO datetime strings
+        # 2) ISO datetime strings
         if start_datetime and end_datetime:
             rs = int(datetime.fromisoformat(start_datetime.replace("Z", "+00:00")).timestamp())
             re = int(datetime.fromisoformat(end_datetime.replace("Z", "+00:00")).timestamp())
             return rs, re
 
-        # 4) Default: last 1 hour
+        # 3) Default: last 1 hour
         now = int(datetime.utcnow().timestamp())
         return now - 3600, now
     except Exception as e:
@@ -232,8 +225,6 @@ def analyze_vllm(
     time_range: Optional[str] = None,
     start_datetime: Optional[str] = None,
     end_datetime: Optional[str] = None,
-    start_ts: Optional[int] = None,
-    end_ts: Optional[int] = None,
     api_key: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Analyze vLLM metrics and summarize using LLM. Using the same core functions:
@@ -251,8 +242,6 @@ def analyze_vllm(
             time_range=time_range,
             start_datetime=start_datetime,
             end_datetime=end_datetime,
-            start_ts=start_ts,
-            end_ts=end_ts,
         )
 
         # Collect metrics

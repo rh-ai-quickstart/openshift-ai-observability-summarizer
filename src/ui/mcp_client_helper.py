@@ -12,15 +12,10 @@ from typing import Dict, Any, List, Optional
 import logging
 import sys
 import site
-import pandas as pd
+import math
 from datetime import datetime
 
-# Configure simple logging for UI
-import logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logger for this module (avoid global basicConfig here)
 logger = logging.getLogger(__name__)
 
 # MCP Server Configuration
@@ -270,12 +265,15 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
         # Strip namespace from model name if present (e.g., "dev | model" → "model")
         clean_model_name = model_name.split(" | ")[1] if " | " in model_name else model_name
 
-        # Prepare parameters for MCP tool
+        # Prepare parameters for MCP tool (use ISO datetime instead of epoch timestamps)
+        start_datetime_iso = datetime.utcfromtimestamp(start_ts).isoformat() + "Z"
+        end_datetime_iso = datetime.utcfromtimestamp(end_ts).isoformat() + "Z"
+
         parameters = {
             "model_name": clean_model_name,
             "summarize_model_id": summarize_model_id,
-            "start_ts": start_ts,
-            "end_ts": end_ts
+            "start_datetime": start_datetime_iso,
+            "end_datetime": end_datetime_iso,
         }
 
         # Add API key if provided
@@ -388,7 +386,7 @@ def calculate_metrics_locally(metrics_data: Dict[str, List[Dict[str, Any]]]) -> 
                 try:
                     value = float(point["value"])
                     # Filter out NaN values to match REST API behavior
-                    if pd.notna(value):
+                    if not math.isnan(value):
                         values.append(value)
                 except (ValueError, TypeError):
                     continue
