@@ -204,41 +204,73 @@ def discover_vllm_metrics():
         }
 
         for friendly_name, metric_name in gpu_metrics.items():
+            # Handle expressions (like memory GB conversion) by checking base metric presence
+            if friendly_name == "GPU Memory Usage (GB)":
+                if "DCGM_FI_DEV_FB_USED" in all_metrics:
+                    metric_mapping[friendly_name] = "avg(DCGM_FI_DEV_FB_USED) / (1024*1024*1024)"
+                continue
+
             if metric_name in all_metrics:
                 metric_mapping[friendly_name] = f"avg({metric_name})"
 
-        # Filter for vLLM metrics
-        vllm_metrics = [metric for metric in all_metrics if metric.startswith("vllm:")]
+        # If vLLM GPU cache usage is unavailable, alias GPU Usage (%) to DCGM utilization
+        if "GPU Usage (%)" not in metric_mapping and "DCGM_FI_DEV_GPU_UTIL" in all_metrics:
+            metric_mapping["GPU Usage (%)"] = "avg(DCGM_FI_DEV_GPU_UTIL)"
 
-        # Add vLLM-specific metrics
+        # Build vLLM-derived queries based on available metrics
+        vllm_metrics = set(m for m in all_metrics if m.startswith("vllm:"))
+
+        # Tokens (prefer created metrics, fallback to total)
+        if "vllm:request_prompt_tokens_created" in vllm_metrics:
+            metric_mapping["Prompt Tokens Created"] = "rate(vllm:request_prompt_tokens_created[5m])"
+        elif "vllm:request_prompt_tokens_total" in vllm_metrics:
+            metric_mapping["Prompt Tokens Created"] = "rate(vllm:request_prompt_tokens_total[5m])"
+
+        if "vllm:request_generation_tokens_created" in vllm_metrics:
+            metric_mapping["Output Tokens Created"] = "rate(vllm:request_generation_tokens_created[5m])"
+        elif "vllm:request_generation_tokens_total" in vllm_metrics:
+            metric_mapping["Output Tokens Created"] = "rate(vllm:request_generation_tokens_total[5m])"
+
+        # Requests running (gauge)
+        if "vllm:num_requests_running" in vllm_metrics:
+            metric_mapping["Requests Running"] = "vllm:num_requests_running"
+
+        # GPU cache usage percent exposed by vLLM (model-scoped proxy for GPU usage)
+        if "vllm:gpu_cache_usage_perc" in vllm_metrics:
+            metric_mapping["GPU Usage (%)"] = "avg(vllm:gpu_cache_usage_perc)"
+
+        # P95 latency from histogram buckets
+        if "vllm:e2e_request_latency_seconds_bucket" in vllm_metrics:
+            metric_mapping["P95 Latency (s)"] = (
+                "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))"
+            )
+
+        # Inference time average = sum(rate(sum)) / sum(rate(count))
+        if (
+            "vllm:request_inference_time_seconds_sum" in vllm_metrics
+            and "vllm:request_inference_time_seconds_count" in vllm_metrics
+        ):
+            metric_mapping["Inference Time (s)"] = (
+                "sum(rate(vllm:request_inference_time_seconds_sum[5m])) / "
+                "sum(rate(vllm:request_inference_time_seconds_count[5m]))"
+            )
+
+        # Add any other vLLM metrics with a generic friendly name if not already mapped
         for metric in vllm_metrics:
-            # Convert metric name to friendly display name
+            if metric in (
+                "vllm:request_prompt_tokens_created",
+                "vllm:request_prompt_tokens_total",
+                "vllm:request_generation_tokens_created",
+                "vllm:request_generation_tokens_total",
+                "vllm:num_requests_running",
+                "vllm:e2e_request_latency_seconds_bucket",
+                "vllm:request_inference_time_seconds_sum",
+                "vllm:request_inference_time_seconds_count",
+            ):
+                continue
             friendly_name = metric.replace("vllm:", "").replace("_", " ").title()
-
-            # Special handling for common metrics
-            if "token" in metric.lower() and "prompt" in metric.lower():
-                friendly_name = "Prompt Tokens Created"
-            elif "token" in metric.lower() and (
-                "generation" in metric.lower() or "output" in metric.lower()
-            ):
-                friendly_name = "Output Tokens Created"
-            elif "latency" in metric.lower() and "e2e" in metric.lower():
-                friendly_name = "P95 Latency (s)"
-            elif (
-                "gpu" in metric.lower()
-                and "usage" in metric.lower()
-                and "perc" in metric.lower()
-            ):
-                friendly_name = "GPU Usage (%)"
-            elif "request" in metric.lower() and "running" in metric.lower():
-                friendly_name = "Requests Running"
-            elif "inference" in metric.lower() and "time" in metric.lower():
-                friendly_name = "Inference Time (s)"
-            else:
-                # Keep original friendly conversion
-                friendly_name = metric.replace("vllm:", "").replace("_", " ").title()
-
-            metric_mapping[friendly_name] = metric
+            if friendly_name not in metric_mapping:
+                metric_mapping[friendly_name] = metric
 
         return metric_mapping
     except Exception as e:
@@ -250,12 +282,12 @@ def discover_vllm_metrics():
             "GPU Memory Usage (GB)": "avg(DCGM_FI_DEV_FB_USED) / (1024*1024*1024)",
             "GPU Energy Consumption (Joules)": "avg(DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION)",
             "GPU Memory Temperature (°C)": "avg(DCGM_FI_DEV_MEMORY_TEMP)",
-            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
-            "Prompt Tokens Created": "vllm:request_prompt_tokens_created",
-            "Output Tokens Created": "vllm:request_generation_tokens_created",
+            "GPU Usage (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
+            "Prompt Tokens Created": "rate(vllm:request_prompt_tokens_created[5m])",
+            "Output Tokens Created": "rate(vllm:request_generation_tokens_created[5m])",
             "Requests Running": "vllm:num_requests_running",
-            "P95 Latency (s)": "vllm:e2e_request_latency_seconds_count",
-            "Inference Time (s)": "vllm:request_inference_time_seconds_count",
+            "P95 Latency (s)": "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))",
+            "Inference Time (s)": "sum(rate(vllm:request_inference_time_seconds_sum[5m])) / sum(rate(vllm:request_inference_time_seconds_count[5m]))",
         }
 
 
@@ -670,33 +702,32 @@ def analyze_openshift_metrics(
 
 def fetch_metrics(query, model_name, start, end, namespace=None):
     """Fetch metrics from Prometheus for vLLM models"""
-    # Handle GPU metrics that don't have model_name labels (they're global/node-level metrics)
-    if query.startswith("avg(DCGM_") or "DCGM_" in query:
-        # GPU metrics are node-level, not model-specific
-        promql_query = query
-    else:
-        # Handle vLLM metrics that have model_name and namespace labels
-        if namespace:
-            namespace = namespace.strip()
-            if "|" in model_name:
-                model_namespace, actual_model_name = map(
-                    str.strip, model_name.split("|", 1)
-                )
-                promql_query = f'{query}{{model_name="{actual_model_name}", namespace="{namespace}"}}'
-            else:
-                promql_query = (
-                    f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
-                )
+    promql_query = query
+
+    # Inject labels for vLLM metrics inside rate()/histogram_quantile expressions
+    def _inject_labels(expr: str, model: str, ns: Optional[str]) -> str:
+        # Helper to build label matcher
+        if "|" in model:
+            model_ns, actual_model = map(str.strip, model.split("|", 1))
         else:
-            # Original logic if no namespace is explicitly provided (for backward compatibility or other endpoints)
-            if "|" in model_name:
-                namespace, model_name = map(str.strip, model_name.split("|", 1))
-                promql_query = (
-                    f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
-                )
-            else:
-                model_name = model_name.strip()
-                promql_query = f'{query}{{model_name="{model_name}"}}'
+            model_ns, actual_model = None, model.strip()
+
+        ns_value = (ns or model_ns or "").strip()
+        label_clause = f'model_name="{actual_model}"' + (f', namespace="{ns_value}"' if ns_value else "")
+
+        # Match complete vllm metric names that don't already have labels
+        # Use inline lambda to make the dependency on label_clause explicit
+        expr = re.sub(
+            r"\b(vllm:[\w:]+)(?!\{)",
+            lambda m: f"{m.group(1)}{{{label_clause}}}",
+            expr,
+        )
+        
+        return expr
+
+    # GPU metrics are global; inject only for vLLM metrics
+    if "vllm:" in promql_query:
+        promql_query = _inject_labels(promql_query, model_name, namespace)
 
     headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
     try:
