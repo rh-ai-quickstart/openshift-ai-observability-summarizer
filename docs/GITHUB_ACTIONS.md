@@ -39,8 +39,11 @@ The project uses 5 GitHub Actions workflows with the following execution order a
 
 4. **Deploy to OpenShift** (`.github/workflows/deploy.yml`)
    - **Trigger:** Automatic after successful Build workflow, manual dispatch
-   - **Purpose:** Deploys application to OpenShift cluster
+   - **Purpose:** Deploys application and observability stack to OpenShift cluster
    - **Default namespace:** `dev`
+   - **Components deployed:**
+     - Application components (metrics-api, ui, mcp-server, alerting)
+     - Observability stack (MinIO + TempoStack + OTEL + tracing)
    - **Dependencies:** ✅ **Requires Build and Push workflow success**
 
 5. **Undeploy from OpenShift** (`.github/workflows/undeploy.yml`)
@@ -109,6 +112,7 @@ The service account receives these permissions:
 - **Cluster-level**: Admin permissions for creating cluster resources
 - **Monitoring**: Access to Prometheus, AlertManager, and monitoring components
 - **Observability**: Access to Tempo, OpenTelemetry, and tracing components
+- **Storage**: Access to MinIO object storage for trace data and log data
 
 ### Script Options
 
@@ -173,6 +177,7 @@ Most workflows run automatically, but some can be triggered manually:
 **Deploy to OpenShift:**
 - `namespace`: Target namespace (default: `dev`)
 - `force_deploy`: Deploy even if build workflow didn't run (default: `false`)
+- **Note**: The deploy workflow installs the complete observability stack (MinIO + TempoStack + OTEL + tracing) automatically
 
 **Undeploy from OpenShift:**
 - `namespace`: Target namespace (required)

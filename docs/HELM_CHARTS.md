@@ -15,7 +15,7 @@ This directory contains Helm charts for deploying the AI Observability Summarize
    - `METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-alerting`
    - `MCP_SERVER_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-mcp-server`
 
-   **Note**: The observability and rag charts use external images and are not automatically updated by the CI/CD pipeline.
+   **Note**: The observability charts (MinIO, Tempo, OTEL Collector) and RAG charts use external images and are not automatically updated by the CI/CD pipeline. Only the application charts (metrics-api, ui, mcp-server, alerting) are automatically versioned.
 
 2. **Helm commands use `--set` for both repository and tag**:
    - `--set image.repository=$(METRICS_API_IMAGE)`
@@ -60,9 +60,22 @@ deploy/helm/
 ├── metrics-api/
 │   ├── Chart.yaml
 │   └── values.yaml            # Default values (edit this)
-└── ui/
-    ├── Chart.yaml
-    └── values.yaml            # Default values (edit this)
+├── ui/
+│   ├── Chart.yaml
+│   └── values.yaml            # Default values (edit this)
+├── rag/
+│   ├── Chart.yaml
+│   └── values.yaml            # RAG components (llama-stack, llm-service)
+├── minio/
+│   ├── Chart.yaml
+│   └── values.yaml            # MinIO object storage for traces
+├── observability/
+│   ├── tempo/
+│   │   ├── Chart.yaml
+│   │   └── values.yaml        # TempoStack for trace storage
+│   └── otel-collector/
+│       ├── Chart.yaml
+│       └── values.yaml        # OpenTelemetry Collector
 ```
 
 ## Important Notes
@@ -82,6 +95,28 @@ helm upgrade --install my-release ./chart \
 # This overrides any image.tag value in values.yaml
 # If values.yaml has image.tag: 0.1.2, it becomes 1.0.0
 ```
+
+## Observability Charts
+
+The observability stack includes three main Helm charts:
+
+### **MinIO Chart** (`deploy/helm/minio/`)
+- **Purpose**: S3-compatible object storage for trace data persistence
+- **Namespace**: `observability-hub` (hardcoded)
+- **Dependencies**: Uses external MinIO chart from `https://rh-ai-quickstart.github.io/ai-architecture-charts`
+- **Features**: StatefulSet deployment with dynamic multi-bucket creation (tempo, loki)
+
+### **Tempo Chart** (`deploy/helm/observability/tempo/`)
+- **Purpose**: Distributed tracing backend for storing and querying traces
+- **Namespace**: `observability-hub` (hardcoded)
+- **Dependencies**: Uses TempoStack operator for deployment
+- **Features**: Multitenant trace storage with OpenShift integration
+
+### **OpenTelemetry Collector Chart** (`deploy/helm/observability/otel-collector/`)
+- **Purpose**: Collects, processes, and forwards traces to Tempo
+- **Namespace**: `observability-hub` (hardcoded)
+- **Dependencies**: Uses OpenTelemetry Collector Helm chart
+- **Features**: Trace collection, processing, and forwarding
 
 ## Benefits of This Approach
 

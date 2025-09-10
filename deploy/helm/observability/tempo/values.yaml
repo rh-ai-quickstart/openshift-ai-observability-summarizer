@@ -51,6 +51,7 @@ minio:
       console: 9001
   
   # S3 configuration for Tempo (points to shared MinIO)
+  # Credentials are passed via Makefile helm_tempo_args
   s3:
     accessKeyId: minio_tempo_user
     accessKeySecret: minio_tempo_password

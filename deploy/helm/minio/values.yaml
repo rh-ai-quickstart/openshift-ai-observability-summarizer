@@ -13,13 +13,17 @@ minio:
     host: minio-observability-storage
     port: "9000"
 
+  # Service configuration
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 9090
+    apiPort: 9000
+
   # Disable upstream chart's bucket creation - we'll handle it ourselves
   sampleFileUpload:
     enabled: false
 
-  # Tempo bucket configuration (for reference)
-  tempo:
-    bucketName: tempo  # Will be overridden by MINIO_BUCKET from Makefile
-    credentials:
-      user: minio_tempo_user
-      password: minio_tempo_password
+  # Bucket configuration - comma-separated list of bucket names
+  # Will be overridden by MINIO_BUCKETS from Makefile
+  buckets: "tempo,loki"

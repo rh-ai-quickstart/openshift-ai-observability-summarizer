@@ -1,4 +1,4 @@
-{{- if .Values.minio.tempo.bucketName }}
+{{- if .Values.minio.buckets }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -45,8 +45,11 @@ spec:
             echo "Still waiting for MinIO..."
             sleep 5
           done
-          echo "MinIO is ready. Creating bucket: {{ .Values.minio.tempo.bucketName }}"
-          mc mb myminio/{{ .Values.minio.tempo.bucketName }} || echo "Bucket may already exist"
+          echo "MinIO is ready. Creating buckets..."
+          {{- range .Values.minio.buckets }}
+          echo "Creating bucket: {{ . }}"
+          mc mb myminio/{{ . }} || echo "Bucket {{ . }} may already exist"
+          {{- end }}
           echo "Bucket creation completed successfully"
         env:
         - name: MC_CONFIG_DIR

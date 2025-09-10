@@ -237,33 +237,33 @@ The project includes a complete observability stack with flexible deployment opt
 ```bash
 # Install complete observability stack (MinIO + TempoStack + OTEL + tracing)
 # Note: NAMESPACE is required for tracing setup
-make install-observability NAMESPACE=your-namespace
+make install-observability-stack NAMESPACE=your-namespace
 
 # Uninstall complete observability stack
 # Note: NAMESPACE is required for tracing removal
-make uninstall-observability NAMESPACE=your-namespace
+make uninstall-observability-stack NAMESPACE=your-namespace
 ```
 
 #### **Individual Component Management**
 ```bash
 # Install individual components
 make install-minio                                           # MinIO storage only (uses observability-hub namespace)
-make install-observability-core                             # TempoStack + OTEL only (uses observability-hub namespace)
+make install-observability                                   # TempoStack + OTEL only (uses observability-hub namespace)
 make setup-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
 
 # Uninstall individual components
 make uninstall-minio                                         # MinIO storage only (uses observability-hub namespace)
-make uninstall-observability-core                           # TempoStack + OTEL only (uses observability-hub namespace)
+make uninstall-observability                                 # TempoStack + OTEL only (uses observability-hub namespace)
 make remove-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
 ```
 
 #### **NAMESPACE Requirements**
-- **Complete Stack**: `install-observability` and `uninstall-observability` require NAMESPACE for tracing components
-- **Storage & Core**: `install-minio`, `uninstall-minio`, `install-observability-core`, `uninstall-observability-core` use hardcoded `observability-hub` namespace
+- **Complete Stack**: `install-observability-stack` and `uninstall-observability-stack` require NAMESPACE for tracing components
+- **Storage & Core**: `install-minio`, `uninstall-minio`, `install-observability`, `uninstall-observability` use hardcoded `observability-hub` namespace
 - **Tracing Only**: `setup-tracing` and `remove-tracing` require NAMESPACE parameter
 
 #### **Observability Features**
-- **MinIO**: S3-compatible object storage for trace data
+- **MinIO**: S3-compatible object storage for trace data and log data
 - **TempoStack**: Multitenant trace storage and analysis
 - **OpenTelemetry Collector**: Distributed tracing collection
 - **Auto-instrumentation**: Automatic Python application tracing

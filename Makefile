@@ -45,7 +45,8 @@ MINIO_USER ?= minio_tempo_user
 MINIO_PASSWORD ?= minio_tempo_password
 MINIO_HOST ?= minio
 MINIO_PORT ?= 9000
-MINIO_BUCKET ?= tempo
+# MinIO bucket configuration (comma-separated list)
+MINIO_BUCKETS ?= tempo,loki
 
 # HF_TOKEN is only required if LLM_URL is not set
 HF_TOKEN ?= $(shell \
@@ -133,9 +134,12 @@ helm_minio_args = \
     --set minio.secret.password=$(MINIO_PASSWORD) \
     --set minio.secret.host=$(MINIO_HOST) \
     --set-string minio.secret.port=$(MINIO_PORT) \
-    --set minio.tempo.credentials.user=$(MINIO_USER) \
-    --set minio.tempo.credentials.password=$(MINIO_PASSWORD) \
-    --set minio.tempo.bucketName=$(MINIO_BUCKET)
+    --set-json minio.buckets='[$(shell echo "$(MINIO_BUCKETS)" | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$$/"/')]'
+
+helm_tempo_args = \
+    --set minio.s3.accessKeyId=$(MINIO_USER) \
+    --set minio.s3.accessKeySecret=$(MINIO_PASSWORD) \
+    --set minio.s3.bucket=tempo
 
 .PHONY: help
 help:
@@ -210,6 +214,7 @@ help:
 	@echo "  SAFETY             - Safety model id"
 	@echo "  ALERTS             - Set to TRUE to install alerting with main deployment"
 	@echo "  SLACK_WEBHOOK_URL  - Slack Webhook URL for alerting (will prompt if not provided)"
+	@echo "  MINIO_BUCKETS      - Comma-separated list of MinIO buckets to create (default: tempo,loki)"
 	@echo ""
 
 .PHONY: build
@@ -751,7 +756,8 @@ install-observability:
 		cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
 			--namespace $(OBSERVABILITY_NAMESPACE) \
 			--create-namespace \
-			--set global.namespace=$(OBSERVABILITY_NAMESPACE); \
+			--set global.namespace=$(OBSERVABILITY_NAMESPACE) \
+			$(helm_tempo_args); \
 	fi
 
 	@if helm list -n $(OBSERVABILITY_NAMESPACE) 2>/dev/null | grep -q "^otel-collector\s"; then \
