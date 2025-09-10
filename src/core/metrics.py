@@ -10,8 +10,11 @@ import pandas as pd
 import os
 import json
 import re
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 from fastapi import HTTPException
@@ -187,7 +190,7 @@ def get_models_helper() -> List[str]:
 
         return sorted(list(model_set))
     except Exception as e:
-        print("Error getting models:", e)
+        logger.error(f"Error getting models: {e}")
         return []
 
 
@@ -252,7 +255,7 @@ def get_namespaces_helper() -> List[str]:
 
         return sorted(list(namespace_set))
     except Exception as e:
-        print("Error getting namespaces:", e)
+        logger.error(f"Error getting namespaces: {e}")
         return []
 
 
@@ -326,24 +329,37 @@ def discover_vllm_metrics():
         # Build vLLM-derived queries based on available metrics
         vllm_metrics = set(m for m in all_metrics if m.startswith("vllm:"))
 
-        # Tokens (prefer created metrics, fallback to total)
-        if "vllm:request_prompt_tokens_created" in vllm_metrics:
-            metric_mapping["Prompt Tokens Created"] = "rate(vllm:request_prompt_tokens_created[5m])"
+        # Tokens - For dashboard display, prefer current totals over increases
+        # This shows accumulated tokens rather than recent activity
+        if "vllm:request_prompt_tokens_sum" in vllm_metrics:
+            metric_mapping["Prompt Tokens Created"] = "vllm:request_prompt_tokens_sum"
+        elif "vllm:prompt_tokens_total" in vllm_metrics:
+            metric_mapping["Prompt Tokens Created"] = "sum(vllm:prompt_tokens_total)"
+        elif "vllm:request_prompt_tokens_created" in vllm_metrics:
+            metric_mapping["Prompt Tokens Created"] = "sum(increase(vllm:request_prompt_tokens_created[1h]))"
         elif "vllm:request_prompt_tokens_total" in vllm_metrics:
-            metric_mapping["Prompt Tokens Created"] = "rate(vllm:request_prompt_tokens_total[5m])"
+            metric_mapping["Prompt Tokens Created"] = "sum(increase(vllm:request_prompt_tokens_total[1h]))"
 
-        if "vllm:request_generation_tokens_created" in vllm_metrics:
-            metric_mapping["Output Tokens Created"] = "rate(vllm:request_generation_tokens_created[5m])"
+        if "vllm:request_generation_tokens_sum" in vllm_metrics:
+            metric_mapping["Output Tokens Created"] = "vllm:request_generation_tokens_sum"
+        elif "vllm:generation_tokens_total" in vllm_metrics:
+            metric_mapping["Output Tokens Created"] = "sum(vllm:generation_tokens_total)"
+        elif "vllm:request_generation_tokens_created" in vllm_metrics:
+            metric_mapping["Output Tokens Created"] = "sum(increase(vllm:request_generation_tokens_created[1h]))"
         elif "vllm:request_generation_tokens_total" in vllm_metrics:
-            metric_mapping["Output Tokens Created"] = "rate(vllm:request_generation_tokens_total[5m])"
+            metric_mapping["Output Tokens Created"] = "sum(increase(vllm:request_generation_tokens_total[1h]))"
 
         # Requests running (gauge)
         if "vllm:num_requests_running" in vllm_metrics:
             metric_mapping["Requests Running"] = "vllm:num_requests_running"
 
         # GPU cache usage percent exposed by vLLM (model-scoped proxy for GPU usage)
+        # This is preferred over DCGM_FI_DEV_GPU_UTIL as it's model-specific
         if "vllm:gpu_cache_usage_perc" in vllm_metrics:
             metric_mapping["GPU Usage (%)"] = "avg(vllm:gpu_cache_usage_perc)"
+        elif "vllm:gpu_memory_usage" in vllm_metrics:
+            # Alternative vLLM GPU metric
+            metric_mapping["GPU Usage (%)"] = "avg(vllm:gpu_memory_usage)"
 
         # P95 latency from histogram buckets
         if "vllm:e2e_request_latency_seconds_bucket" in vllm_metrics:
@@ -380,7 +396,7 @@ def discover_vllm_metrics():
 
         return metric_mapping
     except Exception as e:
-        print(f"Error discovering vLLM metrics: {e}")
+        logger.error(f"Error discovering vLLM metrics: {e}")
         # Enhanced fallback with comprehensive GPU metrics and vLLM metrics
         return {
             "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
@@ -389,8 +405,8 @@ def discover_vllm_metrics():
             "GPU Energy Consumption (Joules)": "avg(DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION)",
             "GPU Memory Temperature (°C)": "avg(DCGM_FI_DEV_MEMORY_TEMP)",
             "GPU Usage (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
-            "Prompt Tokens Created": "rate(vllm:request_prompt_tokens_created[5m])",
-            "Output Tokens Created": "rate(vllm:request_generation_tokens_created[5m])",
+            "Prompt Tokens Created": "vllm:request_prompt_tokens_sum",
+            "Output Tokens Created": "vllm:request_generation_tokens_sum",
             "Requests Running": "vllm:num_requests_running",
             "P95 Latency (s)": "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))",
             "Inference Time (s)": "sum(rate(vllm:request_inference_time_seconds_sum[5m])) / sum(rate(vllm:request_inference_time_seconds_count[5m]))",
@@ -415,7 +431,6 @@ def discover_dcgm_metrics():
         nvidia_metrics = [metric for metric in all_metrics if "nvidia" in metric.lower()]
         gpu_metrics = [metric for metric in all_metrics if "gpu" in metric.lower() and not metric.startswith("vllm:")]
 
-        print(f"🔍 Found {len(dcgm_metrics)} DCGM metrics, {len(nvidia_metrics)} NVIDIA metrics, {len(gpu_metrics)} GPU metrics")
 
         # Create a mapping of useful GPU metrics for fleet monitoring
         gpu_mapping = {}
@@ -451,7 +466,6 @@ def discover_dcgm_metrics():
 
         # Priority 2: nvidia-smi or alternative metrics if DCGM not available
         if not gpu_mapping:
-            print("🔍 No DCGM metrics found, checking for alternative GPU metrics...")
             
             # Look for common GPU metric patterns
             gpu_patterns = {
@@ -469,12 +483,11 @@ def discover_dcgm_metrics():
                     if matching_metrics:
                         # Use the first matching metric
                         gpu_mapping[friendly_name] = f"avg({matching_metrics[0]})"
-                        print(f"✅ Found alternative GPU metric: {friendly_name} -> {matching_metrics[0]}")
+                        logger.info(f"Found alternative GPU metric: {friendly_name} -> {matching_metrics[0]}")
                         break
 
         # Priority 3: Generic GPU metrics
         if not gpu_mapping:
-            print("🔍 No specific GPU metrics found, checking for generic patterns...")
             for metric in gpu_metrics:
                 metric_lower = metric.lower()
                 if "temperature" in metric_lower or "temp" in metric_lower:
@@ -487,13 +500,13 @@ def discover_dcgm_metrics():
                     gpu_mapping["GPU Memory Used"] = f"avg({metric})"
 
         if gpu_mapping:
-            print(f"✅ Successfully discovered {len(gpu_mapping)} GPU metrics")
+            logger.info(f"Successfully discovered {len(gpu_mapping)} GPU metrics")
         else:
-            print("⚠️ No GPU metrics found - cluster may not have GPUs or GPU monitoring")
+            logger.warning("No GPU metrics found - cluster may not have GPUs or GPU monitoring")
 
         return gpu_mapping
     except Exception as e:
-        print(f"Error discovering GPU metrics: {e}")
+        logger.error(f"Error discovering GPU metrics: {e}")
         return {}
 
 
@@ -646,7 +659,7 @@ def discover_cluster_metrics_dynamically():
         limited_metrics = dict(list(cluster_metrics.items())[:50])
         return limited_metrics
     except Exception as e:
-        print(f"Error discovering cluster metrics: {e}")
+        logger.error(f"Error discovering cluster metrics: {e}")
         return {}
 
 
@@ -939,14 +952,15 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
         )
         response.raise_for_status()
         result = response.json()["data"]["result"]
+        
     except requests.exceptions.ConnectionError as e:
-        print(f"⚠️ Prometheus connection error for query '{promql_query}': {e}")
+        logger.warning(f"Prometheus connection error for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        print(f"⚠️ Prometheus timeout for query '{promql_query}': {e}")
+        logger.warning(f"Prometheus timeout for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Prometheus request error for query '{promql_query}': {e}")
+        logger.warning(f"Prometheus request error for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []
@@ -1028,13 +1042,13 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
         response.raise_for_status()
         result = response.json()["data"]["result"]
     except requests.exceptions.ConnectionError as e:
-        print(f"⚠️ Prometheus connection error for OpenShift query '{query}': {e}")
+        logger.warning(f"Prometheus connection error for OpenShift query '{query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        print(f"⚠️ Prometheus timeout for OpenShift query '{query}': {e}")
+        logger.warning(f"Prometheus timeout for OpenShift query '{query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Prometheus request error for OpenShift query '{query}': {e}")
+        logger.warning(f"Prometheus request error for OpenShift query '{query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []

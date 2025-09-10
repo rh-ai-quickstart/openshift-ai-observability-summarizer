@@ -392,8 +392,9 @@ def calculate_metrics_locally(metrics_data: Dict[str, List[Dict[str, Any]]]) -> 
                     continue
 
         if values:
+            avg_val = sum(values) / len(values)
             calculated_metrics[label] = {
-                "avg": sum(values) / len(values),
+                "avg": avg_val,
                 "min": min(values),
                 "max": max(values),
                 "latest": values[-1],
