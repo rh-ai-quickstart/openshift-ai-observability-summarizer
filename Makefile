@@ -789,7 +789,7 @@ uninstall-observability:
 	@echo "Uninstalling TempoStack and Otel Collector in namespace $(OBSERVABILITY_NAMESPACE)"
 	@helm uninstall tempo -n $(OBSERVABILITY_NAMESPACE)
 	@helm uninstall otel-collector -n $(OBSERVABILITY_NAMESPACE)
-	
+
 	@echo "Removing TempoStack PVCs from $(OBSERVABILITY_NAMESPACE)"
 	- @oc delete pvc -n $(OBSERVABILITY_NAMESPACE) -l app.kubernetes.io/name=tempo --timeout=30s ||:
 
