@@ -8,8 +8,8 @@ minio:
 
   # Root credentials (admin access) - these override the upstream chart's defaults
   secret:
-    user: observability_user
-    password: observability_password
+    user: admin
+    password: minio123
     host: minio-observability-storage
     port: "9000"
 

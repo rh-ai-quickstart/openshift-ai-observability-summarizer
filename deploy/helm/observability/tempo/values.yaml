@@ -53,8 +53,8 @@ minio:
   # S3 configuration for Tempo (points to shared MinIO)
   # Credentials are passed via Makefile helm_tempo_args
   s3:
-    accessKeyId: "observability_user"
-    accessKeySecret: "observability_password"
+    accessKeyId: "admin"
+    accessKeySecret: "minio123"
     bucket: tempo
     endpoint: http://minio-observability-storage.observability-hub.svc.cluster.local:9000
 
