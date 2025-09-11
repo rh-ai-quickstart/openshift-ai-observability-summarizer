@@ -24,6 +24,6 @@ minio:
   sampleFileUpload:
     enabled: false
 
-  # Bucket configuration - comma-separated list of bucket names
+  # Bucket configuration - array of bucket names
   # Will be overridden by MINIO_BUCKETS from Makefile
-  buckets: "tempo,loki"
+  buckets: ["tempo", "loki"]
