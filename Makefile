@@ -820,6 +820,9 @@ install-minio:
 		oc wait -n $(MINIO_NAMESPACE) --for=condition=Ready --timeout=5m inferenceservice --all ||:; \
 		echo "$(MINIO_CHART) installed successfully"; \
 	fi
+	@echo "→ Cleaning up broken upstream routes (pointing to non-existent 'minio' service)"
+	- @oc delete route minio-api minio-webui -n $(MINIO_NAMESPACE) --ignore-not-found ||:
+	@echo "  → Broken upstream routes cleaned up"
 
 
 .PHONY: uninstall-minio
