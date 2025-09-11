@@ -9,15 +9,23 @@ import requests
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
+import logging
+from common.pylogger import get_python_logger
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
 # Import configuration
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL as verify
+
+logger = logging.getLogger(__name__)
 
 def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: int) -> Dict[str, Any]:
     """
     Query Thanos with multiple PromQL queries and return structured data
     """
-    print(f"🔍 Querying Thanos with {len(promql_queries)} queries")
-    print(f"⏰ Time range: {datetime.fromtimestamp(start_ts)} to {datetime.fromtimestamp(end_ts)}")
+    logger.info("Querying Thanos with %d queries", len(promql_queries))
+    logger.info("Time range: %s to %s", datetime.fromtimestamp(start_ts), datetime.fromtimestamp(end_ts))
     
     headers = {"Authorization": f"Bearer {THANOS_TOKEN}"} if THANOS_TOKEN else {}
     
@@ -27,7 +35,7 @@ def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: i
         if not promql or promql.strip() == "":
             continue
             
-        print(f"📊 Query {i+1}: {promql}")
+        logger.debug("Query %d: %s", i + 1, promql)
         
         try:
             # Query Thanos
@@ -54,9 +62,9 @@ def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: i
                     "data": result_data,
                     "status": "success"
                 }
-                print(f"✅ Query {i+1} successful")
+                logger.debug("Query %d successful", i + 1)
             else:
-                print(f"❌ Query {i+1} failed: {data.get('error', 'Unknown error')}")
+                logger.warning("Query %d failed: %s", i + 1, data.get('error', 'Unknown error'))
                 results[get_metric_key(promql)] = {
                     "promql": promql,
                     "data": {},
@@ -65,14 +73,14 @@ def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: i
                 }
                 
         except requests.exceptions.Timeout:
-            print(f"⏰ Query {i+1} timed out")
+            logger.warning("Query %d timed out", i + 1)
             results[get_metric_key(promql)] = {
                 "promql": promql,
                 "data": {},
                 "status": "timeout"
             }
         except requests.exceptions.RequestException as e:
-            print(f"❌ Query {i+1} failed: {e}")
+            logger.exception("Query %d failed: %s", i + 1, e)
             results[get_metric_key(promql)] = {
                 "promql": promql,
                 "data": {},
@@ -80,7 +88,7 @@ def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: i
                 "error": str(e)
             }
         except Exception as e:
-            print(f"❌ Query {i+1} failed: {e}")
+            logger.exception("Query %d failed: %s", i + 1, e)
             results[get_metric_key(promql)] = {
                 "promql": promql,
                 "data": {},
@@ -88,7 +96,7 @@ def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: i
                 "error": str(e)
             }
     
-    print(f"📋 Completed {len(results)} queries")
+    logger.info("Completed %d queries", len(results))
     return results
 
 

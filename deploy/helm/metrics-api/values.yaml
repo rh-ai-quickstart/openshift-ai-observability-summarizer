@@ -15,6 +15,9 @@ route:
 config:
   prometheusUrl: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
 
+env:
+  PYTHON_LOG_LEVEL: "INFO"
+
 llm:
   url: ""
   apiToken: ""

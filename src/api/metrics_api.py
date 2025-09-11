@@ -6,6 +6,7 @@ import requests
 from datetime import datetime, timezone, timedelta, time
 from scipy.stats import linregress
 import os
+import logging
 import json
 import re
 from typing import List, Dict, Any, Optional
@@ -109,8 +110,11 @@ from core.llm_summary_service import (
 )
 from core.config import CHAT_SCOPE_FLEET_WIDE, FLEET_WIDE_DISPLAY
 from core.metrics import get_openshift_metrics, get_namespace_specific_metrics, NAMESPACE_SCOPED, CLUSTER_WIDE
+from common.pylogger import get_python_logger
 
 
+get_python_logger(os.getenv("PYTHON_LOG_LEVEL", "INFO"))
+logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # --- CONFIG ---
@@ -126,7 +130,7 @@ try:
     # Sort MODEL_CONFIG to put external:false entries first
     MODEL_CONFIG = dict(sorted(MODEL_CONFIG.items(), key=lambda x: x[1].get('external', True)))
 except Exception as e:
-    print(f"Warning: Could not parse MODEL_CONFIG: {e}")
+    logger.warning("Could not parse MODEL_CONFIG: %s", e)
     MODEL_CONFIG = {}
 
 # Handle token input from volume or literal
@@ -201,9 +205,7 @@ def analyze(req: AnalyzeRequest):
         }
     except Exception as e:
         # Log the actual error for debugging
-        print(f"❌ Error in /analyze endpoint: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error in /analyze endpoint: %s", e)
         # Handle API key errors and other LLM-related errors
         raise HTTPException(
             status_code=500, detail=f"Please check your API Key or try again later: {str(e)}"
@@ -232,11 +234,11 @@ def chat_metrics(req: ChatMetricsRequest):
     Simple flow: Natural Language → PromQL → Thanos → LLM → Summary
     """
     try:
-        print(f"🎯 Processing: {req.question}")
+        logger.info("Processing: %s", req.question)
         
         # Step 1: Extract time range
         start_ts, end_ts = extract_time_range(req.question, req.start_ts, req.end_ts)
-        print(f"⏰ Time range: {datetime.fromtimestamp(start_ts)} to {datetime.fromtimestamp(end_ts)}")
+        logger.info("Time range: %s to %s", datetime.fromtimestamp(start_ts), datetime.fromtimestamp(end_ts))
         
         # Step 2: Natural Language → PromQL
         # Clean model name for PromQL (extract model name after | if present)
@@ -247,7 +249,7 @@ def chat_metrics(req: ChatMetricsRequest):
         target_namespace = None if is_fleet_wide else req.namespace
         
         promql_queries = generate_promql_from_question(req.question, target_namespace, clean_model_name, start_ts, end_ts, is_fleet_wide)
-        print(f"📝 Generated {len(promql_queries)} PromQL queries")
+        logger.debug("Generated %d PromQL queries", len(promql_queries))
         
         # Step 3: Query Thanos with PromQL
         thanos_data = query_thanos_with_promql(promql_queries, start_ts, end_ts)
@@ -265,7 +267,7 @@ def chat_metrics(req: ChatMetricsRequest):
         }
         
     except Exception as e:
-        print(f"❌ Error in chat_metrics: {e}")
+        logger.exception("Error in chat_metrics: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -384,7 +386,7 @@ def calculate_metrics(req: MetricsCalculationRequest):
         return {"calculated_metrics": calculated_metrics}
         
     except Exception as e:
-        print(f"Error calculating metrics: {e}")
+        logger.exception("Error calculating metrics: %s", e)
         raise HTTPException(status_code=500, detail=f"Error calculating metrics: {e}")
 
 
@@ -451,12 +453,12 @@ def get_gpu_info():
                         gpu_info["models"] = ["GPU"]  # Generic for now
                         
                 except Exception as e:
-                    print(f"Error getting GPU details: {e}")
+                    logger.warning("Error getting GPU details: %s", e)
         
         return gpu_info
         
     except Exception as e:
-        print(f"Error getting GPU info: {e}")
+        logger.exception("Error getting GPU info: %s", e)
         return {
             "total_gpus": 0,
             "vendors": [],
@@ -496,7 +498,7 @@ def get_openshift_namespaces():
         return sorted(list(namespaces))
         
     except Exception as e:
-        print(f"Error getting OpenShift namespaces: {e}")
+        logger.exception("Error getting OpenShift namespaces: %s", e)
         return ["default", "openshift-monitoring", "knative-serving"]
 
 
@@ -743,7 +745,7 @@ def get_deployment_info(namespace: str, model: str):
                             break
                             
             except Exception as e:
-                print(f"Error checking vLLM metrics timeline: {e}")
+                logger.warning("Error checking vLLM metrics timeline: %s", e)
                 # Fallback: assume new deployment if no vLLM metrics
                 is_new_deployment = True
                 deployment_date = current_time.strftime("%Y-%m-%d")
@@ -767,7 +769,7 @@ def get_deployment_info(namespace: str, model: str):
         }
         
     except Exception as e:
-        print(f"Error getting deployment info for {namespace}/{model}: {e}")
+        logger.warning("Error getting deployment info for %s/%s: %s", namespace, model, e)
         # Fallback response
         return {
             "is_new_deployment": True,

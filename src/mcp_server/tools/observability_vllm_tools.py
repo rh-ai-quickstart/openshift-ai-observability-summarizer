@@ -27,7 +27,7 @@ import requests
 from datetime import datetime
 
 # Import structured logger from MCP server utilities
-from mcp_server.utils.pylogger import get_python_logger
+from common.pylogger import get_python_logger
 
 # Configure structured logging
 logger = get_python_logger()

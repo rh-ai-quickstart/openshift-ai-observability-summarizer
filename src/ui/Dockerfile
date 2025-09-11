@@ -3,6 +3,7 @@ WORKDIR /app
 COPY ui/ui.py .
 COPY ui/mcp_client_helper.py .
 COPY ui/requirements.txt .
+COPY common/ common/
 RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 8501
 CMD ["streamlit", "run", "ui.py", "--server.port=8501", "--server.address=0.0.0.0"]

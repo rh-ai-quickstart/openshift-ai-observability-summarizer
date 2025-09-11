@@ -13,6 +13,14 @@ from datetime import datetime, timedelta, timezone, time
 from dateparser.search import search_dates
 
 from .config import MODEL_CONFIG, LLM_API_TOKEN, LLAMA_STACK_URL, VERIFY_SSL
+
+import logging
+from common.pylogger import get_python_logger
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
+logger = logging.getLogger(__name__)
 from .response_validator import ResponseValidator, ResponseType
 
 # LLM Generation Configuration Constants
@@ -560,7 +568,7 @@ def extract_time_range_with_info(
             number = float(match.group(1))
             unit = match.group(2)
             
-            print(f"🔍 Dynamic time found: {number} {unit}")
+            logger.debug("Dynamic time found: %s %s", number, unit)
             
             # Convert to hours
             if unit.startswith('min'):
@@ -619,7 +627,7 @@ def extract_time_range_with_info(
                 "hours": hours
             }
             
-            print(f"✅ Parsed: {duration_str} → {rate_syntax}")
+            logger.debug("Parsed duration: %s -> %s", duration_str, rate_syntax)
             return int(start_time.timestamp()), int(end_time.timestamp()), time_range_info
     
     # Priority 2: Handle special keywords and month names
@@ -687,12 +695,12 @@ def extract_time_range_with_info(
                 "is_historical_month": True
             }
             
-            print(f"🗓️ Historical month query: {month_name.title()} {target_year}")
+            logger.info("Historical month query: %s %s", month_name.title(), target_year)
             return int(month_start.timestamp()), int(month_end.timestamp()), time_range_info
     
     for keyword, (hours, rate_syntax, duration_str) in special_cases.items():
         if keyword in query_lower:
-            print(f"🔍 Special case found: {keyword} → {hours} hours")
+            logger.debug("Special case: %s -> %s hours", keyword, hours)
             end_time = datetime.now()
             start_time = end_time - timedelta(hours=hours)
             
@@ -708,7 +716,7 @@ def extract_time_range_with_info(
     found_dates = search_dates(query, settings={"PREFER_DATES_FROM": "past"})
 
     if found_dates:
-        print("Specific date found in query, building full day range from parsed date...")
+        logger.debug("Specific date found in query; building full day range")
 
         # Take the date part from the first result given by dateparser
         target_date = found_dates[0][1].date()
@@ -731,7 +739,7 @@ def extract_time_range_with_info(
 
     # Priority 3: Use timestamps from the request if explicitly provided
     if start_ts and end_ts:
-        print("No time in query, using provided timestamps as fallback.")
+        logger.debug("No time in query; using provided timestamps as fallback")
         time_range_hours = (end_ts - start_ts) / 3600
         
         # Use exact time range from timestamps
@@ -762,7 +770,7 @@ def extract_time_range_with_info(
         return start_ts, end_ts, time_range_info
 
     # Priority 4: Fallback to a default time range (last 1 hour)
-    print("No time in query or request, defaulting to the last 1 hour.")
+    logger.debug("No time in query or request; defaulting to last 1 hour")
     now = datetime.now()
     end_time = now
     start_time = end_time - timedelta(hours=DEFAULT_TIME_RANGE_HOURS)

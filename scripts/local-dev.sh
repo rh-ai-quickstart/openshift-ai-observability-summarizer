@@ -226,7 +226,9 @@ start_local_services() {
     export METRICS_API_URL="http://localhost:$METRICS_API_PORT"
     export MCP_URL="http://localhost:$MCP_PORT"
     export PROM_URL="http://localhost:$THANOS_PORT"
-    
+    # Set log level (override with PYTHON_LOG_LEVEL=DEBUG for more verbose logging)
+    export PYTHON_LOG_LEVEL="${PYTHON_LOG_LEVEL:-INFO}"
+
     # macOS weasyprint support
     export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
 

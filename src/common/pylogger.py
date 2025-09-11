@@ -1,11 +1,13 @@
-"""Structured logger utility for the Observability MCP server (self-contained)."""
+"""Shared structured logger utility for Observability services."""
 
 import logging
 import sys
 from typing import Any, Dict, List, Set
 
-import structlog 
+import structlog
 
+
+# Third-party logger groups
 HTTP_CLIENT_LOGGERS = {
     "urllib3",
     "urllib3.connectionpool",
@@ -90,6 +92,11 @@ def force_reconfigure_all_loggers(log_level: str = "INFO") -> None:
 
 
 def get_python_logger(log_level: str = "INFO") -> structlog.BoundLogger:
+    """Configure structlog + stdlib logging once and return a bound logger.
+
+    Call this once per process (API server, MCP server, etc.). Other modules
+    should use `logging.getLogger(__name__)` and standard log levels.
+    """
     global _LOGGING_CONFIGURED
     log_level = log_level.upper()
     if not _LOGGING_CONFIGURED:
@@ -163,4 +170,4 @@ def get_uvicorn_log_config(log_level: str = "INFO") -> Dict[str, Any]:
         },
     }
 
- 
+

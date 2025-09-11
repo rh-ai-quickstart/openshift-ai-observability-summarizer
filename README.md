@@ -490,16 +490,21 @@ uv sync --group dev
 
 # 3. If model is in different namespace (optional)
 ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
+
+# 4. For different log levels (optional)
+PYTHON_LOG_LEVEL=DEBUG ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>   # Debug logs
+PYTHON_LOG_LEVEL=WARN ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>    # Warning only
 ```
 
 ### What the script does:
 - ✅ **Activates Python virtual environment** (.venv)
 - ✅ **Port forwards Prometheus/Thanos** (localhost:9090)
-- ✅ **Port forwards LLM server** (localhost:8321) 
+- ✅ **Port forwards LLM server** (localhost:8321)
 - ✅ **Port forwards Model service** (localhost:8080)
 - ✅ **Starts metrics API** (localhost:8000)
 - ✅ **Starts Streamlit UI** (localhost:8501)
 - ✅ **Configures environment** for MCP server development
+- ✅ **Sets configurable logging** (PYTHON_LOG_LEVEL=INFO by default, override with env var)
 
 ### For MCP/AI Assistant Development
 After running `scripts/local-dev.sh`, you can:

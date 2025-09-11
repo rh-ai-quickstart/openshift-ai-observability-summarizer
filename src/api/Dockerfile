@@ -27,6 +27,7 @@ USER 1001
 COPY api/metrics_api.py .
 COPY api/requirements.txt .
 COPY api/report_assets/ report_assets/
+COPY common/ common/
 COPY core/ core/
 RUN pip install --no-cache-dir -r requirements.txt
 CMD ["uvicorn", "metrics_api:app", "--host", "0.0.0.0", "--port", "8000"]

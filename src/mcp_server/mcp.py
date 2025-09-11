@@ -1,7 +1,7 @@
 import logging
 
 from .settings import settings
-from mcp_server.utils.pylogger import get_python_logger, force_reconfigure_all_loggers
+from common.pylogger import get_python_logger, force_reconfigure_all_loggers
 
 
 class ObservabilityMCPServer:

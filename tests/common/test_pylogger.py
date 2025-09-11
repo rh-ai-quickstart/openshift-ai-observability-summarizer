@@ -1,13 +1,13 @@
-from common.pylogger import get_python_logger
 from unittest.mock import Mock, patch
+
 import common.pylogger as pylog
 
 
 def test_get_python_logger_returns_logger():
-    logger = get_python_logger()
+    logger = pylog.get_python_logger()
     assert logger is not None
     # Should support basic logging calls without raising
-    logger.info("test message")
+    logger.info("test message from common logger")
 
 
 @patch("common.pylogger.get_python_logger")

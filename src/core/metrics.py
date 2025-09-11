@@ -14,6 +14,12 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
+import logging
+from common.pylogger import get_python_logger
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
 logger = logging.getLogger(__name__)
 
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
@@ -183,14 +189,14 @@ def get_models_helper() -> List[str]:
                         return sorted(list(model_set))
 
                 except Exception as e:
-                    print(
+                    logger.warning(
                         f"Error checking {metric_name} with {time_window}s window: {e}"
                     )
                     continue
 
         return sorted(list(model_set))
     except Exception as e:
-        logger.error(f"Error getting models: {e}")
+        logger.error("Error getting models", exc_info=e)
         return []
 
 
@@ -248,14 +254,14 @@ def get_namespaces_helper() -> List[str]:
                         return sorted(list(namespace_set))
 
                 except Exception as e:
-                    print(
+                    logger.warning(
                         f"Error checking {metric_name} with {time_window}s window: {e}"
                     )
                     continue
 
         return sorted(list(namespace_set))
     except Exception as e:
-        logger.error(f"Error getting namespaces: {e}")
+        logger.error("Error getting namespaces", exc_info=e)
         return []
 
 
@@ -396,7 +402,7 @@ def discover_vllm_metrics():
 
         return metric_mapping
     except Exception as e:
-        logger.error(f"Error discovering vLLM metrics: {e}")
+        logger.error("Error discovering vLLM metrics: %s", e)
         # Enhanced fallback with comprehensive GPU metrics and vLLM metrics
         return {
             "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
@@ -431,6 +437,7 @@ def discover_dcgm_metrics():
         nvidia_metrics = [metric for metric in all_metrics if "nvidia" in metric.lower()]
         gpu_metrics = [metric for metric in all_metrics if "gpu" in metric.lower() and not metric.startswith("vllm:")]
 
+        logger.info("Found %d DCGM metrics, %d NVIDIA metrics, %d GPU metrics", len(dcgm_metrics), len(nvidia_metrics), len(gpu_metrics))
 
         # Create a mapping of useful GPU metrics for fleet monitoring
         gpu_mapping = {}
@@ -466,6 +473,7 @@ def discover_dcgm_metrics():
 
         # Priority 2: nvidia-smi or alternative metrics if DCGM not available
         if not gpu_mapping:
+            logger.info("No DCGM metrics found, checking for alternative GPU metrics...")
             
             # Look for common GPU metric patterns
             gpu_patterns = {
@@ -483,11 +491,12 @@ def discover_dcgm_metrics():
                     if matching_metrics:
                         # Use the first matching metric
                         gpu_mapping[friendly_name] = f"avg({matching_metrics[0]})"
-                        logger.info(f"Found alternative GPU metric: {friendly_name} -> {matching_metrics[0]}")
+                        logger.info("Found alternative GPU metric: %s -> %s", friendly_name, matching_metrics[0])
                         break
 
         # Priority 3: Generic GPU metrics
         if not gpu_mapping:
+            logger.info("No specific GPU metrics found, checking for generic patterns...")
             for metric in gpu_metrics:
                 metric_lower = metric.lower()
                 if "temperature" in metric_lower or "temp" in metric_lower:
@@ -500,13 +509,13 @@ def discover_dcgm_metrics():
                     gpu_mapping["GPU Memory Used"] = f"avg({metric})"
 
         if gpu_mapping:
-            logger.info(f"Successfully discovered {len(gpu_mapping)} GPU metrics")
+            logger.info("Successfully discovered %d GPU metrics", len(gpu_mapping))
         else:
             logger.warning("No GPU metrics found - cluster may not have GPUs or GPU monitoring")
 
         return gpu_mapping
     except Exception as e:
-        logger.error(f"Error discovering GPU metrics: {e}")
+        logger.error("Error discovering GPU metrics", exc_info=e)
         return {}
 
 
@@ -659,7 +668,7 @@ def discover_cluster_metrics_dynamically():
         limited_metrics = dict(list(cluster_metrics.items())[:50])
         return limited_metrics
     except Exception as e:
-        logger.error(f"Error discovering cluster metrics: {e}")
+        logger.error("Error discovering cluster metrics", exc_info=e)
         return {}
 
 
@@ -952,15 +961,15 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
         )
         response.raise_for_status()
         result = response.json()["data"]["result"]
-        
+
     except requests.exceptions.ConnectionError as e:
-        logger.warning(f"Prometheus connection error for query '{promql_query}': {e}")
+        logger.warning("Prometheus connection error for query '%s': %s", promql_query, e)
         return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        logger.warning(f"Prometheus timeout for query '{promql_query}': {e}")
+        logger.warning("Prometheus timeout for query '%s': %s", promql_query, e)
         return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        logger.warning(f"Prometheus request error for query '{promql_query}': {e}")
+        logger.warning("Prometheus request error for query '%s': %s", promql_query, e)
         return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []
@@ -1042,13 +1051,13 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
         response.raise_for_status()
         result = response.json()["data"]["result"]
     except requests.exceptions.ConnectionError as e:
-        logger.warning(f"Prometheus connection error for OpenShift query '{query}': {e}")
+        logger.warning("Prometheus connection error for OpenShift query '%s': %s", query, e)
         return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        logger.warning(f"Prometheus timeout for OpenShift query '{query}': {e}")
+        logger.warning("Prometheus timeout for OpenShift query '%s': %s", query, e)
         return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        logger.warning(f"Prometheus request error for OpenShift query '{query}': {e}")
+        logger.warning("Prometheus request error for OpenShift query '%s': %s", query, e)
         return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []

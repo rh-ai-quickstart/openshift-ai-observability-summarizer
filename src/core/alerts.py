@@ -7,10 +7,17 @@ All functions are framework-agnostic and focused on alert data retrieval.
 """
 
 import requests
+import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
+from common.pylogger import get_python_logger
 
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_alerts_from_prometheus(
@@ -48,13 +55,13 @@ def fetch_alerts_from_prometheus(
         response.raise_for_status()
         result = response.json()["data"]["result"]
     except requests.exceptions.ConnectionError as e:
-        print(f"⚠️ Prometheus connection error for alerts query '{promql_query}': {e}")
+        logger.warning("Prometheus connection error for alerts query '%s': %s", promql_query, e)
         return promql_query, []  # Return empty alerts on connection error
     except requests.exceptions.Timeout as e:
-        print(f"⚠️ Prometheus timeout for alerts query '{promql_query}': {e}")
+        logger.warning("Prometheus timeout for alerts query '%s': %s", promql_query, e)
         return promql_query, []  # Return empty alerts on timeout
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Prometheus request error for alerts query '{promql_query}': {e}")
+        logger.warning("Prometheus request error for alerts query '%s': %s", promql_query, e)
         return promql_query, []  # Return empty alerts on other request errors
 
     alerts_data = []
@@ -124,6 +131,6 @@ def fetch_all_rule_definitions() -> Dict[str, Dict[str, Any]]:
                         "labels": rule.get("labels", {}),
                     }
     except Exception as e:
-        print(f"Error fetching rule definitions: {e}")
+        logger.error("Error fetching rule definitions: %s", e)
     
     return definitions 

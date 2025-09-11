@@ -7,7 +7,14 @@ that are shared across FastAPI, Streamlit UI, and MCP servers.
 
 import os
 import json
+import logging
 from typing import Dict, Any
+from common.pylogger import get_python_logger
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
+logger = logging.getLogger(__name__)
 
 
 def load_model_config() -> Dict[str, Any]:
@@ -16,7 +23,7 @@ def load_model_config() -> Dict[str, Any]:
         model_config_str = os.getenv("MODEL_CONFIG", "{}")
         return json.loads(model_config_str)
     except Exception as e:
-        print(f"Warning: Could not parse MODEL_CONFIG: {e}")
+        logger.warning("Could not parse MODEL_CONFIG: %s", e)
         return {}
 
 

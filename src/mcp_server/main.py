@@ -7,7 +7,7 @@ import uvicorn
 
 from mcp_server.api import app
 from mcp_server.settings import settings, validate_config
-from mcp_server.utils.pylogger import get_python_logger, get_uvicorn_log_config
+from common.pylogger import get_python_logger, get_uvicorn_log_config
 
 logger = get_python_logger()
 

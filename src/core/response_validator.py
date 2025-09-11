@@ -43,8 +43,15 @@ This approach ensures consistent, clean responses while preserving all required 
 """
 
 import re
+import logging
 from typing import Dict, List, Tuple, Optional
 from enum import Enum
+from common.pylogger import get_python_logger
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
+logger = logging.getLogger(__name__)
 
 
 class ResponseType(Enum):
@@ -561,7 +568,7 @@ class ResponseValidator:
         
         # Debugging: Log when content is removed (helps with monitoring/tuning)
         if len(removed_content) > 0:
-            print(f"Removed content:\n {removed_content}\n Original model response:\n {response}")
+            logger.debug("Removed content: %s. Original model response: %s", removed_content, response)
             
         return {
             'cleaned_response': cleaned_content,

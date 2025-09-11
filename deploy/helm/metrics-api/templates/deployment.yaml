@@ -22,6 +22,8 @@ spec:
           env:
             - name: PROMETHEUS_URL
               value: "{{ .Values.config.prometheusUrl }}"
+            - name: PYTHON_LOG_LEVEL
+              value: "{{ .Values.env.PYTHON_LOG_LEVEL }}"
             - name: LLM_URL
               value: "http://llama-3-2-3b-instruct-predictor.{{ .Release.Namespace }}.svc.cluster.local:8080/v1/openai/v1"
             - name: LLM_API_TOKEN
