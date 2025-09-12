@@ -64,6 +64,17 @@ summarizer/
 - `yq` (YAML processor)
 - Docker or Podman
 
+### macOS: WeasyPrint for local PDF reports (optional)
+WeasyPrint is used for generating PDF reports. Containers and CI handle dependencies automatically via `uv`, but for local macOS development you may need a system install:
+
+```bash
+brew install weasyprint
+weasyprint --version
+
+# If WeasyPrint cannot find libraries at runtime, set:
+export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH
+```
+
 
 ### Local Development
 ```bash
