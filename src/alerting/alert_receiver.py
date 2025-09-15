@@ -2,8 +2,15 @@ import requests
 import json
 import os
 import datetime
+import logging
 from llama_stack_client import LlamaStackClient
 from typing import Any
+from common.pylogger import get_python_logger
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
+logger = logging.getLogger(__name__)
 
 # --- CONFIG ---
 ALERTMANAGER_URL = os.getenv("ALERTMANAGER_URL", "http://localhost:9093")
@@ -35,24 +42,24 @@ def get_active_alerts() -> list[dict[str, Any]]:
             verify=verify,
         )
         response.raise_for_status()  
-        print("Alerts successfully retrieved from Alertmanager")
+        logger.info("Alerts successfully retrieved from Alertmanager")
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error querying Alertmanager: {e}")
+        logger.error("Error querying Alertmanager: %s", e)
         return []
 
 def send_slack_message(payload: dict[str, Any]) -> bool:
     headers = {"Content-Type": "application/json"}
     if SLACK_WEBHOOK_URL == "":
-        print("No Slack URL found")
+        logger.warning("No Slack URL found")
         return False
     try:
         response = requests.post(SLACK_WEBHOOK_URL, headers=headers, data=json.dumps(payload))
         response.raise_for_status()
-        print("Slack message sent successfully!")
+        logger.info("Slack message sent successfully")
         return True
     except requests.exceptions.RequestException as e:
-        print(f"Error sending Slack message: {e}")
+        logger.error("Error sending Slack message: %s", e)
         return False
     
 # generate a description based on the alert labels
@@ -136,14 +143,14 @@ def process_vllm_alerts_and_notify(alerts: list[dict[str, Any]], time_window: in
         for alert in alerts:
             if is_new_vllm_alert(alert, time_window):
                 alertname = alert['labels'].get('alertname', '')
-                print(f"\n--- Found NEW relevant VLLM Alert: {alertname} ---")
+                logger.info("Found NEW relevant VLLM Alert: %s", alertname)
                 slack_payload = format_slack_message(alert)
                 send_slack_message(slack_payload)
                 found = True
         if not found:
-            print("No new alerts found")
+            logger.info("No new alerts found")
     else:
-        print("No alerts to process")
+        logger.info("No alerts to process")
 
 # check if alert is a new VLLM alert that started within the given time window
 def is_new_vllm_alert(alert: dict[str, Any], time_window: int = TIME_WINDOW) -> bool:
@@ -161,7 +168,7 @@ def is_new_vllm_alert(alert: dict[str, Any], time_window: int = TIME_WINDOW) -> 
             alert_start_time_utc = datetime.datetime.fromisoformat(starts_at_iso.replace('Z', '+00:00'))
             return alert_start_time_utc >= time_threshold
         except ValueError:
-            print(f"Warning: Could not parse startsAt time for alert '{alertname}': {starts_at_iso}")
+            logger.warning("Could not parse startsAt time for alert '%s': %s", alertname, starts_at_iso)
             return False
     
     return False
@@ -169,7 +176,7 @@ def is_new_vllm_alert(alert: dict[str, Any], time_window: int = TIME_WINDOW) -> 
 def generate_test():
     alert = json.loads('{"alertname": "VLLMHighAverageInferenceTime", "container": "kserve-container", "endpoint": "vllm-serving-runtime-metrics", "engine": "0", "expr": "rate(vllm:request_inference_time_seconds_sum[5m]) / rate(vllm:request_inference_time_seconds_count[5m]) > 2", "for": "5m", "instance": "10.129.2.73:8080", "job": "llama-3-2-3b-instruct-metrics", "model_name": "meta-llama/Llama-3.2-3B-Instruct", "namespace": "m3", "pod": "llama-3-2-3b-instruct-predictor-9fd74489-c6dwt", "prometheus": "openshift-user-workload-monitoring/user-workload", "service": "llama-3-2-3b-instruct-metrics", "severity": "warning"}')
     desc = generate_description(alert)
-    print(desc)
+    logger.info("%s", desc)
 
 def main():
     alerts = get_active_alerts()

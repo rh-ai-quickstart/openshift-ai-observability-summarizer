@@ -5,8 +5,15 @@ Handles report generation for different formats with proper separation of concer
 
 import os
 import markdown
+import logging
 from typing import List, Dict, Any, Optional
 import report_assets.report_config as report_config
+from common.pylogger import get_python_logger
+
+# Initialize structured logger once - other modules should use logging.getLogger(__name__)
+get_python_logger()
+
+logger = logging.getLogger(__name__)
 
 # Optional weasyprint import for PDF generation
 try:
@@ -15,7 +22,7 @@ try:
     WEASYPRINT_AVAILABLE = True
 except Exception as e:
     WEASYPRINT_AVAILABLE = False
-    print("WeasyPrint not available. PDF generation will be disabled.")
+    logger.warning("WeasyPrint not available. PDF generation will be disabled.")
 
 # Import models from mcp module
 from pydantic import BaseModel
@@ -219,7 +226,7 @@ def generate_pdf_report(report_schema: ReportSchema) -> bytes:
     if not WEASYPRINT_AVAILABLE:
         # Fallback to HTML when weasyprint is not available
         html_content = generate_html_report(report_schema)
-        print("WeasyPrint not available. Returning HTML content instead of PDF.")
+        logger.warning("WeasyPrint not available. Returning HTML content instead of PDF.")
         return html_content.encode("utf-8")
 
     try:
@@ -232,12 +239,12 @@ def generate_pdf_report(report_schema: ReportSchema) -> bytes:
         html = HTML(string=html_content, base_url=base_dir)
         css = CSS(string=css_string)
 
-        print("Generating PDF with WeasyPrint...")
+        logger.info("Generating PDF with WeasyPrint...")
         pdf_bytes = html.write_pdf(stylesheets=[css], font_config=font_config)
-        print("PDF generated successfully!")
+        logger.info("PDF generated successfully")
         return pdf_bytes
     except Exception as e:
-        print(f"Error generating PDF: {e}")
+        logger.error("Error generating PDF: %s", e)
         import traceback
         traceback.print_exc()
         

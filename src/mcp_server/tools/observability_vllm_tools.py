@@ -137,7 +137,7 @@ def get_model_config() -> List[Dict[str, Any]]:
                 sorted(model_config.items(), key=lambda x: x[1].get("external", True))
             )
         except Exception as e:
-            print(f"Warning: Could not parse MODEL_CONFIG: {e}")
+            logger.warning("Could not parse MODEL_CONFIG: %s", e)
             model_config = {}
 
         if not model_config:
