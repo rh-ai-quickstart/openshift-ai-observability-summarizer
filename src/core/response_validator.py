@@ -568,8 +568,10 @@ class ResponseValidator:
         
         # Debugging: Log when content is removed (helps with monitoring/tuning)
         if len(removed_content) > 0:
-            logger.debug("Removed content: %s. Original model response: %s", removed_content, response)
-            
+            max_log_len = 200
+            truncated_removed = (removed_content[:max_log_len] + '... [truncated]') if len(removed_content) > max_log_len else removed_content
+            truncated_response = (response[:max_log_len] + '... [truncated]') if len(response) > max_log_len else response
+            logger.debug("Removed content: %s. Original model response: %s", truncated_removed, truncated_response)
         return {
             'cleaned_response': cleaned_content,
             'removed_content': removed_content,
