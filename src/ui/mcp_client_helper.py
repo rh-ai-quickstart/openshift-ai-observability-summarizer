@@ -3,17 +3,22 @@ This module uses fastmcp.Client to call MCP tools, matching the examples in
 cluster endpoint by pointing MCP_SERVER_URL accordingly.
 """
 
-import streamlit as st
+import asyncio
+import json
+import logging
+import math
 import os
 import requests
-import json
-import asyncio
-from typing import Dict, Any, List, Optional
-import logging
-import sys
 import site
-import math
+import streamlit as st
+import sys
 from datetime import datetime
+from typing import Dict, Any, List, Optional
+
+# Add current directory to Python path for consistent imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from error_handler import parse_mcp_error, display_mcp_error
 
 # Configure logger for this module (avoid global basicConfig here)
 logger = logging.getLogger(__name__)
@@ -183,6 +188,24 @@ def extract_text_from_mcp_result(result: Any) -> Optional[str]:
         return None
 
 
+def check_mcp_response_for_errors(result: Any) -> Dict[str, Any]:
+    """
+    Check MCP response for structured errors and return error details if found.
+    
+    Returns:
+        Dict with error details if error found, empty dict otherwise
+    """
+    error_details = parse_mcp_error(result)
+    if error_details:
+        return {
+            "error": error_details.get("message", "Unknown error"),
+            "error_type": "mcp_structured",
+            "error_code": error_details.get("error_code"),
+            "error_details": error_details
+        }
+    return {}
+
+
 def is_double_encoded_mcp_response(parsed_json: Any) -> bool:
     """Check if the parsed JSON is a double-encoded MCP response.
     
@@ -237,11 +260,21 @@ def get_namespaces_mcp() -> List[str]:
     """Fetch namespaces via MCP list_namespaces tool."""
     try:
         if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
             return []
+        
         result = mcp_client.call_tool_sync("list_namespaces")
+        
+        error_details = parse_mcp_error(result)
+        if error_details:
+            display_mcp_error(error_details)
+            return []
+        
         return mcp_client.parse_list_response(result)
     except Exception as e:
         logger.error(f"Error fetching namespaces via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
         return []
 
 
@@ -249,11 +282,21 @@ def get_models_mcp() -> List[str]:
     """Fetch models via MCP list_models tool."""
     try:
         if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
             return []
+        
         result = mcp_client.call_tool_sync("list_models")
+        
+        error_details = parse_mcp_error(result)
+        if error_details:
+            display_mcp_error(error_details)
+            return []
+        
         return mcp_client.parse_list_response(result)
     except Exception as e:
         logger.error(f"Error fetching models via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
         return []
 
 
@@ -261,9 +304,17 @@ def get_model_config_mcp() -> Dict[str, Any]:
     """Fetch model configuration via MCP get_model_config tool and parse into dict format."""
     try:
         if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
             return {}
         
         result = mcp_client.call_tool_sync("get_model_config")
+        
+        error_details = parse_mcp_error(result)
+        if error_details:
+            display_mcp_error(error_details)
+            return {}
+        
         response_text = extract_text_from_mcp_result(result)
         if response_text:
             # Parse the MCP response text back into dict format
@@ -274,6 +325,7 @@ def get_model_config_mcp() -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error fetching model config via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
         return {}
 
 
@@ -304,7 +356,7 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
     """Analyze vLLM metrics via MCP analyze_vllm tool."""
     try:
         if not mcp_client.check_server_health():
-            return {}
+            return {"error": "MCP server is not available", "error_type": "mcp_structured"}
 
         # Debug logging
         logger.debug(f"MCP analyze_vllm called with timestamps: start_ts={start_ts}, end_ts={end_ts}")
@@ -330,6 +382,10 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
 
         result = mcp_client.call_tool_sync("analyze_vllm", parameters)
 
+        error_check = check_mcp_response_for_errors(result)
+        if error_check:
+            return error_check
+
         response_text = extract_text_from_mcp_result(result)
         if response_text:
             # Check if response contains an error
@@ -341,11 +397,11 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
             return parse_analyze_response(response_text)
 
         logger.warning("No response from MCP analyze_vllm tool")
-        return {}
+        return {"error": "No response from MCP analyze_vllm tool", "error_type": "mcp_structured"}
 
     except Exception as e:
         logger.error(f"Error analyzing vLLM metrics via MCP: {e}")
-        return {}
+        return {"error": str(e), "error_type": "mcp_structured"}
 
 
 def analyze_openshift_mcp(
@@ -688,10 +744,17 @@ def get_vllm_metrics_mcp() -> Dict[str, str]:
         logger.debug("Getting vLLM metrics via MCP")
         if not mcp_client.check_server_health():
             logger.debug("MCP server health check failed")
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
             return {}
         
         result = mcp_client.call_tool_sync("get_vllm_metrics_tool", {})
         logger.debug(f"MCP get_vllm_metrics_tool returned: {type(result)}, content: {result}")
+        
+        error_details = parse_mcp_error(result)
+        if error_details:
+            display_mcp_error(error_details)
+            return {}
         
         response_text = extract_text_from_mcp_result(result)
         if response_text:
@@ -712,6 +775,7 @@ def get_vllm_metrics_mcp() -> Dict[str, str]:
         import traceback
         logger.error(f"Error getting vLLM metrics via MCP: {e}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
         return {}
 
 

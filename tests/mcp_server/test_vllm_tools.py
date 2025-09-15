@@ -53,8 +53,6 @@ def test_get_model_config_empty(_):
     out = tools.get_model_config()
     texts = _texts(out)
     assert any("No LLM models configured" in t for t in texts)
-
-
 @patch("src.mcp_server.tools.observability_vllm_tools.get_vllm_metrics", return_value={"latency": "q1", "tps": "q2"})
 @patch("src.mcp_server.tools.observability_vllm_tools.fetch_metrics")
 @patch("src.mcp_server.tools.observability_vllm_tools.build_prompt", return_value="PROMPT")
@@ -153,11 +151,12 @@ def test_calculate_metrics_empty_data():
 
 
 def test_calculate_metrics_invalid_json():
-    """Test calculate_metrics function with invalid JSON"""
+    """Test calculate_metrics function with invalid JSON - now returns structured MCPException"""
     result = tools.calculate_metrics("invalid json")
-    
+
     text = _texts(result)[0]
-    assert "Error: Invalid JSON format" in text
+    assert "❌ **Error (INVALID_INPUT)**" in text
+    assert "Invalid JSON format" in text
 
 
 def test_calculate_metrics_invalid_data_format():
@@ -269,10 +268,12 @@ def test_get_vllm_metrics_tool_empty(mock_get_vllm_metrics):
 
 @patch("src.mcp_server.tools.observability_vllm_tools.get_vllm_metrics")
 def test_get_vllm_metrics_tool_error(mock_get_vllm_metrics):
-    """Test get_vllm_metrics_tool with error"""
+    """Test get_vllm_metrics_tool with error - now returns structured MCPException"""
     mock_get_vllm_metrics.side_effect = Exception("Connection error")
-    
+
     result = tools.get_vllm_metrics_tool()
     texts = _texts(result)
-    
-    assert "Error retrieving vLLM metrics: Connection error" in "\n".join(texts)
+    full_text = "\n".join(texts)
+
+    assert "❌ **Error (PROMETHEUS_ERROR)**" in full_text
+    assert "Failed to retrieve vLLM metrics: Connection error" in full_text

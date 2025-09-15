@@ -29,6 +29,22 @@ from datetime import datetime
 # Import structured logger from MCP server utilities
 from common.pylogger import get_python_logger
 
+# Import MCP exception handling framework
+from mcp_server.exceptions import (
+    handle_mcp_exception,
+    ValidationError,
+    PrometheusError,
+    LLMServiceError,
+    ConfigurationError,
+    MCPException,
+    MCPErrorCode,
+    validate_required_params,
+    validate_time_range,
+    safe_json_loads,
+    parse_prometheus_error,
+    parse_llm_error
+)
+
 # Configure structured logging
 logger = get_python_logger()
 
@@ -84,19 +100,21 @@ def list_models() -> List[Dict[str, Any]]:
         List of available models with their configurations
     """
     try:
-        # Use the same logic as the metrics API
         models = get_models_helper()
         
         if not models:
             return _resp("No models are currently available.")
         
-        # Format the response for MCP
         model_list = [f"• {model}" for model in models]
         response = f"Available AI Models ({len(models)} total):\n\n" + "\n".join(model_list)
         return _resp(response)
-        
     except Exception as e:
-        return _resp(f"Error listing models: {str(e)}", is_error=True)
+        error = MCPException(
+            message=f"Failed to retrieve models: {str(e)}",
+            error_code=MCPErrorCode.CONFIGURATION_ERROR,
+            recovery_suggestion="Please check the model configuration and try again."
+        )
+        return error.to_mcp_response()
 
 
 def list_namespaces() -> List[Dict[str, Any]]:
@@ -116,7 +134,12 @@ def list_namespaces() -> List[Dict[str, Any]]:
         response_text = f"Monitored Namespaces ({len(namespaces)} total):\n\n{namespace_list}"
         return _resp(response_text)
     except Exception as e:
-        return _resp(f"Error retrieving namespaces: {str(e)}", is_error=True)
+        error = MCPException(
+            message=f"Failed to retrieve namespaces: {str(e)}",
+            error_code=MCPErrorCode.PROMETHEUS_ERROR,
+            recovery_suggestion="Please check Prometheus/Thanos connectivity."
+        )
+        return error.to_mcp_response()
 
 
 def get_model_config() -> List[Dict[str, Any]]:
@@ -128,32 +151,26 @@ def get_model_config() -> List[Dict[str, Any]]:
     - Returns a human-readable list formatted for MCP
     """
     try:
-        model_config: Dict[str, Any] = {}
-        try:
-            model_config_str = os.getenv("MODEL_CONFIG", "{}")
-            model_config = json.loads(model_config_str)
-            # Sort to put external:false entries first (same as metrics API)
-            model_config = dict(
-                sorted(model_config.items(), key=lambda x: x[1].get("external", True))
-            )
-        except Exception as e:
-            logger.warning("Could not parse MODEL_CONFIG: %s", e)
-            model_config = {}
+        model_config_str = os.getenv("MODEL_CONFIG", "{}")
+        model_config = safe_json_loads(model_config_str, "MODEL_CONFIG environment variable")
+        model_config = dict(
+            sorted(model_config.items(), key=lambda x: x[1].get("external", True))
+        )
+    except ValidationError:
+        logger.warning("Could not parse MODEL_CONFIG environment variable, using empty configuration")
+        model_config = {}
 
-        if not model_config:
-            return _resp("No LLM models configured for summarization.")
+    if not model_config:
+        return _resp("No LLM models configured for summarization.")
 
-        # Format dictionary for MCP display
-        response = f"Available Model Config ({len(model_config)} total):\n\n"
-        for model_name, config in model_config.items():
-            response += f"• {model_name}\n"
-            for key, value in config.items():
-                response += f"  - {key}: {value}\n"
-            response += "\n"
+    response = f"Available Model Config ({len(model_config)} total):\n\n"
+    for model_name, config in model_config.items():
+        response += f"• {model_name}\n"
+        for key, value in config.items():
+            response += f"  - {key}: {value}\n"
+        response += "\n"
 
-        return _resp(response.strip())
-    except Exception as e:
-        return _resp(f"Error retrieving model configuration: {str(e)}", is_error=True)
+    return _resp(response.strip())
 
 
 def get_vllm_metrics_tool() -> List[Dict[str, Any]]:
@@ -216,7 +233,12 @@ def get_vllm_metrics_tool() -> List[Dict[str, Any]]:
         return _resp(content)
 
     except Exception as e:
-        return _resp(f"Error retrieving vLLM metrics: {str(e)}", is_error=True)
+        error = MCPException(
+            message=f"Failed to retrieve vLLM metrics: {str(e)}",
+            error_code=MCPErrorCode.PROMETHEUS_ERROR,
+            recovery_suggestion="Check Prometheus/Thanos connectivity and vLLM metrics availability."
+        )
+        return error.to_mcp_response()
 
 
 def analyze_vllm(
@@ -236,19 +258,54 @@ def analyze_vllm(
     Returns an MCP-friendly text response containing model, prompt, summary,
     and a compact metrics preview.
     """
+    # Validate required parameters
     try:
-        # Resolve time range → start_ts/end_ts via common helper
+        validate_required_params(model_name=model_name, summarize_model_id=summarize_model_id)
+    except ValidationError as e:
+        return e.to_mcp_response()
+    except Exception as e:
+        error = MCPException(
+            message=f"Parameter validation failed: {str(e)}",
+            error_code=MCPErrorCode.INVALID_INPUT,
+            recovery_suggestion="Please check the input parameters and try again."
+        )
+        return error.to_mcp_response()
+
+    # Resolve time range → start_ts/end_ts via common helper
+    try:
         resolved_start, resolved_end = resolve_time_range(
             time_range=time_range,
             start_datetime=start_datetime,
             end_datetime=end_datetime,
         )
+    except Exception as e:
+        error = MCPException(
+            message=f"Time range resolution failed: {str(e)}",
+            error_code=MCPErrorCode.INVALID_INPUT,
+            recovery_suggestion="Please check the time range parameters and try again."
+        )
+        return error.to_mcp_response()
 
-        # Collect metrics
+    # Validate time range
+    try:
+        validate_time_range(resolved_start, resolved_end)
+    except ValidationError as e:
+        return e.to_mcp_response()
+    except Exception as e:
+        error = MCPException(
+            message=f"Time range validation failed: {str(e)}",
+            error_code=MCPErrorCode.INVALID_INPUT,
+            recovery_suggestion="Please check the time range and try again."
+        )
+        return error.to_mcp_response()
+
+    # Collect metrics and perform analysis
+    try:
         vllm_metrics = get_vllm_metrics()
+        
         metric_dfs: Dict[str, Any] = {
             label: fetch_metrics(query, model_name, resolved_start, resolved_end)
-            for label, query in vllm_metrics.items()
+                for label, query in vllm_metrics.items()
         }
 
         # Build prompt and summarize
@@ -310,8 +367,18 @@ def analyze_vllm(
         )
 
         return _resp(content)
+        
+    except PrometheusError as e:
+        return e.to_mcp_response()
+    except LLMServiceError as e:
+        return e.to_mcp_response()
     except Exception as e:
-        return _resp(f"Error during analysis: {str(e)}", is_error=True)
+        error = MCPException(
+            message=f"Analysis failed: {str(e)}",
+            error_code=MCPErrorCode.INTERNAL_ERROR,
+            recovery_suggestion="Please try again. If the problem persists, contact support."
+        )
+        return error.to_mcp_response()
 
 
 def calculate_metrics(
@@ -339,10 +406,19 @@ def calculate_metrics(
         try:
             metrics_data = json.loads(metrics_data_json)
         except json.JSONDecodeError as e:
-            return _resp(f"Error: Invalid JSON format: {str(e)}", is_error=True)
+            error = ValidationError(
+                message=f"Invalid JSON format: {str(e)}",
+                field="metrics_data_json",
+                value=metrics_data_json[:100] + "..." if len(metrics_data_json) > 100 else metrics_data_json
+            )
+            return error.to_mcp_response()
 
         if not isinstance(metrics_data, dict):
-            return _resp("Error: Expected metrics_data to be a dictionary", is_error=True)
+            error = ValidationError(
+                message="Expected metrics_data to be a dictionary",
+                field="metrics_data_json"
+            )
+            return error.to_mcp_response()
 
         calculated_metrics = {}
 
@@ -391,4 +467,9 @@ def calculate_metrics(
         return _resp(json.dumps(result))
 
     except Exception as e:
-        return _resp(f"Error calculating metrics: {str(e)}", is_error=True)
+        error = MCPException(
+            message=f"Failed to calculate metrics: {str(e)}",
+            error_code=MCPErrorCode.DATA_PROCESSING_ERROR,
+            recovery_suggestion="Check the metrics data format and try again."
+        )
+        return error.to_mcp_response()

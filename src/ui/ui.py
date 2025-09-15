@@ -26,6 +26,13 @@ from mcp_client_helper import (
     analyze_openshift_mcp,
     parse_analyze_response,
 )
+# Add current directory to Python path for consistent imports
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp, analyze_vllm_mcp, calculate_metrics_mcp, get_vllm_metrics_mcp
+from error_handler import parse_mcp_error, display_mcp_error, display_error_with_context
 
 # --- Config ---
 API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
@@ -61,10 +68,15 @@ def get_models():
     """Fetch available models from MCP server only"""
     try:
         models = get_models_mcp()
+
+        # Check for MCP structured error response
+        if display_error_with_context(models, None, "Models fetch"):
+            return []
+
         if models:
             return models
         else:
-            st.sidebar.warning("⚠️ No models found in MCP server")
+            st.sidebar.warning("⚠️ No models found - please set MODEL_CONFIG environment variable")
             return []
     except Exception as e:
         st.sidebar.error(f"❌ MCP Error: {str(e)}")
@@ -76,6 +88,11 @@ def get_namespaces():
     """Fetch available namespaces from MCP server only"""
     try:
         namespaces = get_namespaces_mcp()
+
+        # Check for MCP structured error response
+        if display_error_with_context(namespaces, None, "Namespaces fetch"):
+            return []
+
         if namespaces:
             return namespaces
         else:
@@ -102,6 +119,11 @@ def get_model_config():
     """Fetch model configuration from MCP server only"""
     try:
         config = get_model_config_mcp()
+
+        # Check for MCP structured error response
+        if display_error_with_context(config, None, "Model config fetch"):
+            return {}
+
         if config:
             return config
         else:
@@ -867,8 +889,22 @@ if page == "vLLM Metric Summarizer":
                     api_key=api_key,
                 )
 
+                # Check for client-side error response (dict format)
+                if isinstance(result, dict) and "error" in result:
+                    st.error(f"❌ MCP analysis failed: {result.get('error', 'Unknown error')}")
+                    clear_session_state()
+                    st.stop()
+
+                # Check if we got an MCP structured error response (list format from server)
+                error_details = parse_mcp_error(result)
+                if error_details:
+                    display_mcp_error(error_details)
+                    clear_session_state()
+                    st.stop()
+
                 if not result:
                     st.error("❌ MCP analysis failed - no data returned")
+                    clear_session_state()
                     st.stop()
 
                 # Store results in session state
