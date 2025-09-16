@@ -70,9 +70,9 @@ spec:
                 - -f
                 - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
             initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 6
           readinessProbe:
             exec:
               command:
@@ -80,9 +80,9 @@ spec:
                 - -f
                 - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
             initialDelaySeconds: 10
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+            periodSeconds: 20
+            timeoutSeconds: 20
+            failureThreshold: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
