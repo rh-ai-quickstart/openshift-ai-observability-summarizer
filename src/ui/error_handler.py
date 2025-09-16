@@ -115,6 +115,35 @@ def _extract_error_details(error_text: str) -> Dict[str, Any]:
     return error_details
 
 
+def _normalize_error_details(details: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a clean error_details dict with plain message and suggestion only."""
+    cleaned = {
+        "is_error": True,
+        "error_code": details.get("error_code", "UNKNOWN_ERROR"),
+        "message": details.get("message", "An error occurred"),
+        "recovery_suggestion": details.get("recovery_suggestion"),
+        "details": details.get("details", {}),
+    }
+    # Clean potential serialization artifacts
+    try:
+        cleaned["message"] = str(cleaned["message"]).strip()
+        if cleaned["message"].startswith("[") and '"type":"text"' in cleaned["message"].replace(" ",""):
+            parsed = json.loads(cleaned["message"])  # type: ignore[arg-type]
+            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                sub = _extract_error_details(parsed[0].get("text", ""))
+                if sub:
+                    cleaned["message"] = sub.get("message", cleaned["message"])  # type: ignore[index]
+                    if not cleaned.get("recovery_suggestion"):
+                        cleaned["recovery_suggestion"] = sub.get("recovery_suggestion")
+        if cleaned.get("recovery_suggestion"):
+            rs = str(cleaned["recovery_suggestion"]).strip()
+            rs = re.sub(r"[\]\}\"]+\s*$", "", rs)
+            cleaned["recovery_suggestion"] = rs
+    except Exception:
+        pass
+    return cleaned
+
+
 def display_mcp_error(error_details: Dict[str, Any]) -> None:
     """
     Display MCP error in appropriate Streamlit components.
@@ -122,14 +151,15 @@ def display_mcp_error(error_details: Dict[str, Any]) -> None:
     Args:
         error_details: Parsed error details from parse_mcp_error()
     """
+    error_details = _normalize_error_details(error_details)
     error_code = error_details.get("error_code", "UNKNOWN_ERROR")
     message = error_details.get("message", "An error occurred")
     suggestion = error_details.get("recovery_suggestion")
     details = error_details.get("details", {})
-    
+
     # Determine severity and icon based on error code
     severity, icon = _get_error_severity(error_code)
-    
+
     # Display main error message
     if severity == "error":
         st.error(f"{icon} **{error_code}**: {message}")
@@ -137,11 +167,11 @@ def display_mcp_error(error_details: Dict[str, Any]) -> None:
         st.warning(f"{icon} **{error_code}**: {message}")
     else:
         st.info(f"{icon} **{error_code}**: {message}")
-    
+
     # Display recovery suggestion if available
     if suggestion:
         st.info(f"💡 **How to fix**: {suggestion}")
-    
+
     # Display technical details in an expander for advanced users
     if details:
         with st.expander("🔍 Technical Details"):
@@ -195,27 +225,19 @@ def display_error_with_context(
 ) -> bool:
     """
     Comprehensive error display that handles both MCP structured errors and fallbacks.
-    
-    Args:
-        mcp_response: MCP tool response to check for errors
-        fallback_message: Fallback error message if no structured error found
-        context: Context description for the operation that failed
-        
-    Returns:
-        bool: True if an error was displayed, False otherwise
     """
     # First, try to parse MCP structured error
     if mcp_response:
         error_details = parse_mcp_error(mcp_response)
         if error_details:
-            display_mcp_error(error_details)
+            display_mcp_error(_normalize_error_details(error_details))
             return True
-    
+
     # Fallback to generic error message
     if fallback_message:
         st.error(f"❌ {context} failed: {fallback_message}")
         return True
-        
+
     return False
 
 

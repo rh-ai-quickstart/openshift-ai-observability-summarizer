@@ -1257,7 +1257,7 @@ elif page == "OpenShift Metrics":
         with st.spinner(f"Running {analysis_type}..."):
             try:
                 # Call MCP analyze_openshift using ISO timestamps
-                result_text = analyze_openshift_mcp(
+                result = analyze_openshift_mcp(
                     metric_category=selected_metric_category,
                     scope=scope_type.lower().replace("-", "_").replace(" ", "_"),
                     namespace=selected_openshift_namespace,
@@ -1266,8 +1266,38 @@ elif page == "OpenShift Metrics":
                     summarize_model_id=multi_model_name,
                     api_key=api_key,
                 )
-                # Parse minimal fields back from MCP text
-                result = parse_analyze_response(result_text) if result_text else {}
+
+                # Prefer client-side structured error (dict format) so we can render cleanly
+                if isinstance(result, dict) and "error" in result:
+                    # If helper provided parsed error details, use the UI-friendly renderer
+                    details = result.get("error_details")
+                    if isinstance(details, dict):
+                        display_mcp_error(details)
+                    else:
+                        # Render a simplified message when we know it's an MCP-structured error text
+                        msg = result.get("error", "Operation failed")
+                        try:
+                            if isinstance(msg, str) and msg.strip().startswith("["):
+                                parsed = json.loads(msg)
+                                if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                                    inner = parsed[0].get("text", "")
+                                    ed = parse_mcp_error([{ "type": "text", "text": inner }])
+                                    if ed:
+                                        display_mcp_error(ed)
+                                        clear_session_state()
+                                        st.stop()
+                        except Exception:
+                            pass
+                        st.error(msg)
+                    clear_session_state()
+                    st.stop()
+
+                # Fallback: Check for MCP structured error response (list format from server)
+                error_details = parse_mcp_error(result)
+                if error_details:
+                    display_mcp_error(error_details)
+                    clear_session_state()
+                    st.stop()
 
                 # Store results in session state
                 st.session_state["openshift_prompt"] = result["health_prompt"]

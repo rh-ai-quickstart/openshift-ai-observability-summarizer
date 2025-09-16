@@ -333,11 +333,21 @@ def get_openshift_metric_groups_mcp() -> List[str]:
     """Fetch OpenShift metric groups via MCP tool and return a simple list."""
     try:
         if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
             return []
+
         result = mcp_client.call_tool_sync("list_openshift_metric_groups")
+
+        error_details = parse_mcp_error(result)
+        if error_details:
+            display_mcp_error(error_details)
+            return []
+
         return mcp_client.parse_list_response(result)
     except Exception as e:
         logger.error(f"Error fetching OpenShift metric groups via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
         return []
 
 
@@ -345,11 +355,21 @@ def get_openshift_namespace_metric_groups_mcp() -> List[str]:
     """Fetch OpenShift namespace-scoped metric groups via MCP tool and return a simple list."""
     try:
         if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
             return []
+
         result = mcp_client.call_tool_sync("list_openshift_namespace_metric_groups")
+
+        error_details = parse_mcp_error(result)
+        if error_details:
+            display_mcp_error(error_details)
+            return []
+
         return mcp_client.parse_list_response(result)
     except Exception as e:
         logger.error(f"Error fetching OpenShift namespace metric groups via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
         return []
 
 def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, end_ts: int, api_key: str = None) -> Dict[str, Any]:
@@ -412,11 +432,16 @@ def analyze_openshift_mcp(
     end_ts: int,
     summarize_model_id: str,
     api_key: Optional[str] = None,
-) -> str:
-    """Analyze OpenShift metrics via MCP analyze_openshift tool using ISO datetimes."""
+) -> Dict[str, Any]:
+    """Analyze OpenShift metrics via MCP analyze_openshift tool using ISO datetimes.
+
+    Returns structured dict with keys similar to analyze_vllm_mcp on success:
+    {"health_prompt": str, "llm_summary": str, "metrics": {...}}
+    Or error dict: {"error": str, "error_type": "mcp_structured"}
+    """
     try:
         if not mcp_client.check_server_health():
-            return ""
+            return {"error": "MCP server is not available", "error_type": "mcp_structured"}
 
         params = {
             "metric_category": metric_category,
@@ -430,10 +455,38 @@ def analyze_openshift_mcp(
             params["api_key"] = api_key
 
         result = mcp_client.call_tool_sync("analyze_openshift", params)
-        return extract_text_from_mcp_result(result) or ""
+
+        # Structured error detection (and provide UI-friendly error_details for direct rendering)
+        error_check = check_mcp_response_for_errors(result)
+        if error_check:
+            return {
+                "error": error_check.get("error", "Operation failed"),
+                "error_type": error_check.get("error_type", "mcp_structured"),
+                "error_details": {
+                    "is_error": True,
+                    "error_code": error_check.get("error_code", "PROMETHEUS_ERROR"),
+                    "message": error_check.get("error", "Operation failed"),
+                    "recovery_suggestion": error_check.get("error_details", {}).get("recovery_suggestion"),
+                    "details": error_check.get("error_details", {}),
+                },
+            }
+
+        response_text = extract_text_from_mcp_result(result)
+        if response_text:
+            try:
+                # Preferred: server may already respond with STRUCTURED_DATA JSON; parser handles both
+                parsed = parse_analyze_response(response_text)
+                return parsed
+            except Exception as e:
+                logger.error(f"Failed to parse analyze_openshift response: {e}")
+                return {"error": str(e), "error_type": "mcp_structured"}
+
+        logger.warning("No response from MCP analyze_openshift tool")
+        return {"error": "No response from MCP analyze_openshift tool", "error_type": "mcp_structured"}
+
     except Exception as e:
         logger.error(f"Error analyzing OpenShift via MCP: {e}")
-        return ""
+        return {"error": str(e), "error_type": "mcp_structured"}
 
 
 
