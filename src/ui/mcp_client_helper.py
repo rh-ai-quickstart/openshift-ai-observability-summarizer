@@ -277,6 +277,29 @@ def get_model_config_mcp() -> Dict[str, Any]:
         return {}
 
 
+def get_openshift_metric_groups_mcp() -> List[str]:
+    """Fetch OpenShift metric groups via MCP tool and return a simple list."""
+    try:
+        if not mcp_client.check_server_health():
+            return []
+        result = mcp_client.call_tool_sync("list_openshift_metric_groups")
+        return mcp_client.parse_list_response(result)
+    except Exception as e:
+        logger.error(f"Error fetching OpenShift metric groups via MCP: {e}")
+        return []
+
+
+def get_openshift_namespace_metric_groups_mcp() -> List[str]:
+    """Fetch OpenShift namespace-scoped metric groups via MCP tool and return a simple list."""
+    try:
+        if not mcp_client.check_server_health():
+            return []
+        result = mcp_client.call_tool_sync("list_openshift_namespace_metric_groups")
+        return mcp_client.parse_list_response(result)
+    except Exception as e:
+        logger.error(f"Error fetching OpenShift namespace metric groups via MCP: {e}")
+        return []
+
 def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, end_ts: int, api_key: str = None) -> Dict[str, Any]:
     """Analyze vLLM metrics via MCP analyze_vllm tool."""
     try:

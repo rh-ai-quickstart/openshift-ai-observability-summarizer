@@ -15,6 +15,8 @@ from mcp_client_helper import (
     get_namespaces_mcp,
     get_models_mcp,
     get_model_config_mcp,
+    get_openshift_metric_groups_mcp,
+    get_openshift_namespace_metric_groups_mcp,
     analyze_vllm_mcp,
     calculate_metrics_mcp,
     get_vllm_metrics_mcp,
@@ -114,10 +116,7 @@ def get_model_config():
 def get_openshift_metric_groups():
     """Fetch available OpenShift metric groups via MCP"""
     try:
-        if not mcp_client.check_server_health():
-            return []
-        result = mcp_client.call_tool_sync("list_openshift_metric_groups")
-        return mcp_client.parse_list_response(result)
+        return get_openshift_metric_groups_mcp()
     except Exception as e:
         st.sidebar.error(f"Error fetching metric groups (MCP): {e}")
         return []
@@ -127,10 +126,7 @@ def get_openshift_metric_groups():
 def get_openshift_namespace_metric_groups():
     """Fetch available OpenShift namespace-specific metric groups via MCP"""
     try:
-        if not mcp_client.check_server_health():
-            return []
-        result = mcp_client.call_tool_sync("list_openshift_namespace_metric_groups")
-        return mcp_client.parse_list_response(result)
+        return get_openshift_namespace_metric_groups_mcp()
     except Exception as e:
         st.sidebar.error(f"Error fetching namespace metric groups (MCP): {e}")
         return []
