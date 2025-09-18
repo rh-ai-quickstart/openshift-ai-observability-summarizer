@@ -1267,28 +1267,8 @@ elif page == "OpenShift Metrics":
                     api_key=api_key,
                 )
 
-                # Prefer client-side structured error (dict format) so we can render cleanly
-                if isinstance(result, dict) and "error" in result:
-                    # If helper provided parsed error details, use the UI-friendly renderer
-                    details = result.get("error_details")
-                    if isinstance(details, dict):
-                        display_mcp_error(details)
-                    else:
-                        # Render a simplified message when we know it's an MCP-structured error text
-                        msg = result.get("error", "Operation failed")
-                        try:
-                            if isinstance(msg, str) and msg.strip().startswith("["):
-                                parsed = json.loads(msg)
-                                if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
-                                    inner = parsed[0].get("text", "")
-                                    ed = parse_mcp_error([{ "type": "text", "text": inner }])
-                                    if ed:
-                                        display_mcp_error(ed)
-                                        clear_session_state()
-                                        st.stop()
-                        except Exception:
-                            pass
-                        st.error(msg)
+                # Prefer client-side structured error (dict format) using centralized handler
+                if handle_client_or_mcp_error(result, "OpenShift analysis"):
                     clear_session_state()
                     st.stop()
 

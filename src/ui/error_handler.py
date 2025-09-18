@@ -165,6 +165,36 @@ def _normalize_error_details(details: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned
 
 
+def handle_client_or_mcp_error(result: Any, context: str = "Operation") -> bool:
+    """Unified handler for client-side dict errors or MCP list-encoded errors.
+
+    Returns True if an error was detected and displayed; False otherwise.
+    """
+    try:
+        # Client-side dict error (preferred path)
+        if isinstance(result, dict) and "error" in result:
+            details = result.get("error_details")
+            if isinstance(details, dict):
+                display_mcp_error(details)
+                return True
+
+            msg = str(result.get("error", f"{context} failed"))
+            if _is_mcp_list_encoded_text(msg):
+                inner_text = _decode_mcp_list_encoded_text(msg) or ""
+                ed = _extract_error_details(inner_text) if inner_text else None
+                if ed:
+                    display_mcp_error(ed)
+                    return True
+            # Fallback plain error
+            st.error(f"❌ {context} failed: {msg}")
+            return True
+
+        # Fallback to MCP list-based response handling
+        return display_error_with_context(result, None, context)
+    except Exception as e:
+        st.error(f"❌ {context} failed: {e}")
+        return True
+
 def display_mcp_error(error_details: Dict[str, Any]) -> None:
     """
     Display MCP error in appropriate Streamlit components.
