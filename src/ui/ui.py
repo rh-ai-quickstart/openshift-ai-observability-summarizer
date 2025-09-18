@@ -32,7 +32,12 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp, analyze_vllm_mcp, calculate_metrics_mcp, get_vllm_metrics_mcp
-from error_handler import parse_mcp_error, display_mcp_error, display_error_with_context
+from error_handler import (
+    parse_mcp_error,
+    display_mcp_error,
+    display_error_with_context,
+    handle_client_or_mcp_error,
+)
 
 # --- Config ---
 API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
