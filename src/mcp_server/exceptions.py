@@ -170,11 +170,12 @@ class LLMServiceError(MCPException):
         details = {}
         if model_id:
             details["model_id"] = model_id
-        if isinstance(status_code, int):
+        is_int_status = isinstance(status_code, int)
+        if is_int_status:
             details["http_status"] = status_code
-            
+        
         recovery_suggestion = "Check LLM service availability and model configuration."
-        if isinstance(status_code, int):
+        if is_int_status:
             if status_code == 400:
                 recovery_suggestion = "Verify the model ID and request parameters."
             elif status_code == 404:

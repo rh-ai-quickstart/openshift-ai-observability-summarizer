@@ -115,6 +115,28 @@ def _extract_error_details(error_text: str) -> Dict[str, Any]:
     return error_details
 
 
+def _is_mcp_list_encoded_text(text: str) -> bool:
+    """Heuristically detect if a string is a JSON list of MCP text items."""
+    try:
+        s = str(text).lstrip()
+        if not s.startswith("["):
+            return False
+        return '"type":"text"' in s.replace(" ", "")
+    except Exception:
+        return False
+
+
+def _decode_mcp_list_encoded_text(text: str) -> Optional[str]:
+    """If text is a JSON list of MCP {type:'text', text:'...'}, return inner text of first item."""
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+            return parsed[0].get("text", "")
+    except Exception:
+        pass
+    return None
+
+
 def _normalize_error_details(details: Dict[str, Any]) -> Dict[str, Any]:
     """Return a clean error_details dict with plain message and suggestion only."""
     cleaned = {
@@ -127,14 +149,13 @@ def _normalize_error_details(details: Dict[str, Any]) -> Dict[str, Any]:
     # Clean potential serialization artifacts
     try:
         cleaned["message"] = str(cleaned["message"]).strip()
-        if cleaned["message"].startswith("[") and '"type":"text"' in cleaned["message"].replace(" ",""):
-            parsed = json.loads(cleaned["message"])  # type: ignore[arg-type]
-            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
-                sub = _extract_error_details(parsed[0].get("text", ""))
-                if sub:
-                    cleaned["message"] = sub.get("message", cleaned["message"])  # type: ignore[index]
-                    if not cleaned.get("recovery_suggestion"):
-                        cleaned["recovery_suggestion"] = sub.get("recovery_suggestion")
+        if _is_mcp_list_encoded_text(cleaned["message"]):
+            inner_text = _decode_mcp_list_encoded_text(cleaned["message"]) or ""
+            sub = _extract_error_details(inner_text) if inner_text else None
+            if sub:
+                cleaned["message"] = sub.get("message", cleaned["message"])  # type: ignore[index]
+                if not cleaned.get("recovery_suggestion"):
+                    cleaned["recovery_suggestion"] = sub.get("recovery_suggestion")
         if cleaned.get("recovery_suggestion"):
             rs = str(cleaned["recovery_suggestion"]).strip()
             rs = re.sub(r"[\]\}\"]+\s*$", "", rs)
@@ -225,6 +246,13 @@ def display_error_with_context(
 ) -> bool:
     """
     Comprehensive error display that handles both MCP structured errors and fallbacks.
+    Args:
+        mcp_response: MCP tool response to check for errors
+        fallback_message: Fallback error message if no structured error found
+        context: Context description for the operation that failed
+
+    Returns:
+        bool: True if an error was displayed, False otherwise
     """
     # First, try to parse MCP structured error
     if mcp_response:

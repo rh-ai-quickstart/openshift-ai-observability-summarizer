@@ -139,6 +139,7 @@ def analyze_openshift(
                             if isinstance(r, dict):
                                 ts = r.get("timestamp")
                                 val = r.get("value")
+                                # Convert timestamp to ISO 8601 string; ensure it ends with 'Z' to indicate UTC.
                                 if hasattr(ts, "isoformat"):
                                     ts_str = ts.isoformat()
                                     if not ts_str.endswith("Z"):
