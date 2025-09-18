@@ -170,18 +170,16 @@ class LLMServiceError(MCPException):
         details = {}
         if model_id:
             details["model_id"] = model_id
-        is_int_status = isinstance(status_code, int)
-        if is_int_status:
+        if status_code:
             details["http_status"] = status_code
-        
+            
         recovery_suggestion = "Check LLM service availability and model configuration."
-        if is_int_status:
-            if status_code == 400:
-                recovery_suggestion = "Verify the model ID and request parameters."
-            elif status_code == 404:
-                recovery_suggestion = "The specified model may not be available. Check model configuration."
-            elif status_code >= 500:
-                recovery_suggestion = "LLM service may be unavailable. Try again later."
+        if status_code == 400:
+            recovery_suggestion = "Verify the model ID and request parameters."
+        elif status_code == 404:
+            recovery_suggestion = "The specified model may not be available. Check model configuration."
+        elif status_code >= 500:
+            recovery_suggestion = "LLM service may be unavailable. Try again later."
             
         super().__init__(
             message=message,

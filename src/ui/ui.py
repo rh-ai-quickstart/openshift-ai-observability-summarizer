@@ -32,12 +32,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp, analyze_vllm_mcp, calculate_metrics_mcp, get_vllm_metrics_mcp
-from error_handler import (
-    parse_mcp_error,
-    display_mcp_error,
-    display_error_with_context,
-    handle_client_or_mcp_error,
-)
+from error_handler import parse_mcp_error, display_mcp_error, display_error_with_context
 
 # --- Config ---
 API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
@@ -1262,7 +1257,7 @@ elif page == "OpenShift Metrics":
         with st.spinner(f"Running {analysis_type}..."):
             try:
                 # Call MCP analyze_openshift using ISO timestamps
-                result = analyze_openshift_mcp(
+                result_text = analyze_openshift_mcp(
                     metric_category=selected_metric_category,
                     scope=scope_type.lower().replace("-", "_").replace(" ", "_"),
                     namespace=selected_openshift_namespace,
@@ -1271,18 +1266,8 @@ elif page == "OpenShift Metrics":
                     summarize_model_id=multi_model_name,
                     api_key=api_key,
                 )
-
-                # Prefer client-side structured error (dict format) using centralized handler
-                if handle_client_or_mcp_error(result, "OpenShift analysis"):
-                    clear_session_state()
-                    st.stop()
-
-                # Fallback: Check for MCP structured error response (list format from server)
-                error_details = parse_mcp_error(result)
-                if error_details:
-                    display_mcp_error(error_details)
-                    clear_session_state()
-                    st.stop()
+                # Parse minimal fields back from MCP text
+                result = parse_analyze_response(result_text) if result_text else {}
 
                 # Store results in session state
                 st.session_state["openshift_prompt"] = result["health_prompt"]

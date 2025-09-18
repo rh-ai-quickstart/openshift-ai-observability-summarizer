@@ -789,37 +789,26 @@ def analyze_openshift_metrics(
         metric_category, scope, namespace
     )
 
-    # Fetch metrics; if Prometheus fails, raise immediately so MCP tool can surface PROMETHEUS_ERROR
+    # Fetch metrics
     metric_dfs: Dict[str, Any] = {}
-    try:
-        for label, query in metrics_to_fetch.items():
-            df = fetch_openshift_metrics(
-                query,
-                start_ts,
-                end_ts,
-                namespace_for_query,
-            )
+    for label, query in metrics_to_fetch.items():
+        try:
+            df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
             metric_dfs[label] = df
-    except requests.exceptions.RequestException:
-        # Bubble up Prometheus errors unchanged; MCP layer maps them to PrometheusError
-        raise
+        except Exception:
+            metric_dfs[label] = pd.DataFrame()
     # Build scope description
     scope_description = f"{scope.replace('_', ' ').title()}"
     if scope == NAMESPACE_SCOPED and namespace:
         scope_description += f" ({namespace})"
 
-    # Build OpenShift metrics prompt
+    # Build OpenShift metrics prompt and summarize
     prompt = build_openshift_prompt(
         metric_dfs, metric_category, namespace_for_query, scope_description
     )
-    # Summarize; if LLM service fails, raise HTTPException to be mapped to LLMServiceError by MCP
-    try:
-        summary = summarize_with_llm(
-            prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
-        )
-    except requests.exceptions.RequestException:
-        # Re-raise so MCP layer can classify as LLM service error
-        raise
+    summary = summarize_with_llm(
+        prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
+    )
  
     # Serialize metric DataFrames
     serialized_metrics: Dict[str, Any] = {}
@@ -1000,11 +989,7 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
 
 
 def fetch_openshift_metrics(query, start, end, namespace=None):
-    """Fetch OpenShift metrics with optional namespace filtering.
-
-    Network/request exceptions are raised to allow callers (e.g., MCP tools)
-    to convert them into structured errors for the UI.
-    """
+    """Fetch OpenShift metrics with optional namespace filtering"""
     headers = _auth_headers()
 
     # Add namespace filter to the query if specified
@@ -1065,13 +1050,13 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
         result = response.json()["data"]["result"]
     except requests.exceptions.ConnectionError as e:
         logger.warning("Prometheus connection error for OpenShift query '%s': %s", query, e)
-        raise
+        return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
         logger.warning("Prometheus timeout for OpenShift query '%s': %s", query, e)
-        raise
+        return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
         logger.warning("Prometheus request error for OpenShift query '%s': %s", query, e)
-        raise
+        return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []
     for series in result:
