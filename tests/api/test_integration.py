@@ -226,27 +226,30 @@ class TestPrometheusIntegration(TestBase):
     
     # === ERROR HANDLING TESTS ===
     
-    @pytest.mark.parametrize("function_call,expected_empty_type", [
-        (lambda: fetch_metrics("test_query", "test-model", 1640995200, 1640995800), pd.DataFrame),
-        (lambda: fetch_openshift_metrics("test_query", 1640995200, 1640995800), pd.DataFrame),
-        (lambda: fetch_alerts_from_prometheus(1640995200, 1640995800), tuple)
+    @pytest.mark.parametrize("function_call,expected_outcome", [
+        (lambda: fetch_metrics("test_query", "test-model", 1640995200, 1640995800), "empty_df"),
+        (lambda: fetch_openshift_metrics("test_query", 1640995200, 1640995800), "raises"),
+        (lambda: fetch_alerts_from_prometheus(1640995200, 1640995800), "empty_tuple")
     ])
     @patch('src.api.metrics_api.requests.get')
-    def test_prometheus_connection_errors(self, mock_get, function_call, expected_empty_type):
+    def test_prometheus_connection_errors(self, mock_get, function_call, expected_outcome):
         """Test handling of Prometheus connection failures"""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
         
-        result = function_call()
-        
-        if expected_empty_type == tuple:
-            # For fetch_alerts_from_prometheus which returns (query, alerts_data)
-            assert isinstance(result, tuple)
-            assert len(result) == 2
-            assert isinstance(result[1], list)
-            assert len(result[1]) == 0
-        elif expected_empty_type == pd.DataFrame:
-            assert isinstance(result, pd.DataFrame)
-            assert result.empty
+        if expected_outcome == "raises":
+            with pytest.raises(requests.exceptions.ConnectionError):
+                function_call()
+        else:
+            result = function_call()
+            if expected_outcome == "empty_tuple":
+                # For fetch_alerts_from_prometheus which returns (query, alerts_data)
+                assert isinstance(result, tuple)
+                assert len(result) == 2
+                assert isinstance(result[1], list)
+                assert len(result[1]) == 0
+            elif expected_outcome == "empty_df":
+                assert isinstance(result, pd.DataFrame)
+                assert result.empty
     
     @patch('src.api.metrics_api.requests.get')
     def test_discover_vllm_metrics_connection_error_fallback(self, mock_get):
