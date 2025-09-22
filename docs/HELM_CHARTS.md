@@ -47,6 +47,21 @@ make install NAMESPACE=my-namespace
 VERSION=1.0.0 make install NAMESPACE=my-namespace
 ```
 
+### Configure UI Log Level
+
+The UI chart supports configuring the Python log level via `env.PYTHON_LOG_LEVEL` (DEBUG, INFO, WARNING, ERROR). This is passed to the container as the `PYTHON_LOG_LEVEL` environment variable and picked up by the UI to initialize structured logging.
+
+Example:
+```bash
+helm upgrade --install aiobs-ui deploy/helm/ui \
+  --namespace my-namespace \
+  --create-namespace \
+  --set env.PYTHON_LOG_LEVEL=DEBUG
+```
+
+Notes:
+- You can also set the default in `deploy/helm/ui/values.yaml` under `env.PYTHON_LOG_LEVEL`.
+
 ## File Structure
 
 ```

@@ -10,6 +10,7 @@ import base64
 import matplotlib.pyplot as plt
 import io
 import time
+import logging
 from mcp_client_helper import (
     mcp_client,
     get_namespaces_mcp,
@@ -31,12 +32,32 @@ from mcp_client_helper import (
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _SRC_ROOT not in sys.path:
+    sys.path.append(_SRC_ROOT)
 
 from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp, analyze_vllm_mcp, calculate_metrics_mcp, get_vllm_metrics_mcp
 from error_handler import parse_mcp_error, display_mcp_error, display_error_with_context, handle_client_or_mcp_error
 import sys
 import os
 import importlib.util
+from common.pylogger import get_python_logger
+
+# Initialize shared structured logger for UI
+get_python_logger(os.getenv("PYTHON_LOG_LEVEL", "INFO"))
+logger = logging.getLogger(__name__)
+
+# Ensure root logger has a handler (pylogger clears handlers for third-party loggers)
+try:
+    _root_logger = logging.getLogger()
+    if not _root_logger.handlers:
+        logging.basicConfig(
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            stream=sys.stdout,
+            level=os.getenv("PYTHON_LOG_LEVEL", "INFO").upper(),
+        )
+except Exception:
+    pass
 
 # Claude Desktop Intelligence - Direct import with robust fallbacks
 try:
@@ -225,6 +246,8 @@ st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to:", ["vLLM Metric Summarizer", "Chat with Prometheus", "OpenShift Metrics"]
 )
+
+# Log level is controlled via PYTHON_LOG_LEVEL env; no runtime selector in UI
 
 
 # --- Shared Utilities ---
@@ -572,6 +595,7 @@ def create_trend_chart_image(metric_data, chart_metrics=None):
 
 def generate_report_and_download(report_format: str):
     try:
+        logger.info(f"Starting report generation", extra={"format": report_format})
         analysis_params = st.session_state["analysis_params"]
 
         # Check if this is OpenShift analysis or vLLM analysis
@@ -628,12 +652,14 @@ def generate_report_and_download(report_format: str):
         if trend_chart_image_b64:
             payload["trend_chart_image"] = trend_chart_image_b64
 
+        logger.info("Requesting report generation from API")
         response = requests.post(
             f"{API_URL}/generate_report",
             json=payload,
         )
         response.raise_for_status()
         report_id = response.json()["report_id"]
+        logger.info("Report generated", extra={"report_id": report_id})
         download_response = requests.get(f"{API_URL}/download_report/{report_id}")
         download_response.raise_for_status()
         mime_map = {
@@ -644,8 +670,10 @@ def generate_report_and_download(report_format: str):
         mime_type = mime_map.get(report_format, "application/octet-stream")
         trigger_download(download_response.content, filename, mime_type)
     except requests.exceptions.HTTPError as http_err:
+        logger.exception("HTTP error during report generation")
         st.error(f"HTTP error during report generation: {http_err}")
     except Exception as e:
+        logger.exception("Error during report generation")
         st.error(f"❌ Error during report generation: {e}")
 
 
@@ -1015,6 +1043,9 @@ if page == "vLLM Metric Summarizer":
     if st.button("🔍 Analyze Metrics"):
         with st.spinner("Analyzing metrics..."):
             try:
+                logger.info(
+                    "Starting vLLM analysis",
+                )
                 # Analyze metrics via MCP server
                 result = analyze_vllm_mcp(
                     model_name=model_name,
@@ -1065,6 +1096,7 @@ if page == "vLLM Metric Summarizer":
                 st.rerun()
 
             except Exception as e:
+                logger.exception("Error during vLLM analysis")
                 clear_session_state()
                 st.error(f"❌ Error during analysis: {e}")
 
@@ -1504,6 +1536,7 @@ elif page == "OpenShift Metrics":
             if st.button("Ask OpenShift Assistant"):
                 with st.spinner("OpenShift assistant is thinking..."):
                     try:
+                        logger.info("Starting OpenShift chat request")
                         response_data = chat_openshift_mcp(
                             metric_category=st.session_state["openshift_metric_category"],
                             question=openshift_question,
@@ -1544,6 +1577,7 @@ elif page == "OpenShift Metrics":
                         else:
                             st.error("❌ No response received from OpenShift assistant")
                     except Exception as e:
+                        logger.exception("OpenShift chat failed")
                         st.error(f"❌ OpenShift chat failed: {e}")
 
         with col2:

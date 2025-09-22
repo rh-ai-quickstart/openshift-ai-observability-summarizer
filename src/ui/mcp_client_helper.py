@@ -17,11 +17,29 @@ from typing import Dict, Any, List, Optional
 
 # Add current directory to Python path for consistent imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Also add the project src root so `common` and other packages are importable in local runs
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _SRC_ROOT not in sys.path:
+    sys.path.append(_SRC_ROOT)
 
 from error_handler import parse_mcp_error, display_mcp_error
+from common.pylogger import get_python_logger, force_reconfigure_all_loggers
 
-# Configure logger for this module (avoid global basicConfig here)
+# Initialize shared structured logging once per process
+get_python_logger(os.getenv("PYTHON_LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
+
+# Ensure root logger has a handler in UI context
+try:
+    _root_logger = logging.getLogger()
+    if not _root_logger.handlers:
+        logging.basicConfig(
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            stream=sys.stdout,
+            level=os.getenv("PYTHON_LOG_LEVEL", "INFO").upper(),
+        )
+except Exception:
+    pass
 
 # MCP Server Configuration
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8085")
