@@ -11,6 +11,7 @@ from datetime import datetime
 
 import logging
 from common.pylogger import get_python_logger
+from .metrics import choose_prometheus_step
 
 # Initialize structured logger once - other modules should use logging.getLogger(__name__)
 get_python_logger()
@@ -39,6 +40,8 @@ def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: i
         
         try:
             # Query Thanos
+            step = choose_prometheus_step(start_ts, end_ts)
+            logger.debug("Query Prometheus: %s, start_ts: %s, end_ts: %s, step: %s", promql, start_ts, end_ts, step)
             response = requests.get(
                 f"{PROMETHEUS_URL}/api/v1/query_range",
                 headers=headers,
@@ -46,7 +49,7 @@ def query_thanos_with_promql(promql_queries: List[str], start_ts: int, end_ts: i
                     "query": promql,
                     "start": start_ts,
                     "end": end_ts,
-                    "step": "60s"  # 1-minute intervals
+                    "step": step
                 },
                 verify=verify,
                 timeout=30

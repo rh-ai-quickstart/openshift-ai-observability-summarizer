@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 from common.pylogger import get_python_logger
+from .metrics import choose_prometheus_step
 
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 
@@ -37,13 +38,15 @@ def fetch_alerts_from_prometheus(
     """
     headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
     promql_query = f'ALERTS{{namespace="{namespace}"}}' if namespace else "ALERTS"
+    step = choose_prometheus_step(start_ts, end_ts)
     params = {
         "query": promql_query,
         "start": start_ts,
         "end": end_ts,
-        "step": "30s",
+        "step": step,
     }
-    
+    logger.debug("Fetching Prometheus alerts, query: %s, start: %s, end: %s: step: %s", promql_query, start_ts, end_ts, step)
+
     try:
         response = requests.get(
             f"{PROMETHEUS_URL}/api/v1/query_range",

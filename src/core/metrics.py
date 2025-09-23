@@ -11,6 +11,7 @@ import os
 import json
 import re
 import logging
+import math
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -33,6 +34,41 @@ from .llm_client import (
 )
 NAMESPACE_SCOPED = "namespace_scoped"
 CLUSTER_WIDE = "cluster_wide"
+
+def choose_prometheus_step(
+    start_ts: int,
+    end_ts: int,
+    max_points_per_series: int = 11000,
+    min_step_seconds: int = 30,
+) -> str:
+    """Select an appropriate Prometheus step to keep points per series under limits.
+
+    Returns a Prometheus duration string like "30s", "1m", "5m", "1h".
+    """
+    try:
+        duration_seconds = max(0, int(end_ts) - int(start_ts))
+        # Use (max_points - 1) because query_range is inclusive of endpoints
+        raw_step_seconds = max(
+            min_step_seconds,
+            math.ceil(duration_seconds / max(1, (max_points_per_series - 1))),
+        )
+
+        # Round up to the next "nice" bucket
+        buckets = [
+            1, 2, 5, 10, 15, 30,
+            60, 120, 300, 600, 900, 1800,
+            3600, 7200, 14400, 21600, 43200,
+        ]
+        step_seconds = next((b for b in buckets if b >= raw_step_seconds), buckets[-1])
+
+        if step_seconds % 3600 == 0:
+            return f"{step_seconds // 3600}h"
+        if step_seconds % 60 == 0:
+            return f"{step_seconds // 60}m"
+        return f"{step_seconds}s"
+    except Exception:
+        # Fallback to previous default on any error
+        return f"{max(min_step_seconds, 30)}s"
 
 
 
@@ -961,10 +997,12 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
 
     headers = _auth_headers()
     try:
+        step = choose_prometheus_step(start, end)
+        logger.debug("Fetching Prometheus metrics for vLLM, query: %s, start: %s, end: %s: step: %s", query, start, end, step)
         response = requests.get(
             f"{PROMETHEUS_URL}/api/v1/query_range",
             headers=headers,
-            params={"query": promql_query, "start": start, "end": end, "step": "30s"},
+            params={"query": promql_query, "start": start, "end": end, "step": step},
             verify=VERIFY_SSL,
             timeout=30,  # Add timeout
         )
@@ -1006,7 +1044,6 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
     to convert them into structured errors for the UI.
     """
     headers = _auth_headers()
-
     # Add namespace filter to the query if specified
     if namespace:
         # Skip if namespace already exists in the query
@@ -1054,15 +1091,18 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
                         break
 
     try:
+        step = choose_prometheus_step(start, end)
+        logger.debug("Fetching Prometheus metrics for OpenShift, query: %s, start: %s, end: %s: step: %s", query, start, end, step)
         response = requests.get(
             f"{PROMETHEUS_URL}/api/v1/query_range",
             headers=headers,
-            params={"query": query, "start": start, "end": end, "step": "30s"},
+            params={"query": query, "start": start, "end": end, "step": step},
             verify=VERIFY_SSL,
             timeout=30,  # Add timeout
         )
         response.raise_for_status()
         result = response.json()["data"]["result"]
+        logger.debug("Metrics fetched successfully")
     except requests.exceptions.ConnectionError as e:
         logger.warning("Prometheus connection error for OpenShift query '%s': %s", query, e)
         raise
