@@ -23,6 +23,7 @@ env:
   PYTHON_LOG_LEVEL: "INFO"
   PROMETHEUS_URL: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
   MAX_TIME_RANGE_DAYS: 90
+  DEFAULT_TIME_RANGE_DAYS: 7
 
 tls:
   enabled: false
