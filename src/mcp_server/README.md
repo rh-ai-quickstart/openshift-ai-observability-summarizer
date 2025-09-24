@@ -494,3 +494,17 @@ pip list | grep obs-mcp-server
 2. **Cursor IDE**: Restart Cursor IDE to load new MCP configuration  
 3. **Path Issues**: Use `python setup_integration.py` to auto-detect correct paths
 
+## ⏱️ Prometheus Query Range and Step
+
+- MAX_TIME_RANGE_DAYS: The MCP server enforces a maximum time window for all range queries. This limit is configurable via the environment variable `MAX_TIME_RANGE_DAYS` (default 90). Requests exceeding this window return a validation error.
+- Default window: When users do not provide a time range (no `time_range` or explicit `start_datetime`/`end_datetime`), the server defaults to the last `DEFAULT_TIME_RANGE_DAYS` (default 90) days.
+- Step selection: For `query_range` requests, the server computes a Prometheus step so that the number of points per series stays within safe bounds (≈ 11k points). The raw step is chosen as `ceil((end-start)/(max_points-1))` and then rounded up to the nearest "nice" bucket (1,2,5,10,15,30,60s, 2,5,10,15,30m, 1,2,4,6,12h). This ensures large ranges automatically use coarser resolution to keep queries performant and avoid large payloads.
+
+Example (Helm):
+
+```bash
+# Set maximum range to 60 days at deploy-time
+helm upgrade --install mcp-server deploy/helm/mcp-server -n <ns> \
+  --set env.MAX_TIME_RANGE_DAYS=60
+```
+
