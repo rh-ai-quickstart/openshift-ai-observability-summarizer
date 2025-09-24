@@ -305,12 +305,13 @@ def validate_time_range(start_ts: int, end_ts: int) -> None:
             details={"start_ts": start_ts, "end_ts": end_ts}
         )
     
-    # Check for reasonable time ranges (not more than 30 days)
+    # Check for reasonable time ranges (not more than configured MAX_TIME_RANGE_DAYS)
+    from core.config import MAX_TIME_RANGE_DAYS  # Imported here to avoid circulars at module import time
     SECONDS_PER_DAY = 86400  # 24 * 60 * 60
-    max_range_seconds = 30 * SECONDS_PER_DAY  # 30 days
+    max_range_seconds = MAX_TIME_RANGE_DAYS * SECONDS_PER_DAY
     if end_ts - start_ts > max_range_seconds:
         raise ValidationError(
-            message="Time range too large (maximum 30 days)",
+            message=f"Time range too large (maximum {MAX_TIME_RANGE_DAYS} days)",
             field="time_range",
             details={"range_days": (end_ts - start_ts) / SECONDS_PER_DAY}
         )

@@ -22,7 +22,7 @@ from core.llm_client import build_prompt, summarize_with_llm, extract_time_range
 from core.models import AnalyzeRequest
 from core.response_validator import ResponseType
 from core.metrics import NAMESPACE_SCOPED, CLUSTER_WIDE
-from core.config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
+from core.config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL, DEFAULT_TIME_RANGE_DAYS
 import requests
 from datetime import datetime
 
@@ -78,16 +78,16 @@ def resolve_time_range(
             re = int(datetime.fromisoformat(end_datetime.replace("Z", "+00:00")).timestamp())
             return rs, re
 
-        # 3) Default: last 1 hour
+        # 3) Default: last DEFAULT_TIME_RANGE_DAYS days
         now = int(datetime.utcnow().timestamp())
-        return now - 3600, now
+        return now - (DEFAULT_TIME_RANGE_DAYS * 24 * 3600), now
     except Exception as e:
         # Log the error for debugging
         logger.error(f"Error in resolve_time_range: {e}")
         logger.error(f"Inputs: time_range={time_range}, start_datetime={start_datetime}, end_datetime={end_datetime}")
-        # Safe fallback to last 1 hour on any parsing error
+        # Safe fallback to default range on any parsing error
         now = int(datetime.utcnow().timestamp())
-        return now - 3600, now
+        return now - (DEFAULT_TIME_RANGE_DAYS * 24 * 3600), now
 
 
 def list_models() -> List[Dict[str, Any]]:

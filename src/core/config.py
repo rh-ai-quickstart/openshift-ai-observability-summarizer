@@ -59,3 +59,10 @@ VERIFY_SSL = get_ca_verify_setting()
 # Chat scope values used across the codebase
 CHAT_SCOPE_FLEET_WIDE = "fleet_wide"
 FLEET_WIDE_DISPLAY = "Fleet-wide"
+
+# Time range constraints
+# Maximum time range allowed for analysis (in days)
+MAX_TIME_RANGE_DAYS: int = int(os.getenv("MAX_TIME_RANGE_DAYS", "90"))
+
+# Default time range when none is provided (in days)
+DEFAULT_TIME_RANGE_DAYS: int = int(os.getenv("DEFAULT_TIME_RANGE_DAYS", "90"))

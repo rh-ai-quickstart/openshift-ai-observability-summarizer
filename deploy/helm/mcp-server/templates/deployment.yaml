@@ -43,6 +43,8 @@ spec:
             {{- end }}
             - name: PROMETHEUS_URL
               value: "{{ .Values.env.PROMETHEUS_URL }}"
+            - name: MAX_TIME_RANGE_DAYS
+              value: "{{ .Values.env.MAX_TIME_RANGE_DAYS }}"
             - name: NAMESPACE
               value: "{{ .Release.Namespace }}"
             - name: THANOS_TOKEN
