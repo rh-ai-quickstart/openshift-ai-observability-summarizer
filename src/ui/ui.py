@@ -27,6 +27,9 @@ from mcp_client_helper import (
     analyze_openshift_mcp,
     chat_openshift_mcp,
     parse_analyze_response,
+    get_multi_models_mcp,
+    get_gpu_info_mcp,
+    get_deployment_info_mcp,
 )
 # Add current directory to Python path for consistent imports
 import sys
@@ -293,12 +296,16 @@ def get_namespaces():
 
 @st.cache_data(ttl=300)
 def get_multi_models():
-    """Fetch available summarization models from API"""
+    """Fetch available summarization models via MCP"""
     try:
-        res = requests.get(f"{API_URL}/multi_models")
-        return res.json()
+        models = get_multi_models_mcp()
+        if models:
+            return models
+        else:
+            st.sidebar.warning("⚠️ No summarization models found - check MODEL_CONFIG")
+            return []
     except Exception as e:
-        st.sidebar.error(f"Error fetching multi models: {e}")
+        st.sidebar.error(f"Error fetching summarization models (MCP): {e}")
         return []
 
 
@@ -369,19 +376,12 @@ def get_vllm_metrics():
 
 @st.cache_data(ttl=300)
 def get_gpu_info():
-    """Fetch GPU information from API"""
+    """Fetch GPU information via MCP"""
     try:
-        res = requests.get(f"{API_URL}/gpu-info")
-        return res.json()
+        return get_gpu_info_mcp()
     except Exception as e:
-        st.sidebar.error(f"Error fetching GPU info: {e}")
-        return {
-            "total_gpus": 0,
-            "vendors": [],
-            "models": [],
-            "temperatures": [],
-            "power_usage": [],
-        }
+        st.sidebar.error(f"Error fetching GPU info (MCP): {e}")
+        return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
 
 
 @st.cache_data(ttl=300)
@@ -395,17 +395,16 @@ def get_deployment_info(model_name):
         else:
             return {"is_new_deployment": False, "deployment_date": None, "message": None}
         
-        # Try to get deployment info from the backend
-        res = requests.get(f"{API_URL}/deployment-info?namespace={namespace}&model={actual_model}")
-        if res.status_code == 200:
-            return res.json()
-        else:
-            # Fallback: assume it's a new deployment if we can't get info
-            return {
-                "is_new_deployment": True,
-                "deployment_date": datetime.now().strftime("%Y-%m-%d"),
-                "message": f"This appears to be a new deployment in namespace '{namespace}'. Metrics may take some time to appear."
-            }
+        # Get deployment info via MCP
+        info = get_deployment_info_mcp(namespace, actual_model)
+        if info:
+            return info
+        # Fallback: assume it's a new deployment if we can't get info
+        return {
+            "is_new_deployment": True,
+            "deployment_date": datetime.now().strftime("%Y-%m-%d"),
+            "message": f"This appears to be a new deployment in namespace '{namespace}'. Metrics may take some time to appear."
+        }
     except Exception as e:
         return {"is_new_deployment": False, "deployment_date": None, "message": None}
 

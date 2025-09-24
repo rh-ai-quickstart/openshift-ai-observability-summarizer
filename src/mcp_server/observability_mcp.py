@@ -24,6 +24,9 @@ class ObservabilityMCPServer:
             get_vllm_metrics_tool,
             analyze_vllm,
             calculate_metrics,
+            list_summarization_models,
+            get_gpu_info,
+            get_deployment_info,
         )
         from .tools.observability_openshift_tools import (
             analyze_openshift,
@@ -50,6 +53,9 @@ class ObservabilityMCPServer:
         self.mcp.tool()(get_vllm_metrics_tool)
         self.mcp.tool()(analyze_vllm)
         self.mcp.tool()(calculate_metrics)
+        self.mcp.tool()(list_summarization_models)
+        self.mcp.tool()(get_gpu_info)
+        self.mcp.tool()(get_deployment_info)
         
         # Register OpenShift tools
         self.mcp.tool()(analyze_openshift)

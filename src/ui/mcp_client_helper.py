@@ -325,7 +325,7 @@ def get_model_config_mcp() -> Dict[str, Any]:
             st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
             st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
             return {}
-        
+
         result = mcp_client.call_tool_sync("get_model_config")
         
         error_details = parse_mcp_error(result)
@@ -346,6 +346,88 @@ def get_model_config_mcp() -> Dict[str, Any]:
         st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
         return {}
 
+def get_multi_models_mcp() -> List[str]:
+    """Fetch available summarization models via MCP list_summarization_models tool."""
+    try:
+        if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
+            return []
+
+        result = mcp_client.call_tool_sync("list_summarization_models")
+
+        error_details = parse_mcp_error(result)
+        if error_details:
+            display_mcp_error(error_details)
+            return []
+
+        return mcp_client.parse_list_response(result)
+    except Exception as e:
+        logger.error(f"Error fetching summarization models via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
+        return []
+
+
+def get_gpu_info_mcp() -> Dict[str, Any]:
+    """Fetch GPU info via MCP get_gpu_info_tool."""
+    try:
+        if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
+            return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
+
+        result = mcp_client.call_tool_sync("get_gpu_info")
+
+        # Surface structured errors
+        err = parse_mcp_error(result)
+        if err:
+            display_mcp_error(err)
+            return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
+
+        response_text = extract_text_from_mcp_result(result)
+        if not response_text:
+            return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
+
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse GPU info JSON: {response_text[:200]}")
+            return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
+    except Exception as e:
+        logger.error(f"Error fetching GPU info via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
+        return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
+
+
+def get_deployment_info_mcp(namespace: str, model: str) -> Dict[str, Any]:
+    """Fetch deployment info via MCP get_deployment_info_tool."""
+    try:
+        if not mcp_client.check_server_health():
+            st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
+            st.sidebar.info("💡 **How to fix**: Check if the MCP server is running")
+            return {"is_new_deployment": False, "deployment_date": None, "message": None}
+
+        params = {"namespace": namespace, "model": model}
+        result = mcp_client.call_tool_sync("get_deployment_info", params)
+
+        err = parse_mcp_error(result)
+        if err:
+            display_mcp_error(err)
+            return {"is_new_deployment": False, "deployment_date": None, "message": None}
+
+        response_text = extract_text_from_mcp_result(result)
+        if not response_text:
+            return {"is_new_deployment": False, "deployment_date": None, "message": None}
+
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse deployment info JSON: {response_text[:200]}")
+            return {"is_new_deployment": False, "deployment_date": None, "message": None}
+    except Exception as e:
+        logger.error(f"Error fetching deployment info via MCP: {e}")
+        st.sidebar.error(f"❌ **INTERNAL_ERROR**: {str(e)}")
+        return {"is_new_deployment": False, "deployment_date": None, "message": None}
 
 def get_openshift_metric_groups_mcp() -> List[str]:
     """Fetch OpenShift metric groups via MCP tool and return a simple list."""
