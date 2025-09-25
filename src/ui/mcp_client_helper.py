@@ -369,7 +369,7 @@ def get_multi_models_mcp() -> List[str]:
 
 
 def get_gpu_info_mcp() -> Dict[str, Any]:
-    """Fetch GPU info via MCP get_gpu_info_tool."""
+    """Fetch GPU info via MCP get_gpu_info tool."""
     try:
         if not mcp_client.check_server_health():
             st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
@@ -400,7 +400,7 @@ def get_gpu_info_mcp() -> Dict[str, Any]:
 
 
 def get_deployment_info_mcp(namespace: str, model: str) -> Dict[str, Any]:
-    """Fetch deployment info via MCP get_deployment_info_tool."""
+    """Fetch deployment info via MCP get_deployment_info tool."""
     try:
         if not mcp_client.check_server_health():
             st.sidebar.error("🌐 **CONNECTION_ERROR**: MCP server is not available")
