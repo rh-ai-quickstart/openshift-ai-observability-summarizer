@@ -17,7 +17,15 @@ import pandas as pd
 from typing import Dict, Any, List, Optional
 
 # Import core observability services
-from core.metrics import get_models_helper, get_namespaces_helper, get_vllm_metrics, fetch_metrics
+from core.metrics import (
+    get_models_helper,
+    get_namespaces_helper,
+    get_vllm_metrics,
+    fetch_metrics,
+    get_summarization_models,
+    get_cluster_gpu_info,
+    get_namespace_model_deployment_info,
+)
 from core.llm_client import build_prompt, summarize_with_llm, extract_time_range_with_info
 from core.models import AnalyzeRequest
 from core.response_validator import ResponseType
@@ -476,71 +484,28 @@ def calculate_metrics(
 
 
 def list_summarization_models() -> List[Dict[str, Any]]:
-    """List available summarization models (equivalent to /multi_models).
-
-    Reads MODEL_CONFIG from environment and returns the keys as a bullet list.
-    """
+    """List available summarization models, including internal and external models."""
     try:
-        # Reuse the same environment-driven configuration as REST API
-        model_config_str = os.getenv("MODEL_CONFIG", "{}")
-        model_config = safe_json_loads(model_config_str, "MODEL_CONFIG environment variable")
-
-        if not isinstance(model_config, dict) or not model_config:
+        models = get_summarization_models()
+        if not models:
             return _resp("No summarization models configured.")
-
-        # Keep external:false models first like REST API sorting
-        sorted_items = sorted(model_config.items(), key=lambda x: x[1].get("external", True))
-        model_names = [name for name, _ in sorted_items]
-
-        content_lines = [f"• {name}" for name in model_names]
-        content = "Available Summarization Models ({} total):\n\n".format(len(model_names)) + "\n".join(content_lines)
+        content_lines = [f"• {name}" for name in models]
+        content = f"Available Summarization Models ({len(models)} total):\n\n" + "\n".join(content_lines)
         return _resp(content)
-    except ValidationError as e:
-        return e.to_mcp_response()
     except Exception as e:
         error = MCPException(
             message=f"Failed to list summarization models: {str(e)}",
             error_code=MCPErrorCode.CONFIGURATION_ERROR,
-            recovery_suggestion="Ensure MODEL_CONFIG is valid JSON."
+            recovery_suggestion="Ensure model configuration is valid."
         )
         return error.to_mcp_response()
 
 
 def get_gpu_info() -> List[Dict[str, Any]]:
-    """Get GPU information (equivalent to /gpu-info)."""
+    """Get GPU information."""
     try:
-        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"} if THANOS_TOKEN else {}
-
-        gpu_info: Dict[str, Any] = {
-            "total_gpus": 0,
-            "vendors": [],
-            "models": [],
-            "temperatures": [],
-            "power_usage": [],
-        }
-
-        # Attempt to infer GPU count and temperatures from DCGM metrics
-        try:
-            response = requests.get(
-                f"{PROMETHEUS_URL}/api/v1/query",
-                headers=headers,
-                params={"query": "DCGM_FI_DEV_GPU_TEMP"},
-                verify=VERIFY_SSL,
-                timeout=30,
-            )
-            if response.status_code == 200:
-                result = response.json().get("data", {}).get("result", [])
-                gpu_info["total_gpus"] = len(result)
-                temperatures = [float(series["value"][1]) for series in result if series.get("value")]
-                gpu_info["temperatures"] = temperatures
-                if temperatures:
-                    gpu_info["vendors"] = ["NVIDIA"]
-                    gpu_info["models"] = ["GPU"]
-        except Exception as e:
-            # Log but continue with defaults
-            logger.warning(f"Error querying GPU metrics: {e}")
-
-        return _resp(json.dumps(gpu_info))
+        info = get_cluster_gpu_info()
+        return _resp(json.dumps(info))
     except Exception as e:
         error = MCPException(
             message=f"Failed to get GPU info: {str(e)}",
@@ -551,108 +516,19 @@ def get_gpu_info() -> List[Dict[str, Any]]:
 
 
 def get_deployment_info(namespace: str, model: str) -> List[Dict[str, Any]]:
-    """Get deployment info for a model in a namespace (equivalent to /deployment-info).
-
-    Heuristic:
-    - Query kube_pod_info in namespace to ensure activity
-    - Look at vLLM cache config metric timeline over the last week to infer start time
-    """
+    """Get deployment info for a model in a namespace."""
     try:
         validate_required_params(namespace=namespace, model=model)
     except ValidationError as e:
         return e.to_mcp_response()
 
     try:
-        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"} if THANOS_TOKEN else {}
-
-        # Initial probe: any pods in namespace
-        try:
-            query = f'kube_pod_info{{namespace="{namespace}"}}'
-            response = requests.get(
-                f"{PROMETHEUS_URL}/api/v1/query",
-                headers=headers,
-                params={"query": query},
-                verify=VERIFY_SSL,
-                timeout=30,
-            )
-            response.raise_for_status()
-            result = response.json().get("data", {}).get("result", [])
-        except Exception as e:
-            logger.warning(f"Error probing namespace pods: {e}")
-            result = []
-
-        current_time = datetime.utcnow()
-        is_new_deployment = False
-        deployment_date: Optional[str] = None
-
-        if result:
-            # Check vLLM cache config metric timeline for last 7 days
-            try:
-                one_week_ago = int((current_time - timedelta(days=7)).timestamp())
-                vllm_query = f'vllm:cache_config_info{{namespace="{namespace}"}}'
-                vllm_response = requests.get(
-                    f"{PROMETHEUS_URL}/api/v1/query_range",
-                    headers=headers,
-                    params={
-                        "query": vllm_query,
-                        "start": one_week_ago,
-                        "end": int(current_time.timestamp()),
-                        "step": "1h",
-                    },
-                    verify=VERIFY_SSL,
-                    timeout=30,
-                )
-                if vllm_response.status_code == 200:
-                    vllm_result = vllm_response.json().get("data", {}).get("result", [])
-                    if not vllm_result:
-                        is_new_deployment = True
-                        deployment_date = current_time.strftime("%Y-%m-%d")
-                    else:
-                        three_days_ago = current_time - timedelta(days=3)
-                        for series in vllm_result:
-                            values = series.get("values", [])
-                            if values:
-                                first_timestamp = float(values[0][0])
-                                first_time = datetime.utcfromtimestamp(first_timestamp)
-                                if first_time > three_days_ago:
-                                    is_new_deployment = True
-                                    deployment_date = first_time.strftime("%Y-%m-%d")
-                                break
-            except Exception as e:
-                logger.warning(f"Error checking vLLM metrics timeline: {e}")
-                is_new_deployment = True
-                deployment_date = current_time.strftime("%Y-%m-%d")
-        else:
-            # No pod info found - likely new deployment
-            is_new_deployment = True
-            deployment_date = current_time.strftime("%Y-%m-%d")
-
-        message: Optional[str] = None
-        if is_new_deployment:
-            message = (
-                f"New deployment detected in namespace '{namespace}'. "
-                f"Metrics will appear once the model starts processing requests. "
-                f"This typically takes 5-10 minutes after the first inference request."
-            )
-
-        payload = {
-            "is_new_deployment": is_new_deployment,
-            "deployment_date": deployment_date,
-            "message": message,
-            "namespace": namespace,
-            "model": model,
-        }
-
+        payload = get_namespace_model_deployment_info(namespace, model)
         return _resp(json.dumps(payload))
     except Exception as e:
-        logger.warning(f"Error getting deployment info for {namespace}/{model}: {e}")
-        payload = {
-            "is_new_deployment": True,
-            "deployment_date": datetime.utcnow().strftime("%Y-%m-%d"),
-            "message": (
-                "Unable to determine deployment status. If this is a new deployment, metrics will appear shortly."
-            ),
-            "namespace": namespace,
-            "model": model,
-        }
-        return _resp(json.dumps(payload))
+        error = MCPException(
+            message=f"Failed to get deployment info: {str(e)}",
+            error_code=MCPErrorCode.PROMETHEUS_ERROR,
+            recovery_suggestion="Verify Prometheus/Thanos connectivity and metric availability."
+        )
+        return error.to_mcp_response()

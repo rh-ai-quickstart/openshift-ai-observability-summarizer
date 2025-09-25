@@ -23,7 +23,7 @@ get_python_logger()
 
 logger = logging.getLogger(__name__)
 
-from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
+from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL, MODEL_CONFIG
 from fastapi import HTTPException
 from .llm_client import summarize_with_llm
 from .response_validator import ResponseType
@@ -1129,3 +1129,128 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
             rows.append(row)
 
     return pd.DataFrame(rows) 
+
+
+# --- Business logic for MCP tools (moved from tools module) ---
+
+def get_summarization_models() -> List[str]:
+    """Return available summarization model IDs from MODEL_CONFIG.
+
+    External models are sorted after internal ones to match UI expectations.
+    """
+    try:
+        if not isinstance(MODEL_CONFIG, dict) or not MODEL_CONFIG:
+            return []
+        sorted_items = sorted(MODEL_CONFIG.items(), key=lambda x: x[1].get("external", True))
+        return [name for name, _ in sorted_items]
+    except Exception:
+        return []
+
+
+def get_cluster_gpu_info() -> Dict[str, Any]:
+    """Fetch cluster GPU info from Prometheus (DCGM exporter).
+
+    Returns a dict with total_gpus, vendors, models, temperatures, power_usage.
+    """
+    headers = _auth_headers()
+    info: Dict[str, Any] = {
+        "total_gpus": 0,
+        "vendors": [],
+        "models": [],
+        "temperatures": [],
+        "power_usage": [],
+    }
+    try:
+        resp = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/query",
+            headers=headers,
+            params={"query": "DCGM_FI_DEV_GPU_TEMP"},
+            verify=VERIFY_SSL,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        result = resp.json().get("data", {}).get("result", [])
+        info["total_gpus"] = len(result)
+        temps = [float(series.get("value", [None, None])[1]) for series in result if series.get("value")]
+        info["temperatures"] = temps
+        if temps:
+            info["vendors"] = ["NVIDIA"]
+            info["models"] = ["GPU"]
+    except Exception:
+        # Keep defaults on error
+        pass
+    return info
+
+
+def get_namespace_model_deployment_info(namespace: str, model: str) -> Dict[str, Any]:
+    """Heuristic deployment info by probing kube_pod_info and vLLM cache timeline."""
+    headers = _auth_headers()
+    try:
+        # Probe pods in namespace
+        query = f'kube_pod_info{{namespace="{namespace}"}}'
+        r = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/query",
+            headers=headers,
+            params={"query": query},
+            verify=VERIFY_SSL,
+            timeout=30,
+        )
+        r.raise_for_status()
+        result = r.json().get("data", {}).get("result", [])
+    except Exception:
+        result = []
+
+    from datetime import datetime as _dt, timedelta as _td
+    now = _dt.utcnow()
+    is_new = False
+    deploy_date: Optional[str] = None
+
+    if result:
+        try:
+            one_week_ago = int((now - _td(days=7)).timestamp())
+            vq = f'vllm:cache_config_info{{namespace="{namespace}"}}'
+            vr = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query_range",
+                headers=headers,
+                params={"query": vq, "start": one_week_ago, "end": int(now.timestamp()), "step": "1h"},
+                verify=VERIFY_SSL,
+                timeout=30,
+            )
+            if vr.status_code == 200:
+                vres = vr.json().get("data", {}).get("result", [])
+                if not vres:
+                    is_new = True
+                    deploy_date = now.strftime("%Y-%m-%d")
+                else:
+                    three_days_ago = now - _td(days=3)
+                    for series in vres:
+                        values = series.get("values", [])
+                        if values:
+                            first_ts = float(values[0][0])
+                            first_time = _dt.utcfromtimestamp(first_ts)
+                            if first_time > three_days_ago:
+                                is_new = True
+                                deploy_date = first_time.strftime("%Y-%m-%d")
+                            break
+        except Exception:
+            is_new = True
+            deploy_date = now.strftime("%Y-%m-%d")
+    else:
+        is_new = True
+        deploy_date = now.strftime("%Y-%m-%d")
+
+    message = None
+    if is_new:
+        message = (
+            f"New deployment detected in namespace '{namespace}'. "
+            f"Metrics will appear once the model starts processing requests. "
+            f"This typically takes 5-10 minutes after the first inference request."
+        )
+
+    return {
+        "is_new_deployment": is_new,
+        "deployment_date": deploy_date,
+        "message": message,
+        "namespace": namespace,
+        "model": model,
+    }
