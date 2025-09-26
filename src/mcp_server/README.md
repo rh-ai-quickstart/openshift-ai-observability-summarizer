@@ -9,6 +9,9 @@ The MCP server provides the following tools:
 - **`list_models`** - Discover available vLLM models from Prometheus metrics
 - **`list_namespaces`** - List monitored Kubernetes namespaces with observability data
 - **`get_model_config`** - Get available LLM models for summarization and analysis
+- **`list_summarization_models`** - List summarization models from MODEL_CONFIG (internal/external)
+- **`get_gpu_info`** - Return cluster GPU info (count, vendors, models, temperatures)
+- **`get_deployment_info`** - Heuristic deployment info for a model in a namespace
 - **`analyze_vllm`** - Analyze vLLM metrics for a model and summarize with an LLM
 - **`analyze_openshift`** - Analyze OpenShift metrics by category and scope, returning an LLM summary
 - **`list_openshift_metric_groups`** - List all cluster-wide OpenShift metric categories
@@ -164,6 +167,47 @@ Returns namespace-capable categories:
 - Storage & Networking
 - Application Services
 
+### Summarization Models (new)
+
+```json
+{ "tool": "list_summarization_models" }
+```
+Returns a formatted list of available summarization model IDs (internal shown before external). The UI parses this bullet list into a string array for selection.
+
+### GPU Info (new)
+
+```json
+{ "tool": "get_gpu_info" }
+```
+Returns JSON with cluster GPU info:
+
+```json
+{
+  "total_gpus": 4,
+  "vendors": ["NVIDIA"],
+  "models": ["GPU"],
+  "temperatures": [45.0, 47.5, 50.1, 49.0],
+  "power_usage": []
+}
+```
+
+### Deployment Info (new)
+
+```json
+{ "tool": "get_deployment_info", "args": { "namespace": "myns", "model": "my-model" } }
+```
+Returns JSON with heuristic deployment status for the namespace/model:
+
+```json
+{
+  "is_new_deployment": true,
+  "deployment_date": "2025-01-01",
+  "message": "New deployment detected in namespace 'myns'. Metrics will appear once the model starts processing requests. This typically takes 5-10 minutes after the first inference request.",
+  "namespace": "myns",
+  "model": "my-model"
+}
+```
+
 
 #### Model identifiers quick guide (MCP)
 
@@ -229,6 +273,9 @@ Troubleshooting tips:
 | `list_models` | Lists available vLLM models from metrics | Format: `"namespace | model_name"` |
 | `list_namespaces` | Lists monitored Kubernetes namespaces | Sorted list of namespace names |
 | `get_model_config` | Gets LLM models for summarization | Internal/external model configurations |
+| `list_summarization_models` | Lists summarization model IDs | Bullet list; UI parses to List of strings |
+| `get_gpu_info` | Returns GPU fleet info | JSON: total_gpus, vendors, models, temperatures, power_usage |
+| `get_deployment_info` | Returns deployment status for a model/namespace | JSON: is_new_deployment, deployment_date, message, namespace, model |
 | `analyze_vllm` |  fetch metrics, build prompt, summarize | Text summary with prompt and metrics preview |
 | `analyze_openshift` | Analyze metrics for a given category/scope | Text block with LLM summary and context |
 | `list_openshift_metric_groups` | Lists cluster-wide OpenShift categories | Bullet list of categories |

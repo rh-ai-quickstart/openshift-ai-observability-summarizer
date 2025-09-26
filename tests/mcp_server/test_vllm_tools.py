@@ -277,3 +277,62 @@ def test_get_vllm_metrics_tool_error(mock_get_vllm_metrics):
 
     assert "❌ **Error (PROMETHEUS_ERROR)**" in full_text
     assert "Failed to retrieve vLLM metrics: Connection error" in full_text
+
+
+# --- New MCP tools tests ---
+
+@patch("src.mcp_server.tools.observability_vllm_tools.get_summarization_models", return_value=["m1", "m2"])  # type: ignore[arg-type]
+def test_list_summarization_models_success(_):
+    out = tools.list_summarization_models()
+    text = "\n".join(_texts(out))
+    assert "Available Summarization Models (2 total):" in text
+    assert "• m1" in text
+    assert "• m2" in text
+
+
+@patch("src.mcp_server.tools.observability_vllm_tools.get_summarization_models", return_value=[])  # type: ignore[arg-type]
+def test_list_summarization_models_empty(_):
+    out = tools.list_summarization_models()
+    text = "\n".join(_texts(out))
+    assert "No summarization models configured" in text
+
+
+@patch("src.mcp_server.tools.observability_vllm_tools.get_cluster_gpu_info")
+def test_get_gpu_info_success(mock_gpu_info):
+    mock_gpu_info.return_value = {
+        "total_gpus": 2,
+        "vendors": ["NVIDIA"],
+        "models": ["GPU"],
+        "temperatures": [45.0, 50.0],
+        "power_usage": []
+    }
+    out = tools.get_gpu_info()
+    import json as _json
+    data = _json.loads(_texts(out)[0])
+    assert data["total_gpus"] == 2
+    assert data["temperatures"] == [45.0, 50.0]
+    assert data["vendors"] == ["NVIDIA"]
+
+
+def test_get_deployment_info_success():
+    payload = {
+        "is_new_deployment": True,
+        "deployment_date": "2025-01-01",
+        "message": "msg",
+        "namespace": "ns",
+        "model": "m"
+    }
+    with patch("src.mcp_server.tools.observability_vllm_tools.get_namespace_model_deployment_info", return_value=payload):
+        out = tools.get_deployment_info("ns", "m")
+        import json as _json
+        data = _json.loads(_texts(out)[0])
+        assert data == payload
+
+
+def test_get_deployment_info_validation_error():
+    # Force validate_required_params to raise a ValidationError
+    with patch("src.mcp_server.tools.observability_vllm_tools.validate_required_params", side_effect=tools.ValidationError(message="missing", field="namespace")):
+        out = tools.get_deployment_info("", "m")
+        text = "\n".join(_texts(out))
+        assert "❌ **Error (INVALID_INPUT)**" in text
+        assert "missing" in text
