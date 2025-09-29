@@ -10,18 +10,9 @@ import os
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
-import sys
 
-# Import ReportSchema and MetricCard - using try/except for robust import
-try:
-    # Try direct import first (for when running from API context)
-    from report_assets.report_renderer import ReportSchema, MetricCard
-except ImportError:
-    # Add path for report_assets import when running independently
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    api_dir = os.path.join(os.path.dirname(current_dir), 'api')
-    sys.path.insert(0, api_dir)
-    from report_assets.report_renderer import ReportSchema, MetricCard
+# Import ReportSchema and MetricCard from the new core location
+from .report_assets.report_renderer import ReportSchema, MetricCard
 from .metrics import calculate_metric_stats
 
 

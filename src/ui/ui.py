@@ -92,6 +92,7 @@ except ImportError:
 
 # --- Config ---
 API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8085")
 PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
 
 # --- Claude Chat Bot (removed cached version since we create chatbot dynamically with user API key) ---
@@ -651,15 +652,15 @@ def generate_report_and_download(report_format: str):
         if trend_chart_image_b64:
             payload["trend_chart_image"] = trend_chart_image_b64
 
-        logger.info("Requesting report generation from API")
+        logger.info("Requesting report generation from MCP server", extra={"mcp_server_url": MCP_SERVER_URL})
         response = requests.post(
-            f"{API_URL}/generate_report",
+            f"{MCP_SERVER_URL}/generate_report",
             json=payload,
         )
         response.raise_for_status()
         report_id = response.json()["report_id"]
-        logger.info("Report generated", extra={"report_id": report_id})
-        download_response = requests.get(f"{API_URL}/download_report/{report_id}")
+        logger.info("Report generated", extra={"report_id": report_id, "mcp_server_url": MCP_SERVER_URL})
+        download_response = requests.get(f"{MCP_SERVER_URL}/download_report/{report_id}")
         download_response.raise_for_status()
         mime_map = {
             "HTML": "text/html",

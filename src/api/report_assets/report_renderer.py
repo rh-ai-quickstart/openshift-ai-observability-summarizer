@@ -7,7 +7,7 @@ import os
 import markdown
 import logging
 from typing import List, Dict, Any, Optional
-import report_assets.report_config as report_config
+from . import report_config
 from common.pylogger import get_python_logger
 
 # Initialize structured logger once - other modules should use logging.getLogger(__name__)
