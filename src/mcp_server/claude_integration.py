@@ -119,7 +119,7 @@ class PrometheusChatBot:
                     "properties": {
                         "query": {
                             "type": "string", 
-                            "description": "Valid PromQL query to execute (e.g., 'sum(kube_pod_status_phase{phase=\"Running\"})')"
+                            "description": "Valid PromQL query to execute (use metrics discovered through search_metrics or find_best_metric tools)"
                         },
                         "time_range": {
                             "type": "string",
@@ -152,7 +152,7 @@ class PrometheusChatBot:
                     "properties": {
                         "intent": {
                             "type": "string",
-                            "description": "What you want to query (e.g., 'CPU usage', 'failed pods', 'GPU temperature')"
+                            "description": "What you want to query about the infrastructure (describe in natural language)"
                         }
                     },
                     "required": ["intent"]
@@ -226,7 +226,7 @@ class PrometheusChatBot:
             messages = [{"role": "user", "content": user_question}]
             
             # Let Claude use tools iteratively (like Claude Desktop)
-            max_iterations = 20  # Allow Claude to use multiple tools for comprehensive analysis
+            max_iterations = 30  # Allow Claude to use multiple tools for comprehensive analysis
             iteration = 0
             
             while iteration < max_iterations:
@@ -238,7 +238,7 @@ class PrometheusChatBot:
                 
                 response = self.claude_client.messages.create(
                     model=self.model_name,  # Use the model selected by the user
-                    max_tokens=2000,  # Reduced to prevent token overflow
+                    max_tokens=4000,  # Increased for complete responses
                     system=system_prompt,
                     messages=messages,
                     tools=self.claude_tools
@@ -309,21 +309,44 @@ class PrometheusChatBot:
             
             # If we hit max iterations, return what we have so far
             logger.warning(f"Hit max iterations ({max_iterations}), returning partial response")
+            print(f"Hit max iterations ({max_iterations}), returning partial response")
+            
             if messages and len(messages) > 1:
                 # Try to get a final response from Claude without tools
                 try:
+                    final_system = """Based on the tool results you've gathered, provide a comprehensive answer to the user's question. 
+                    Include the key metrics, numbers, and insights you discovered. Format your response clearly with:
+                    1. Direct answer to the question
+                    2. Key metrics and values found
+                    3. Context and implications
+                    4. Technical details (PromQL queries used)"""
+                    
                     final_attempt = self.claude_client.messages.create(
                         model=self.model_name,
-                        max_tokens=1000,
-                        system="Provide a brief summary based on the conversation so far.",
-                        messages=messages[-4:],  # Just last 2 exchanges
+                        max_tokens=3000,
+                        system=final_system,
+                        messages=messages[-6:],  # Last 3 exchanges for better context
                         # No tools - force Claude to respond with what it has
                     )
-                    return final_attempt.content[0].text
-                except:
-                    pass
+                    
+                    if final_attempt.content and len(final_attempt.content) > 0:
+                        return final_attempt.content[0].text
+                except Exception as e:
+                    logger.error(f"Error in final response attempt: {e}")
             
-            return "Unable to complete analysis. Please try a simpler, more specific question."
+            # Extract any useful information from the last assistant message
+            for msg in reversed(messages):
+                if msg.get("role") == "assistant" and msg.get("content"):
+                    content = msg["content"]
+                    if isinstance(content, list) and len(content) > 0:
+                        text_content = ""
+                        for block in content:
+                            if hasattr(block, 'text'):
+                                text_content += block.text
+                        if text_content and len(text_content) > 50:
+                            return f"Partial analysis completed:\n\n{text_content}"
+            
+            return "Analysis in progress but hit iteration limit. Please try asking a more specific question or try again."
             
         except Exception as e:
             logger.error(f"Error in Claude Desktop chat: {e}")
@@ -331,25 +354,30 @@ class PrometheusChatBot:
     
     def _create_claude_desktop_system_prompt(self, namespace: Optional[str] = None) -> str:
         """Create system prompt that makes Claude behave exactly like Claude Desktop."""
-        return f"""You are an expert Kubernetes and Prometheus observability assistant with direct access to monitoring tools, specialized in providing rich, contextual analysis like Claude Desktop.
+        return f"""You are an expert Kubernetes and Prometheus observability assistant. 
+
+🎯 **PRIMARY RULE: ANSWER ONLY WHAT THE USER ASKS. DO NOT EXPLORE BEYOND THEIR SPECIFIC QUESTION.**
+
+You have direct access to monitoring tools and should provide focused, targeted responses.
 
 **Your Environment:**
 - Cluster: OpenShift with AI/ML workloads, GPUs, and comprehensive monitoring
 - Scope: {namespace if namespace else 'Cluster-wide analysis'}
 - Tools: Direct access to Prometheus/Thanos metrics via MCP tools
 
-**Available Tools - Use as needed:**
-- find_best_metric_with_metadata_v2: ULTRA-SMART tool that filters metrics by keywords then uses metadata for perfect selection (RECOMMENDED FIRST STEP)
-- search_metrics: Find relevant metrics by pattern  
-- execute_promql: Run PromQL queries for actual data
-- get_metric_metadata: Get detailed metric information
-- get_label_values: Explore available label values
+**Available Tools - Use Efficiently:**
+- find_best_metric_with_metadata_v2: INTELLIGENT metric discovery - analyzes 3500+ metrics and finds the best one for any question (RECOMMENDED FIRST)
+- search_metrics: Pattern-based metric search - use for broad exploration
+- execute_promql: Execute PromQL queries for actual data
+- get_metric_metadata: Get detailed information about specific metrics
+- get_label_values: Get available label values (requires both metric_name and label_name)
+- suggest_queries: Get PromQL suggestions based on user intent
 
 **🧠 Your Claude Desktop Intelligence Style:**
 
 1. **Rich Contextual Analysis**: Don't just report numbers - provide context, thresholds, and implications
-   - GPU temp 52°C → "Well below 70°C throttling threshold, running safely"
-   - 7 pods running → "All pods healthy, no failed/pending pods detected"
+   - For temperature metrics → compare against known safe operating ranges
+   - For count metrics → provide health context and status interpretation
 
 2. **Intelligent Grouping & Categorization**: 
    - Group related pods: "🤖 AI/ML Stack (2 pods): llama-3-2-3b-predictor, llamastack"
@@ -362,19 +390,35 @@ class PrometheusChatBot:
 
 4. **Always Show PromQL Queries**:
    - Include the PromQL query used in a technical details section
-   - Format: "**PromQL Used:** `sum(kube_pod_status_phase{{phase='Running'}})`"
+   - Format: "**PromQL Used:** `[the actual query you executed]`"
 
 5. **Smart Follow-up Context**:
    - Cross-reference related metrics when helpful
    - Provide trend context: "stable over time", "increasing usage"
    - Add operational context: "typical for conversational AI workloads"
 
-**Your Workflow:**
-1. 🔍 **Explore**: Use find_best_metric_with_metadata_v2 to find the perfect metric
-2. 📊 **Query**: Execute the suggested PromQL with execute_promql  
-3. 🧠 **Analyze**: Provide rich contextual analysis with thresholds, health status
-4. 🔗 **Enhance**: Use additional tools for follow-up insights if beneficial
-5. 📋 **Present**: Structure response with summary → details → technical info
+**CRITICAL: ANSWER ONLY WHAT THE USER ASKS - DON'T EXPLORE EVERYTHING**
+
+**Your Workflow (FOCUSED & DIRECT):**
+1. 🎯 **STOP AND THINK**: What exactly is the user asking for?
+2. 🔍 **FIND ONCE**: Use find_best_metric_with_metadata_v2 OR search_metrics to find the specific metric
+3. 📊 **QUERY ONCE**: Execute the PromQL query for that specific metric
+4. 📋 **ANSWER**: Provide the specific answer to their question - DONE!
+
+**STRICT RULES - FOLLOW FOR ANY QUESTION:**
+
+For ANY user question:
+1. Extract key search terms from their question
+2. Call search_metrics with those terms to find relevant metrics  
+3. Call execute_promql with the best metric found
+4. Report the specific answer to their question - DONE!
+
+**CORE PRINCIPLES:**
+- **MAXIMUM 3 TOOL CALLS** per question
+- **STOP SEARCHING** once you find a relevant metric  
+- **ANSWER ONLY** what they asked for
+- **NO EXPLORATION** beyond their specific question
+- **BE DIRECT** - don't analyze everything about a topic
 
 **Response Format (Like Claude Desktop):**
 ```
