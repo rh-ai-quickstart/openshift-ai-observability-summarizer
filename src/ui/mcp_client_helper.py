@@ -1069,3 +1069,62 @@ def parse_vllm_metrics_text(response_text: str) -> Dict[str, str]:
     except Exception as e:
         logger.error(f"Error parsing vLLM metrics text: {e}")
         return {}
+
+
+def chat_vllm_mcp(
+    model_name: str,
+    prompt_summary: str,
+    question: str,
+    summarize_model_id: str,
+    api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Chat about vLLM metrics via MCP chat_vllm tool."""
+    try:
+        if not mcp_client.check_server_health():
+            return {
+                "error": "MCP server is not available",
+                "error_type": "mcp_structured"
+            }
+
+        params = {
+            "model_name": model_name,
+            "prompt_summary": prompt_summary,
+            "question": question,
+            "summarize_model_id": summarize_model_id,
+        }
+        if api_key:
+            params["api_key"] = api_key
+
+        result = mcp_client.call_tool_sync("chat_vllm", params)
+
+        # Check for structured errors
+        err = parse_mcp_error(result)
+        if err:
+            return {
+                "error": err.get("message", "MCP tool error"),
+                "error_type": "mcp_structured",
+                "error_details": err,
+            }
+
+        response_text = extract_text_from_mcp_result(result)
+        if response_text:
+            # Additional check: if response_text looks like a JSON string, try to parse it
+            if response_text.startswith('[{') and response_text.endswith('}]'):
+                try:
+                    parsed = json.loads(response_text)
+                    if isinstance(parsed, list) and len(parsed) > 0:
+                        if isinstance(parsed[0], dict) and "text" in parsed[0]:
+                            response_text = parsed[0]["text"]
+                except json.JSONDecodeError:
+                    pass  # Keep original response_text
+            return {"response": response_text}
+        
+        logger.warning("No response from MCP chat_vllm tool")
+        return {"error": "No response from MCP chat_vllm tool", "error_type": "mcp_structured"}
+
+    except Exception as e:
+        logger.error(f"Error chatting with vLLM via MCP: {e}")
+        return {
+            "error": str(e),
+            "error_type": "mcp_structured",
+        }

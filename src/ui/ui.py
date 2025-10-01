@@ -30,6 +30,7 @@ from mcp_client_helper import (
     get_multi_models_mcp,
     get_gpu_info_mcp,
     get_deployment_info_mcp,
+    chat_vllm_mcp,
 )
 # Add current directory to Python path for consistent imports
 import sys
@@ -1111,21 +1112,21 @@ if page == "vLLM Metric Summarizer":
             if st.button("Ask"):
                 with st.spinner("Assistant is thinking..."):
                     try:
-                        reply = requests.post(
-                            f"{API_URL}/chat",
-                            json={
-                                "model_name": st.session_state["model_name"],
-                                "summarize_model_id": multi_model_name,
-                                "prompt_summary": st.session_state["prompt"],
-                                "question": question,
-                                "api_key": api_key,
-                            },
+                        # Use MCP tool instead of REST API
+                        result = chat_vllm_mcp(
+                            model_name=st.session_state["model_name"],
+                            prompt_summary=st.session_state["prompt"],
+                            question=question,
+                            summarize_model_id=multi_model_name,
+                            api_key=api_key,
                         )
-                        reply.raise_for_status()
-                        st.markdown("**Assistant's Response:**")
-                        st.markdown(reply.json()["response"])
-                    except requests.exceptions.HTTPError as http_err:
-                        handle_http_error(http_err.response, "Chat failed")
+                        
+                        # Handle errors
+                        if "error" in result:
+                            st.error(f"❌ Chat failed: {result['error']}")
+                        else:
+                            st.markdown("**Assistant's Response:**")
+                            st.markdown(result.get("response", "No response received"))
                     except Exception as e:
                         st.error(f"❌ Chat failed: {e}")
 

@@ -532,3 +532,76 @@ def get_deployment_info(namespace: str, model: str) -> List[Dict[str, Any]]:
             recovery_suggestion="Verify Prometheus/Thanos connectivity and metric availability."
         )
         return error.to_mcp_response()
+
+
+def chat_vllm(
+    model_name: str,
+    prompt_summary: str,
+    question: str,
+    summarize_model_id: str,
+    api_key: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Chat about vLLM metrics - ask follow-up questions about analyzed data.
+    
+    Args:
+        model_name: The vLLM model name (format: "namespace | model" or just "model")
+        prompt_summary: The metrics summary/context from previous analysis
+        question: The user's follow-up question
+        summarize_model_id: The LLM model to use for generating response
+        api_key: Optional API key for external LLM models
+    
+    Returns:
+        Chat response with answer to the question
+    
+    Example:
+        >>> chat_vllm(
+        ...     model_name="dev | llama-3.2-3b-instruct",
+        ...     prompt_summary="GPU usage is at 85%...",
+        ...     question="What is the average latency?",
+        ...     summarize_model_id="meta-llama/Llama-3.2-3B-Instruct"
+        ... )
+    """
+    try:
+        # Validate required parameters
+        validate_required_params(
+            model_name=model_name,
+            prompt_summary=prompt_summary,
+            question=question,
+            summarize_model_id=summarize_model_id
+        )
+    except ValidationError as e:
+        return e.to_mcp_response()
+    
+    try:
+        # Import here to avoid circular dependencies
+        from core.llm_client import build_chat_prompt, _clean_llm_summary_string
+        
+        # Build the chat prompt
+        prompt = build_chat_prompt(
+            user_question=question,
+            metrics_summary=prompt_summary
+        )
+        
+        # Get LLM response
+        response = summarize_with_llm(
+            prompt,
+            summarize_model_id,
+            ResponseType.GENERAL_CHAT,
+            api_key,
+            max_tokens=1500
+        )
+        
+        # Clean the response
+        cleaned_response = _clean_llm_summary_string(response)
+        
+        return _resp(cleaned_response)
+        
+    except Exception as e:
+        logger.exception(f"Error in chat_vllm: {e}")
+        error = MCPException(
+            message=f"Failed to generate chat response: {str(e)}",
+            error_code=MCPErrorCode.LLM_SERVICE_ERROR,
+            recovery_suggestion="Please check your API key or try again later."
+        )
+        return error.to_mcp_response()
