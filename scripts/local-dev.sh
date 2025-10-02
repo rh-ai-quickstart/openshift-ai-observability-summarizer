@@ -32,7 +32,7 @@ usage() {
     echo "Options:"
     echo "  -n/-N NAMESPACE              Default namespace for pods (required)"
     echo "  -m/-M NAMESPACE              Llama Model namespace (optional, use if model is in different namespace)"
-    echo "  -c/-C CONFIG                 Model config source: 'local' or 'cluster' (default: local)"
+    echo "  -c/-C CONFIG                 Model config source: 'local' or 'cluster' (default: cluster)"
     echo ""
     echo "Examples:"
     echo "  $0 -n default-ns                       # All pods/services in same namespace, use local config"
