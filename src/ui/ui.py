@@ -30,6 +30,7 @@ from mcp_client_helper import (
     get_multi_models_mcp,
     get_gpu_info_mcp,
     get_deployment_info_mcp,
+    chat_vllm_mcp,
     chat_tempo_mcp,
 )
 # Add current directory to Python path for consistent imports
@@ -1130,21 +1131,21 @@ if page == "vLLM Metric Summarizer":
             if st.button("Ask"):
                 with st.spinner("Assistant is thinking..."):
                     try:
-                        reply = requests.post(
-                            f"{API_URL}/chat",
-                            json={
-                                "model_name": st.session_state["model_name"],
-                                "summarize_model_id": multi_model_name,
-                                "prompt_summary": st.session_state["prompt"],
-                                "question": question,
-                                "api_key": api_key,
-                            },
+                        # Use MCP tool instead of REST API
+                        result = chat_vllm_mcp(
+                            model_name=st.session_state["model_name"],
+                            prompt_summary=st.session_state["prompt"],
+                            question=question,
+                            summarize_model_id=multi_model_name,
+                            api_key=api_key,
                         )
-                        reply.raise_for_status()
-                        st.markdown("**Assistant's Response:**")
-                        st.markdown(reply.json()["response"])
-                    except requests.exceptions.HTTPError as http_err:
-                        handle_http_error(http_err.response, "Chat failed")
+
+                        # Handle errors
+                        if "error" in result:
+                            st.error(f"❌ Chat failed: {result['error']}")
+                        else:
+                            st.markdown("**Assistant's Response:**")
+                            st.markdown(result.get("response", "No response received"))
                     except Exception as e:
                         st.error(f"❌ Chat failed: {e}")
 
@@ -1377,26 +1378,26 @@ elif page == "Chat with Prometheus":
             
             if st.button("📊 Show CPU metrics", key="cpu_question", use_container_width=True):
                 st.session_state.suggested_question = "Show me CPU utilization trends for the last hour"
-            
+
             if st.button("🔍 Show me traces with errors", key="trace_errors_question", use_container_width=True):
                 st.session_state.suggested_question = "Show me traces with errors in the last hour"
-            
+
             if st.button("⚡ Find slow traces", key="trace_slow_question", use_container_width=True):
                 st.session_state.suggested_question = "Find slow traces in my services"
-        
+
         with col2:
             if st.button("💾 Check memory usage", key="memory_question", use_container_width=True):
                 st.session_state.suggested_question = "What's the memory usage across all pods?"
             
             if st.button("🚨 Any alerts firing?", key="alerts_question", use_container_width=True):
                 st.session_state.suggested_question = "What alerts were firing in my namespace yesterday?"
-            
+
             if st.button("📊 What services are active?", key="trace_services_question", use_container_width=True):
                 st.session_state.suggested_question = "What services are most active right now?"
-            
+
             if st.button("🔗 Analyze request flows", key="trace_flows_question", use_container_width=True):
                 st.session_state.suggested_question = "Analyze the request flows for performance issues"
-        
+
         # Handle suggested question clicks
         if "suggested_question" in st.session_state:
             question = st.session_state.suggested_question
@@ -1437,11 +1438,11 @@ elif page == "Chat with Prometheus":
                 is_trace_question = detect_trace_question(user_question)
                 trace_analysis = None
                 skip_claude = False  # Flag to skip Claude analysis for pure trace questions
-                
+
                 # Log trace detection result
                 logger.debug(f"Question: {user_question}")
                 logger.debug(f"Is trace question: {is_trace_question}")
-                
+
                 if is_trace_question:
                     message_placeholder.markdown("🔍 **Detected trace question - analyzing traces...**")
                     try:
@@ -1471,7 +1472,7 @@ elif page == "Chat with Prometheus":
                             else:
                                 trace_analysis = None
                             message_placeholder.markdown("✅ **Trace analysis complete**")
-                            
+
                             # For pure trace questions, show only trace analysis
                             if trace_analysis:
                                 message_placeholder.markdown(trace_analysis)
@@ -1482,7 +1483,7 @@ elif page == "Chat with Prometheus":
                             message_placeholder.markdown("⚠️ **Trace analysis failed, continuing with metrics only**")
                     except Exception as e:
                         message_placeholder.markdown(f"⚠️ **Trace analysis error: {str(e)}, continuing with metrics only**")
-                
+
                 # Get response from Claude with real-time progress (PromQL queries always included)
                 if not skip_claude:
                     response = claude_chatbot.chat(
@@ -1498,11 +1499,11 @@ elif page == "Chat with Prometheus":
                 if response:
                     # Format the response for better readability
                     formatted_response = response.replace("\\n", "\n")
-                    
+
                     # If we have trace analysis, append it to the response
                     if trace_analysis:
                         formatted_response += "\n\n---\n\n## 🔍 **Trace Analysis**\n\n" + trace_analysis
-                    
+
                     message_placeholder.markdown(formatted_response)
                     
                     # Add Claude's response to history (including trace analysis if available)

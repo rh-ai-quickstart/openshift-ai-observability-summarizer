@@ -336,3 +336,154 @@ def test_get_deployment_info_validation_error():
         text = "\n".join(_texts(out))
         assert "❌ **Error (INVALID_INPUT)**" in text
         assert "missing" in text
+
+
+# --- Test MCP tool: chat_vllm ---
+
+@patch("core.llm_client.build_chat_prompt", return_value="CHAT_PROMPT")
+@patch("src.mcp_server.tools.observability_vllm_tools.summarize_with_llm", return_value="CHAT_RESPONSE")
+@patch("core.llm_client._clean_llm_summary_string", return_value="CLEANED_RESPONSE")
+def test_chat_vllm_success(mock_clean, mock_summarize, mock_build_prompt):
+    """Test chat_vllm with successful response"""
+    out = tools.chat_vllm(
+        model_name="dev | llama-3.2-3b-instruct",
+        prompt_summary="GPU usage is at 85%, latency is 2.5s",
+        question="What is the average latency?",
+        summarize_model_id="meta-llama/Llama-3.2-3B-Instruct",
+        api_key="test-key"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "CLEANED_RESPONSE" in text
+    
+    # Verify that build_chat_prompt was called correctly
+    mock_build_prompt.assert_called_once_with(
+        user_question="What is the average latency?",
+        metrics_summary="GPU usage is at 85%, latency is 2.5s"
+    )
+    
+    # Verify summarize_with_llm was called
+    mock_summarize.assert_called_once()
+    assert mock_summarize.call_args[0][0] == "CHAT_PROMPT"
+    assert mock_summarize.call_args[0][1] == "meta-llama/Llama-3.2-3B-Instruct"
+
+
+@patch("core.llm_client.build_chat_prompt", return_value="CHAT_PROMPT")
+@patch("src.mcp_server.tools.observability_vllm_tools.summarize_with_llm", return_value="CHAT_RESPONSE")
+@patch("core.llm_client._clean_llm_summary_string", return_value="CLEANED_RESPONSE")
+def test_chat_vllm_without_api_key(mock_clean, mock_summarize, mock_build_prompt):
+    """Test chat_vllm without API key (for internal models)"""
+    out = tools.chat_vllm(
+        model_name="test-model",
+        prompt_summary="Test summary",
+        question="Test question?",
+        summarize_model_id="internal-model"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "CLEANED_RESPONSE" in text
+
+
+def test_chat_vllm_missing_model_name():
+    """Test chat_vllm with missing model_name - validation error"""
+    out = tools.chat_vllm(
+        model_name="",
+        prompt_summary="Test summary",
+        question="Test question?",
+        summarize_model_id="test-model"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "❌ **Error (INVALID_INPUT)**" in text
+    assert "model_name" in text.lower()
+
+
+def test_chat_vllm_missing_question():
+    """Test chat_vllm with missing question - validation error"""
+    out = tools.chat_vllm(
+        model_name="test-model",
+        prompt_summary="Test summary",
+        question="",
+        summarize_model_id="test-model"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "❌ **Error (INVALID_INPUT)**" in text
+    assert "question" in text.lower()
+
+
+def test_chat_vllm_missing_prompt_summary():
+    """Test chat_vllm with missing prompt_summary - validation error"""
+    out = tools.chat_vllm(
+        model_name="test-model",
+        prompt_summary="",
+        question="Test question?",
+        summarize_model_id="test-model"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "❌ **Error (INVALID_INPUT)**" in text
+    assert "prompt_summary" in text.lower()
+
+
+def test_chat_vllm_missing_summarize_model_id():
+    """Test chat_vllm with missing summarize_model_id - validation error"""
+    out = tools.chat_vllm(
+        model_name="test-model",
+        prompt_summary="Test summary",
+        question="Test question?",
+        summarize_model_id=""
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "❌ **Error (INVALID_INPUT)**" in text
+    assert "summarize_model_id" in text.lower()
+
+
+@patch("core.llm_client.build_chat_prompt", return_value="CHAT_PROMPT")
+@patch("src.mcp_server.tools.observability_vllm_tools.summarize_with_llm", side_effect=Exception("LLM service unavailable"))
+def test_chat_vllm_llm_service_error(mock_summarize, mock_build_prompt):
+    """Test chat_vllm when LLM service fails - returns structured MCPException"""
+    out = tools.chat_vllm(
+        model_name="test-model",
+        prompt_summary="Test summary",
+        question="Test question?",
+        summarize_model_id="test-model"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "❌ **Error (LLM_SERVICE_ERROR)**" in text
+    assert "Failed to generate chat response" in text
+    assert "LLM service unavailable" in text
+    assert "Please check your API key or try again later" in text
+
+
+@patch("core.llm_client.build_chat_prompt", side_effect=Exception("Prompt building failed"))
+def test_chat_vllm_prompt_building_error(mock_build_prompt):
+    """Test chat_vllm when prompt building fails"""
+    out = tools.chat_vllm(
+        model_name="test-model",
+        prompt_summary="Test summary",
+        question="Test question?",
+        summarize_model_id="test-model"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "❌ **Error (LLM_SERVICE_ERROR)**" in text
+    assert "Failed to generate chat response" in text
+
+
+@patch("core.llm_client.build_chat_prompt", return_value="CHAT_PROMPT")
+@patch("src.mcp_server.tools.observability_vllm_tools.summarize_with_llm", return_value="Response with markdown **bold** and *italic*")
+@patch("core.llm_client._clean_llm_summary_string", side_effect=lambda x: x.strip())
+def test_chat_vllm_with_markdown_response(mock_clean, mock_summarize, mock_build_prompt):
+    """Test chat_vllm with markdown-formatted response"""
+    out = tools.chat_vllm(
+        model_name="test-model",
+        prompt_summary="Test summary",
+        question="Explain the metrics",
+        summarize_model_id="test-model"
+    )
+    
+    text = "\n".join(_texts(out))
+    assert "Response with markdown **bold** and *italic*" in text
