@@ -344,7 +344,7 @@ start_local_services() {
     (cd src/ui && \
       MCP_SERVER_URL="http://localhost:$MCP_PORT" \
       PYTHON_LOG_LEVEL="$PYTHON_LOG_LEVEL" \
-      streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true) &
+      streamlit run ui.py --server.port $UI_PORT --server.address 0.0.0.0 --server.headless true > /tmp/summarizer-ui.log 2>&1) &
     UI_PID=$!
     
     # Wait for UI to start
