@@ -52,7 +52,7 @@ parse_args() {
 
     DEFAULT_NAMESPACE=""
     LLAMA_MODEL_NAMESPACE=""
-    MODEL_CONFIG_SOURCE="local"  # Default to local
+    MODEL_CONFIG_SOURCE="cluster"  # Default to cluster
 
     # Parse standard arguments using getopts
     while getopts "n:N:m:M:c:C:" opt; do
