@@ -905,7 +905,7 @@ def chat_tempo_mcp(question: str) -> Dict[str, Any]:
             "question": question
         })
         
-        print(f"DEBUG: chat_tempo_tool result: {result}")
+        logger.debug(f"chat_tempo_tool result: {result}")
         
         logger.debug("Tempo chat completed successfully")
         return {
