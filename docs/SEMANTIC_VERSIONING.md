@@ -38,9 +38,8 @@ The workflow determines version bumps in this **order of priority**:
    - **Container builds**: Occur for all branches
 2. **Version calculation**: Analyzes PR labels and PR title **first**, then falls back to commit messages to determine bump type
 3. **Version increment**: Increments from the current version in Makefile (or starts from `0.1.1` if no version exists)
-4. **Container images**: Builds and pushes images to `quay.io/ecosystem-appeng/{IMAGE_PREFIX}-{component}:{version}` (e.g., `quay.io/ecosystem-appeng/aiobs-metrics-api:1.2.3`)
+4. **Container images**: Builds and pushes images to `quay.io/ecosystem-appeng/{IMAGE_PREFIX}-{component}:{version}` (e.g., `quay.io/ecosystem-appeng/aiobs-metrics-ui:1.2.3`)
 5. **Auto-update**: Updates version files **only when pushing to non-main branches**:
-   - `deploy/helm/metrics-api/values.yaml`
    - `deploy/helm/ui/values.yaml` 
    - `deploy/helm/alerting/values.yaml`
    - `deploy/helm/mcp-server/values.yaml`
@@ -190,7 +189,6 @@ fi
 When a new version is calculated and pushing to a non-main branch, these files are automatically updated:
 
 1. **Helm Charts:**
-   - `deploy/helm/metrics-api/values.yaml`
    - `deploy/helm/ui/values.yaml`
    - `deploy/helm/alerting/values.yaml`
    - `deploy/helm/mcp-server/values.yaml`
@@ -204,9 +202,9 @@ When a new version is calculated and pushing to a non-main branch, these files a
 
 Images are built and pushed with semantic version tags:
 
-- `quay.io/ecosystem-appeng/aiobs-metrics-api:1.2.3`
 - `quay.io/ecosystem-appeng/aiobs-metrics-ui:1.2.3`
 - `quay.io/ecosystem-appeng/aiobs-metrics-alerting:1.2.3`
+- `quay.io/ecosystem-appeng/aiobs-mcp-server:1.2.3`
 
 ## Best Practices
 

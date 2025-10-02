@@ -13,10 +13,6 @@ env:
   LLM_API_TOKEN: ""
   PYTHON_LOG_LEVEL: "INFO"
   
-# Configurable metrics API service name - can be overridden
-metricsApi:
-  serviceName: "metrics-api-svc"
-
 # Configurable MCP server service name and port - can be overridden
 mcpServer:
   serviceName: "mcp-server-svc"  # Should match the MCP server release name + "-svc"

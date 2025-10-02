@@ -10,15 +10,14 @@ This directory contains Helm charts for deploying the AI Observability Summarize
 
 1. **Repository and version defined in Makefile**: 
    - `VERSION ?= <automatically-updated>` (updated on each successful PR merge to `dev`/`main`)
-   - `METRICS_API_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-api`
    - `METRICS_UI_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-ui`
    - `METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-alerting`
    - `MCP_SERVER_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-mcp-server`
 
-   **Note**: The observability charts (MinIO, Tempo, OTEL Collector) and RAG charts use external images and are not automatically updated by the CI/CD pipeline. Only the application charts (metrics-api, ui, mcp-server, alerting) are automatically versioned.
+   **Note**: The observability charts (MinIO, Tempo, OTEL Collector) and RAG charts use external images and are not automatically updated by the CI/CD pipeline. Only the application charts (ui, mcp-server, alerting) are automatically versioned.
 
 2. **Helm commands use `--set` for both repository and tag**:
-   - `--set image.repository=$(METRICS_API_IMAGE)`
+   - `--set image.repository=$(MCP_SERVER_IMAGE)`
    - `--set image.tag=$(VERSION)`
 
 3. **Values override defaults**: Helm automatically overrides values.yaml defaults
@@ -70,9 +69,6 @@ deploy/helm/
 │   ├── Chart.yaml
 │   └── values.yaml            # Default values (edit this)
 ├── mcp-server/
-│   ├── Chart.yaml
-│   └── values.yaml            # Default values (edit this)
-├── metrics-api/
 │   ├── Chart.yaml
 │   └── values.yaml            # Default values (edit this)
 ├── ui/

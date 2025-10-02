@@ -20,9 +20,6 @@ The **OpenShift AI Observability Summarizer** is an open source, CNCF-style proj
 ```
 summarizer/
 ├── src/                    # Main source code
-│   ├── api/               # FastAPI metrics API
-│   │   ├── metrics_api.py # Main API endpoints
-│   │   └── report_assets/ # Report generation assets
 │   ├── core/              # Core business logic
 │   │   ├── config.py      # Configuration management
 │   │   ├── llm_client.py  # LLM communication
@@ -43,7 +40,6 @@ summarizer/
 │       └── alert_receiver.py # Alert handling
 ├── deploy/helm/           # Helm charts for deployment
 │   ├── mcp-server/        # MCP server Helm chart
-│   ├── metrics-api/       # Metrics API Helm chart
 │   ├── ui/                # UI Helm chart
 │   └── rag/               # RAG components (llama-stack, llm-service)
 ├── tests/                 # Test suite
@@ -105,12 +101,11 @@ export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH
 ## 🏗️ Architecture & Data Flow
 
 ### Core Components
-1. **Metrics API** (`src/api/metrics_api.py`): FastAPI backend serving metrics analysis and chat endpoints
+1. **MCP Server** (`src/mcp_server/`): Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
 2. **UI** (`src/ui/ui.py`): Streamlit multi-dashboard frontend
 3. **Core Logic** (`src/core/`): Business logic modules for metrics processing and LLM integration
-4. **MCP Server** (`src/mcp_server/`): Model Context Protocol server for AI assistant integration
-5. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
-6. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
+4. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
+5. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
 
 ### Data Flow
 1. **Natural Language Question** → PromQL generation via LLM
@@ -166,7 +161,6 @@ open htmlcov/index.html
 make build
 
 # Build individual components
-make build-metrics-api    # FastAPI backend
 make build-ui            # Streamlit UI
 make build-alerting      # Alerting service
 make build-mcp-server    # MCP server
@@ -204,8 +198,8 @@ make install NAMESPACE=your-namespace \
   LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local
 
 # Deploy individual components
-make install-metric-mcp NAMESPACE=your-namespace    # Metrics API only
 make install-mcp-server NAMESPACE=your-namespace    # MCP server only
+make install-metric-ui NAMESPACE=your-namespace     # UI only
 ```
 
 ### Observability Stack Management
@@ -312,10 +306,10 @@ Common models include:
 3. Update UI components to display the metrics
 4. Add corresponding tests
 
-### Adding New LLM Endpoints
+### Adding New MCP Tools
 1. Define request/response models in `src/core/models.py`
 2. Implement business logic in appropriate `src/core/` module
-3. Add FastAPI endpoint in `src/api/metrics_api.py`
+3. Add MCP tool in `src/mcp_server/tools/`
 4. Add corresponding tests
 
 ### Error Handling
@@ -395,16 +389,16 @@ oc port-forward service/<model-service-name> 8080:8080 -n <MODEL_NAMESPACE> &
 ### Logs
 ```bash
 # View pod logs (replace with your actual namespace)
-oc logs -f deployment/metrics-api -n <DEFAULT_NAMESPACE>
 oc logs -f deployment/metric-ui -n <DEFAULT_NAMESPACE>
+oc logs -f deployment/mcp-server -n <DEFAULT_NAMESPACE>
 oc logs -f deployment/metric-alerting -n <DEFAULT_NAMESPACE>
 ```
 
 ### Metrics
 ```bash
-# Access Prometheus metrics
-oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
-# Then visit http://localhost:8000/metrics
+# Access MCP server health/metrics
+oc port-forward svc/mcp-server 8085:8085 -n <DEFAULT_NAMESPACE>
+# Then visit http://localhost:8085/health
 ```
 
 ## 🛠️ Useful Makefile Targets
@@ -416,7 +410,6 @@ oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
 
 ### Building
 - `make build` - Build all container images
-- `make build-metrics-api` - Build FastAPI backend
 - `make build-ui` - Build Streamlit UI
 - `make build-alerting` - Build alerting service
 - `make build-mcp-server` - Build MCP server
@@ -424,8 +417,8 @@ oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
 ### Deployment
 - `make install` - Deploy to OpenShift
 - `make install-with-alerts` - Deploy with alerting
-- `make install-metric-mcp` - Deploy metrics API only
 - `make install-mcp-server` - Deploy MCP server only
+- `make install-metric-ui` - Deploy UI only
 - `make status` - Check deployment status
 - `make uninstall` - Remove deployment
 
@@ -537,10 +530,9 @@ oc get events -n <DEFAULT_NAMESPACE> --sort-by='.lastTimestamp'
 ## 🎯 Quick Reference
 
 ### File Locations
-- **Main API**: `src/api/metrics_api.py`
+- **MCP Server**: `src/mcp_server/main.py`
 - **Core Logic**: `src/core/llm_summary_service.py`
 - **UI**: `src/ui/ui.py`
-- **MCP Server**: `src/mcp_server/main.py`
 - **Tests**: `tests/`
 - **Helm Charts**: `deploy/helm/`
 

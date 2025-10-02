@@ -24,13 +24,12 @@ The project uses 5 GitHub Actions workflows with the following execution order a
    - **Trigger:** PRs merged to `main` or `dev` branches, manual dispatch
    - **Purpose:** Builds and pushes container images with semantic versioning
    - **Actions:** 
-     - **Analyzes PR labels and title first**, then falls back to commit messages for version bumps
-     - Gets current version from Makefile (not git tags)
-     - Builds 4 container images (using `IMAGE_PREFIX`-component naming):
-       - aiobs-metrics-api
-       - aiobs-metrics-ui
-       - aiobs-metrics-alerting
-       - aiobs-mcp-server
+   - **Analyzes PR labels and title first**, then falls back to commit messages for version bumps
+   - Gets current version from Makefile (not git tags)
+   - Builds 3 container images (using `IMAGE_PREFIX`-component naming):
+     - aiobs-metrics-ui
+     - aiobs-metrics-alerting
+     - aiobs-mcp-server
      - Updates Helm charts and Makefile with new version (**non-main branches only**)
    - **Image naming:** Semantic versions (e.g., `0.1.2`, `1.0.0`)
    - **Version priority:** PR Labels → PR Title → Commit Messages
@@ -42,7 +41,7 @@ The project uses 5 GitHub Actions workflows with the following execution order a
    - **Purpose:** Deploys application and observability stack to OpenShift cluster
    - **Default namespace:** `dev`
    - **Components deployed:**
-     - Application components (metrics-api, ui, mcp-server, alerting)
+     - Application components (ui, mcp-server, alerting)
      - Observability stack (MinIO + TempoStack + OTEL + tracing)
    - **Dependencies:** ✅ **Requires Build and Push workflow success**
 

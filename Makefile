@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting build-mcp-server push push-metrics-api push-ui push-alerting push-mcp-server install-observability-stack uninstall-observability-stack clean config test,$(MAKECMDGOALS)))
+ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server install-observability-stack uninstall-observability-stack clean config test,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -18,7 +18,6 @@ VERSION ?= 0.13.1
 PLATFORM ?= linux/amd64
 
 # Container image names
-METRICS_API_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-api
 METRICS_UI_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-ui
 METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-alerting
 MCP_SERVER_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-mcp-server
@@ -60,8 +59,6 @@ HF_TOKEN ?= $(shell \
 RAG_CHART := rag
 MINIO_CHART := minio-observability-storage
 MINIO_CHART_PATH := minio
-METRICS_API_RELEASE_NAME ?= metrics-api
-METRICS_API_CHART_PATH ?= metrics-api
 METRICS_UI_RELEASE_NAME ?= ui
 METRICS_UI_CHART_PATH ?= ui
 MCP_SERVER_RELEASE_NAME ?= mcp-server
@@ -149,12 +146,10 @@ help:
 	@echo ""
 	@echo "Build & Push:"
 	@echo "  build              - Build all container images"
-	@echo "  build-metrics-api  - Build FastAPI backend (metrics-api)"
 	@echo "  build-ui           - Build Streamlit UI (metric-ui)"
 	@echo "  build-alerting     - Build Alerting Service (metric-alerting)"
 	@echo "  build-mcp-server   - Build MCP Server (mcp-server)"
 	@echo "  push               - Push all container images to registry"
-	@echo "  push-metrics-api   - Push metrics-api image"
 	@echo "  push-ui            - Push metric-ui image"
 	@echo "  push-alerting      - Push metric-alerting image"
 	@echo "  push-mcp-server    - Push mcp-server image"
@@ -164,7 +159,6 @@ help:
 	@echo "  install-with-alerts - Deploy with alerting enabled"
 	@echo "  install-local      - Set up local development environment"
 	@echo "  install-rag        - Install RAG backend services only"
-	@echo "  install-metric-mcp - Install metrics API only"
 	@echo "  install-metric-ui  - Install UI only"
 	@echo "  install-mcp-server - Install MCP server only"
 	@echo "  uninstall          - Uninstall from OpenShift"
@@ -220,17 +214,8 @@ help:
 	@echo ""
 
 .PHONY: build
-build: build-metrics-api build-ui build-alerting build-mcp-server
+build: build-ui build-alerting build-mcp-server
 	@echo "✅ All container images built successfully"
-
-.PHONY: build-metrics-api
-build-metrics-api:
-	@echo "🔨 Building FastAPI Backend (metrics-api)..."
-	@cd src && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
-		-f api/Dockerfile \
-		-t $(METRICS_API_IMAGE):$(VERSION) \
-		.
-	@echo "✅ metrics-api image built: $(METRICS_API_IMAGE):$(VERSION)"
 
 .PHONY: build-ui
 build-ui:
@@ -260,16 +245,8 @@ build-mcp-server:
 	@echo "✅ mcp-server image built: $(MCP_SERVER_IMAGE):$(VERSION)"
 
 .PHONY: push
-push: push-metrics-api push-ui push-alerting push-mcp-server
+push: push-ui push-alerting push-mcp-server
 	@echo "✅ All container images pushed successfully"
-
-
-
-.PHONY: push-metrics-api
-push-metrics-api:
-	@echo "📤 Pushing metrics-api image..."
-	@$(BUILD_TOOL) push $(METRICS_API_IMAGE):$(VERSION)
-	@echo "✅ metrics-api image pushed"
 
 .PHONY: push-ui
 push-ui:
@@ -313,37 +290,6 @@ depend:
 	@echo "Updating Helm dependencies (for $(MINIO_CHART))..."
 	@cd deploy/helm && helm dependency update $(MINIO_CHART_PATH) || exit 1
 
-
-.PHONY: install-metric-mcp
-install-metric-mcp: namespace
-	@echo "Installing MCP by generating dynamic model configuration for $(LLM)"
-	@$(MAKE) generate-model-config LLM=$(LLM) > /dev/null 2>&1
-
-	@echo "Checking ClusterRole grafana-prometheus-reader..."
-	@(echo "modelConfig:"; cat $(GEN_MODEL_CONFIG_PREFIX)-final_config.json | sed 's/^/  /') > $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
-	if oc get clusterrole grafana-prometheus-reader > /dev/null 2>&1; then \
-		echo "ClusterRole exists. Deploying without creating Grafana role..."; \
-		cd deploy/helm && helm upgrade --install $(METRICS_API_RELEASE_NAME) $(METRICS_API_CHART_PATH) -n $(NAMESPACE) \
-			--set rbac.createGrafanaRole=false \
-			--set image.repository=$(METRICS_API_IMAGE) \
-			--set image.tag=$(VERSION) \
-			--set-json listModels.modelId.enabledModelIds='$(LLM_JSON)' \
-			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
-	else \
-		echo "ClusterRole does not exist. Deploying and creating Grafana role..."; \
-		cd deploy/helm && helm upgrade --install $(METRICS_API_RELEASE_NAME) $(METRICS_API_CHART_PATH) -n $(NAMESPACE) \
-			--set rbac.createGrafanaRole=true \
-			--set image.repository=$(METRICS_API_IMAGE) \
-			--set image.tag=$(VERSION) \
-			--set-json listModels.modelId.enabledModelIds='$(LLM_JSON)' \
-			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
-	fi
-
-	@echo "Files used for Metric MCP deployment:"
-	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml"
-	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-final_config.json"
-	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt"
-	
 
 .PHONY: install-metric-ui
 install-metric-ui: namespace
@@ -405,7 +351,7 @@ install-rag: namespace
 
 
 .PHONY: install
-install: namespace depend validate-llm install-observability-stack install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs
+install: namespace depend validate-llm install-observability-stack install-rag install-metric-ui install-mcp-server delete-jobs
 	@if [ "$(ALERTS)" = "TRUE" ]; then \
 		echo "ALERTS flag is set to TRUE. Installing alerting..."; \
 		$(MAKE) install-alerts NAMESPACE=$(NAMESPACE); \
@@ -420,7 +366,7 @@ install-with-alerts:
 		exit 1; \
 	fi
 	@echo "🚀 Deploying to OpenShift namespace: $(NAMESPACE) with alerting"
-	@$(MAKE) namespace depend validate-llm install-observability-stack install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs install-alerts NAMESPACE=$(NAMESPACE)
+	@$(MAKE) namespace depend validate-llm install-observability-stack install-rag install-metric-ui install-mcp-server delete-jobs install-alerts NAMESPACE=$(NAMESPACE)
 	@echo "✅ Deployment with alerting completed"
 
 # Delete all jobs in the namespace
@@ -477,8 +423,6 @@ uninstall:
 
 	@echo "Uninstalling $(METRICS_UI_RELEASE_NAME) helm chart"
 	- @helm -n $(NAMESPACE) uninstall $(METRICS_UI_RELEASE_NAME) --ignore-not-found
-	@echo "Uninstalling $(METRICS_API_RELEASE_NAME) helm chart"
-	- @helm -n $(NAMESPACE) uninstall $(METRICS_API_RELEASE_NAME) --ignore-not-found
 	@echo "Uninstalling $(MCP_SERVER_RELEASE_NAME) helm chart (if installed)"
 	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME) --ignore-not-found
 
@@ -551,10 +495,6 @@ install-local:
 clean:
 	@echo "🧹 Cleaning up local images..."
 	@ERRORS=0; \
-	if ! $(BUILD_TOOL) rmi $(METRICS_API_IMAGE):$(VERSION) 2>/dev/null; then \
-		echo "⚠️  Could not remove $(METRICS_API_IMAGE):$(VERSION) (may not exist)"; \
-		ERRORS=$$((ERRORS + 1)); \
-	fi; \
 	if ! $(BUILD_TOOL) rmi $(METRICS_UI_IMAGE):$(VERSION) 2>/dev/null; then \
 		echo "⚠️  Could not remove $(METRICS_UI_IMAGE):$(VERSION) (may not exist)"; \
 		ERRORS=$$((ERRORS + 1)); \
@@ -607,7 +547,6 @@ config:
 	@echo "  Version: $(VERSION)"
 	@echo "  Platform: $(PLATFORM)"
 	@echo "  Build Tool: $(BUILD_TOOL)"
-	@echo "  Metrics API Image: $(METRICS_API_IMAGE):$(VERSION)"
 	@echo "  Metric UI Image: $(METRICS_UI_IMAGE):$(VERSION)"
 	@echo "  Metric Alerting Image: $(METRICS_ALERTING_IMAGE):$(VERSION)"
 	@echo "  MCP Server Image: $(MCP_SERVER_IMAGE):$(VERSION)"

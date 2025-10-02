@@ -93,7 +93,6 @@ except ImportError:
                     return False
 
 # --- Config ---
-API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8085")
 PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
 

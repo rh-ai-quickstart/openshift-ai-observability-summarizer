@@ -126,8 +126,7 @@ Monitor GPU health across your entire OpenShift cluster:
 - **vLLM**: Model serving with /metrics endpoint
 - **DCGM**: GPU monitoring and telemetry
 - **Streamlit UI**: Multi-dashboard interface (vLLM, OpenShift, Chat)
-- **FastAPI Backend**: metrics-api for web UI and report generation
-- **MCP Server**: Model Context Protocol server for AI assistant integration
+- **MCP Server**: Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
 - **LLM Stack**: Llama models for AI-powered insights and summaries
 
 ### **Key Features**
@@ -270,9 +269,8 @@ The default configuration deploys:
 - **llm-service** - LLM inference
 - **llama-stack** - Backend API
 - **pgvector** - Vector database
-- **metrics-api** - Metrics collection & processing API
 - **metric-ui** - Multi-dashboard Streamlit interface
-- **mcp-server** - Model Context Protocol server for AI assistants
+- **mcp-server** - Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
 - **OpenTelemetry Collector** - Distributed tracing collection
 - **Tempo** - Trace storage and analysis
 - **MinIO** - Object storage for traces
@@ -369,7 +367,6 @@ make build
 make build VERSION=v1.0.0
 
 # Build individual components
-make build-metrics-api    # FastAPI Backend
 make build-ui            # Streamlit UI  
 make build-alerting      # Alerting Service
 make build-mcp-server    # MCP Server
@@ -385,9 +382,9 @@ make push
 make push VERSION=v1.0.0
 
 # Push individual components
-make push-metrics-api
 make push-ui
 make push-alerting
+make push-mcp-server
 ```
 
 #### **Complete Build and Push Workflow**
@@ -463,7 +460,7 @@ make clean
 
 ## Local Development via Port-Forwarding
 
-For local development of the metrics API/UI and MCP server, use the unified development environment script that handles port-forwarding to Llamastack, LLM service, and Thanos.
+For local development of the UI and MCP server, use the unified development environment script that handles port-forwarding to Llamastack, LLM service, and Thanos.
 
 **Pre-requisites**:
 1. You have a deployment on the cluster already.
@@ -510,7 +507,7 @@ PYTHON_LOG_LEVEL=WARN ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>    # Warning
 - ✅ **Port forwards Prometheus/Thanos** (localhost:9090)
 - ✅ **Port forwards LLM server** (localhost:8321)
 - ✅ **Port forwards Model service** (localhost:8080)
-- ✅ **Starts metrics API** (localhost:8000)
+- ✅ **Starts MCP server** (localhost:8085)
 - ✅ **Starts Streamlit UI** (localhost:8501)
 - ✅ **Configures environment** for MCP server development
 - ✅ **Sets configurable logging** (PYTHON_LOG_LEVEL=INFO by default, override with env var)
@@ -588,7 +585,7 @@ The project uses Helm charts for OpenShift deployment with centralized image man
 
 ### Logging
 
-All services use centralized structured logging. Control verbosity via the `PYTHON_LOG_LEVEL` environment variable (e.g., `INFO`, `DEBUG`). Helm values expose this for `metrics-api`, `ui`, and `mcp-server`.
+All services use centralized structured logging. Control verbosity via the `PYTHON_LOG_LEVEL` environment variable (e.g., `INFO`, `DEBUG`). Helm values expose this for `ui` and `mcp-server`.
 
 ---
 

@@ -16,7 +16,7 @@ This document provides a complete overview of the observability components, thei
 │  Application Namespace (e.g., test)                             │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
 │  │   Python Apps   │  │   Python Apps   │  │   Python Apps   │  │
-│  │  (metrics-api)  │  │      (ui)       │  │  (mcp-server)   │  │
+│  │      (ui)       │  │  (mcp-server)   │  │   (alerting)    │  │
 │  │                 │  │                 │  │                 │  │
 │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │  │
 │  │  │OTEL Init  │  │  │  │OTEL Init  │  │  │  │OTEL Init  │  │  │
@@ -141,7 +141,7 @@ Applications receive these OpenTelemetry environment variables:
 
 ```yaml
 - name: OTEL_SERVICE_NAME
-  value: <service-name>  # ui, metrics-api, mcp-server
+  value: <service-name>  # ui, mcp-server, alerting
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: http://otel-collector-collector.observability-hub.svc.cluster.local:4318
 - name: OTEL_TRACES_EXPORTER

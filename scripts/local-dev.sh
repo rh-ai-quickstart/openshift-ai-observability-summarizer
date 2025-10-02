@@ -12,13 +12,10 @@ NC='\033[0m' # No Color
 # Configuration
 PROMETHEUS_NAMESPACE="openshift-monitoring"
 OBSERVABILITY_NAMESPACE="observability-hub"
-METRIC_API_APP="metrics-api-app"
 THANOS_PORT=9090
 TEMPO_PORT=8082
 LLAMASTACK_PORT=8321
 LLAMA_MODEL_PORT=8080
-# Metrics API (FastAPI) port for local dev; can override via METRICS_API_PORT
-METRICS_API_PORT=${METRICS_API_PORT:-8000}
 UI_PORT=8501
 MCP_PORT=${MCP_PORT:-8085}
 
@@ -32,7 +29,7 @@ usage() {
     echo "Options:"
     echo "  -n/-N NAMESPACE              Default namespace for pods (required)"
     echo "  -m/-M NAMESPACE              Llama Model namespace (optional, use if model is in different namespace)"
-    echo "  -c/-C CONFIG                 Model config source: 'local' or 'cluster' (default: cluster)"
+    echo "  -c/-C CONFIG                 Model config source: 'local' or 'cluster' (default: local)"
     echo ""
     echo "Examples:"
     echo "  $0 -n default-ns                       # All pods/services in same namespace, use local config"
@@ -52,7 +49,7 @@ parse_args() {
 
     DEFAULT_NAMESPACE=""
     LLAMA_MODEL_NAMESPACE=""
-    MODEL_CONFIG_SOURCE="cluster"  # Default to cluster
+    MODEL_CONFIG_SOURCE="local"  # Default to local
 
     # Parse standard arguments using getopts
     while getopts "n:N:m:M:c:C:" opt; do
@@ -100,11 +97,9 @@ cleanup() {
     CLEANUP_DONE=true
 
     echo -e "\n${YELLOW}🧹 Cleaning up services and port-forwards...${NC}"
-    ensure_port_free "$METRICS_API_PORT"
     ensure_port_free "$MCP_PORT"
     ensure_port_free "$TEMPO_PORT"
     pkill -f "oc port-forward" || true
-    pkill -f "uvicorn.*metrics_api:app" || true
     pkill -f "mcp_server.main" || true
     pkill -f "streamlit run ui.py" || true
 
@@ -196,7 +191,7 @@ start_port_forwards() {
     else
         echo -e "${YELLOW}⚠️  Tempo gateway service not found - trace functionality will NOT be available${NC}"
     fi
-    
+
     sleep 3  # Give port-forwards time to establish
 }
 
@@ -220,7 +215,7 @@ ensure_port_free() {
     fi
 }
 
-# This function sets "MODEL_CONFIG" environment variable from cluster deployment or local file
+# This function sets "MODEL_CONFIG" environment variable from local file
 set_model_config() {
     echo -e "${BLUE}🔧 Setting up MODEL_CONFIG...${NC}"
     echo -e "${BLUE}   Using config source: $MODEL_CONFIG_SOURCE${NC}"
@@ -248,18 +243,20 @@ set_model_config() {
     else
         # Use cluster config
         echo -e "${BLUE}🔧 Using CLUSTER model config...${NC}"
-        METRIC_API_DEPLOYMENT=$(oc get deploy "$METRIC_API_APP" -n "$DEFAULT_NAMESPACE")
-        if [ -n "$METRIC_API_DEPLOYMENT" ]; then
-            echo -e "${YELLOW}✅ Found [$METRIC_API_APP] deployment:\n$METRIC_API_DEPLOYMENT${NC}"
-            export $(oc set env deployment/$METRIC_API_APP --list  -n "$DEFAULT_NAMESPACE" | grep MODEL_CONFIG)
+        local MCP_SERVER_APP="mcp-server-app"
+        MCP_SERVER_APP_DEPLOYMENT=$(oc get deploy $MCP_SERVER_APP -n "$DEFAULT_NAMESPACE" 2>/dev/null)
+        if [ -n "$MCP_SERVER_APP_DEPLOYMENT" ]; then
+            echo -e "${YELLOW}✅ Found [$MCP_SERVER_APP] deployment:\n$MCP_SERVER_APP_DEPLOYMENT${NC}"
+            export $(oc set env deployment/$MCP_SERVER_APP --list  -n "$DEFAULT_NAMESPACE" | grep MODEL_CONFIG)
             if [ -n "$MODEL_CONFIG" ]; then
               echo -e "${GREEN}✅ CLUSTER MODEL_CONFIG set successfully${NC}"
+              echo -e "${BLUE}   Available models: $(echo "$MODEL_CONFIG" | jq -r 'keys | join(", ")')${NC}"
             else
               echo -e "${RED}❌ Unable to set MODEL_CONFIG environment variable. It is required to run the UI locally.${NC}"
               exit 1
             fi
         else
-            echo -e "${RED}❌ $METRIC_API_APP deployment not found. It is required to set MODEL_CONFIG.${NC}"
+            echo -e "${RED}❌ $MCP_SERVER_APP deployment not found. It is required to set MODEL_CONFIG.${NC}"
             exit 1
         fi
     fi
@@ -279,7 +276,6 @@ start_local_services() {
     export TEMPO_TOKEN="$TOKEN"
     export LLAMA_STACK_URL="http://localhost:$LLAMASTACK_PORT/v1/openai/v1"
     export THANOS_TOKEN="$TOKEN"
-    export METRICS_API_URL="http://localhost:$METRICS_API_PORT"
     export MCP_URL="http://localhost:$MCP_PORT"
     export PROM_URL="$PROMETHEUS_URL"
     # Set log level (override with PYTHON_LOG_LEVEL=DEBUG for more verbose logging)
@@ -357,7 +353,7 @@ start_local_services() {
     echo -e "   📊 Metrics API: /tmp/summarizer-metrics-api.log"
     echo -e "   💡 To see live UI logs: tail -f /tmp/summarizer-ui.log"
     echo -e "   💡 To see all logs: tail -f /tmp/summarizer-*.log"
-    
+
     echo -e "${GREEN}✅ All services started successfully!${NC}"
 }
 
@@ -383,7 +379,6 @@ main() {
     echo -e "\n${GREEN}🎉 Setup complete! All services are running.${NC}"
     echo -e "\n${BLUE}📋 Services Available:${NC}"
     echo -e "   ${YELLOW}🎨 Streamlit UI: http://localhost:$UI_PORT${NC}"
-    echo -e "   ${YELLOW}🔧 Metrics API: $METRICS_API_URL/docs${NC}"
     echo -e "   ${YELLOW}🧩 MCP Server (health): $MCP_URL/health${NC}"
     echo -e "   ${YELLOW}🧩 MCP HTTP Endpoint: $MCP_URL/mcp${NC}"
     echo -e "   ${YELLOW}📊 Prometheus: $PROMETHEUS_URL${NC}"
