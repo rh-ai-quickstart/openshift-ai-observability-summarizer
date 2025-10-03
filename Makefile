@@ -302,13 +302,8 @@ install-metric-ui: namespace
 install-mcp-server: namespace
 	@echo "Deploying MCP Server"
 	@echo "Generating model configuration for MCP Server (LLM=$(LLM)) if provided..."
-	@$(if $(LLM),$(MAKE) generate-model-config LLM=$(LLM) > /dev/null 2>&1,echo "LLM not set; skipping model config generation")
-	@if [ -f $(GEN_MODEL_CONFIG_PREFIX)-final_config.json ]; then \
-		(echo "modelConfig:"; cat $(GEN_MODEL_CONFIG_PREFIX)-final_config.json | sed 's/^/  /') > $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
-		echo "Prepared modelConfig values file: $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml"; \
-	else \
-		echo "No generated model config found; proceeding without modelConfig override"; \
-	fi
+	@$(if $(LLM),$(MAKE) generate-model-config LLM=$(LLM),echo "LLM not set; skipping model config generation")
+	@echo "  → [$(GEN_MODEL_CONFIG_PREFIX).output] contains the model config generation output"
 	@echo "Checking ClusterRole grafana-prometheus-reader for MCP..."
 	@if oc get clusterrole grafana-prometheus-reader > /dev/null 2>&1; then \
 		echo "ClusterRole exists. Deploying without creating Grafana role..."; \
@@ -329,9 +324,6 @@ install-mcp-server: namespace
 			$(if $(LLAMA_STACK_URL),--set llm.url='$(LLAMA_STACK_URL)',) \
 			$(if $(wildcard $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml),-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml,); \
 	fi
-	@echo "Files used for MCP Server deployment (if present):"
-	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml"
-	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-final_config.json"
 
 .PHONY: install-rag
 install-rag: namespace
@@ -654,30 +646,7 @@ uninstall-alerts: revert-config
 # Generate model configuration JSON for the specified LLM
 .PHONY: generate-model-config
 generate-model-config: validate-llm
-	@echo "→ Generating model configuration for LLM: $(LLM)"
-
-	@echo "  → Running list-models to find available models..."; \
-	$(MAKE) list-models > $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt 2>&1; \
-	echo "  → list-models output saved to $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt"; \
-	MODEL_LINE=$$(grep "model: $(LLM) (" $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt); \
-	echo "  → Searching for model: $(LLM)"; \
-	if [ -z "$$MODEL_LINE" ]; then \
-		echo "\n❌ Error: Model '$(LLM)' not found in available models"; \
-		echo "\n→ Available models:"; \
-		cat $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt; \
-		exit 1; \
-	fi; \
-	echo "  → Found MODEL_LINE: $$MODEL_LINE"; \
-	echo "  → Trying to extract MODEL_NAME and MODEL_ID from MODEL_LINE"; \
-	MODEL_NAME=$$(echo "$$MODEL_LINE" | sed 's/model: \([^(]*\)(.*)/\1/' | tr -d '[:space:]'); \
-	MODEL_ID=$$(echo "$$MODEL_LINE" | sed 's/model: [^(]*(\([^)]*\))/\1/' | tr -d '[:space:]'); \
-	echo "  → Extracted MODEL_NAME: $$MODEL_NAME, MODEL_ID: $$MODEL_ID"; \
-	echo "→ Generating JSON configuration..."; \
-	sed "s|\$$MODEL_ID|$$MODEL_ID|g; s|\$$MODEL_NAME|$$MODEL_NAME|g" deploy/helm/default-model.json.template > $(GEN_MODEL_CONFIG_PREFIX)-new_model_config.json; \
-	echo "  → Merging with existing MODEL_CONFIG_JSON..."; \
-	echo "✅ Final merged configuration is saved in $(GEN_MODEL_CONFIG_PREFIX)-final_config.json"; \
-	jq -s '.[0] * .[1]' $(GEN_MODEL_CONFIG_PREFIX)-new_model_config.json deploy/helm/model-config.json > $(GEN_MODEL_CONFIG_PREFIX)-final_config.json; \
-	rm -f $(GEN_MODEL_CONFIG_PREFIX)-new_model_config.json
+	@bash -c 'source scripts/generate-model-config.sh && generate_model_config "$(LLM)" --helm-format' > $(GEN_MODEL_CONFIG_PREFIX).output 2>&1
 
 # Validate that LLM variable is set and non-empty
 .PHONY: validate-llm

@@ -494,16 +494,23 @@ uv sync --group dev
 # 2. Start development environment (includes all port forwarding)
 ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
-# 3. If model is in different namespace (optional)
+# 3. With specific LLM model (optional, default: llama-3.2-3b-instruct)
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -l llama-3.1-8b-instruct
+
+# 4. If model is in different namespace (optional)
 ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
 
-# 4. For different log levels (optional)
+# 5. Use cluster model config instead of local generation (optional)
+./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -c cluster
+
+# 6. For different log levels (optional)
 PYTHON_LOG_LEVEL=DEBUG ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>   # Debug logs
 PYTHON_LOG_LEVEL=WARN ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>    # Warning only
 ```
 
 ### What the script does:
 - ✅ **Activates Python virtual environment** (.venv)
+- ✅ **Generates MODEL_CONFIG** - Dynamically merges base models (OpenAI, Google, Anthropic) with specified LLM
 - ✅ **Port forwards Prometheus/Thanos** (localhost:9090)
 - ✅ **Port forwards LLM server** (localhost:8321)
 - ✅ **Port forwards Model service** (localhost:8080)
@@ -511,6 +518,40 @@ PYTHON_LOG_LEVEL=WARN ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>    # Warning
 - ✅ **Starts Streamlit UI** (localhost:8501)
 - ✅ **Configures environment** for MCP server development
 - ✅ **Sets configurable logging** (PYTHON_LOG_LEVEL=INFO by default, override with env var)
+
+**Model Configuration**:
+- By default, generates config for `llama-3.2-3b-instruct` + base external models
+- Use `-l <model>` to specify a different LLM model from your deployment
+- Use `-c cluster` to use existing cluster deployment config instead of generating new one
+
+### Model Configuration Generation Architecture
+
+The project uses `scripts/generate-model-config.sh` as the **single source of truth** for model configuration generation. This shared script is used by both:
+- **Makefile** (for OpenShift deployment): Calls with `--helm-format` flag to generate Helm values file
+- **local-dev.sh** (for local development): Calls without flag for JSON-only output
+
+**How it works**:
+1. Merges `deploy/helm/model-config.json` (base external models: OpenAI, Google, Anthropic)
+2. With LLM-specific config from `deploy/helm/default-model.json.template`
+3. Generates final merged configuration as JSON
+
+**Output files** (in `/tmp`):
+- `gen_model_config-final_config.json` - Merged JSON configuration
+- `gen_model_config-for_helm.yaml` - Helm values format (only with `--helm-format` flag)
+
+**Usage**:
+```bash
+# Direct usage (for debugging)
+source scripts/generate-model-config.sh
+generate_model_config "llama-3.1-8b-instruct"           # JSON only
+generate_model_config "llama-3.2-3b-instruct" --helm-format  # JSON + Helm YAML
+
+# Via Makefile (automatic)
+make install NAMESPACE=ns LLM=llama-3.1-8b-instruct
+
+# Via local-dev.sh (automatic)
+./scripts/local-dev.sh -n ns -l llama-3.1-8b-instruct
+```
 
 ### For MCP/AI Assistant Development
 After running `scripts/local-dev.sh`, you can:
