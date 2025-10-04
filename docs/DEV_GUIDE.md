@@ -479,11 +479,28 @@ make uninstall NAMESPACE=test-namespace
 ### Port Forwarding
 ```bash
 # Manual port-forwarding (if script fails)
-# Note: Replace <pod-name> with actual pod names from 'oc get pods'
-oc port-forward pod/<thanos-pod-name> 9090:9090 -n openshift-monitoring &
-oc port-forward pod/<llamastack-pod-name> 8321:8321 -n <DEFAULT_NAMESPACE> &
-oc port-forward service/<model-service-name> 8080:8080 -n <MODEL_NAMESPACE> &
+
+# Thanos querier (pod-based, use head -1 since multiple pods may exist)
+THANOS_POD=$(oc get pods -n openshift-monitoring -o name -l 'app.kubernetes.io/component=query-layer,app.kubernetes.io/instance=thanos-querier' | head -1)
+oc port-forward $THANOS_POD 9090:9090 -n openshift-monitoring &
+
+# LlamaStack (service-based)
+LLAMASTACK_SERVICE=$(oc get services -n <DEFAULT_NAMESPACE> -o name -l 'app.kubernetes.io/instance=rag, app.kubernetes.io/name=llamastack')
+oc port-forward $LLAMASTACK_SERVICE 8321:8321 -n <DEFAULT_NAMESPACE> &
+
+# Llama Model service (service-based)
+LLAMA_MODEL_SERVICE=$(oc get services -n <MODEL_NAMESPACE> -o name -l 'app=isvc.llama-3-2-3b-instruct-predictor')
+oc port-forward $LLAMA_MODEL_SERVICE 8080:8080 -n <MODEL_NAMESPACE> &
+
+# Tempo gateway (service-based)
+TEMPO_SERVICE=$(oc get services -n observability-hub -o name -l 'app.kubernetes.io/name=tempo,app.kubernetes.io/component=gateway')
+oc port-forward $TEMPO_SERVICE 8082:8080 -n observability-hub &
 ```
+
+**Note**:
+- Thanos uses pod-based forwarding with `head -1` because multiple thanos-querier pods may exist
+- Other services use service-based forwarding for better reliability
+- Replace `<DEFAULT_NAMESPACE>` and `<MODEL_NAMESPACE>` with your actual namespaces
 
 ### Logs
 ```bash
