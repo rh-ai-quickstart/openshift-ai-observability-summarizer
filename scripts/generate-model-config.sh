@@ -24,8 +24,8 @@ get_default_model() {
 }
 
 # This function generates MODEL_CONFIG by merging LLM-specific config with base config
-# Similar to Makefile's generate-model-config target
-# Usage: generate_model_config "meta-llama/llama-3.2-3b-instruct" [--helm-format]
+# Used by both Makefile's generate-model-config target and local-dev.sh
+# Usage: generate_model_config "llama-3.1-8b-instruct" [--helm-format]
 generate_model_config() {
   local DEFAULT_MODEL=$(get_default_model)
   local LLM="${1:-$DEFAULT_MODEL}"
