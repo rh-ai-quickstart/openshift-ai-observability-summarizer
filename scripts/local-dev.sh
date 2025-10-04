@@ -146,56 +146,44 @@ check_prerequisites() {
     echo -e "${GREEN}✅ Prerequisites check passed${NC}"
 }
 
+# Helper function to create port-forward command
+create_port_forward() {
+    local resource_name="$1"
+    local local_port="$2"
+    local remote_port="$3"
+    local namespace="$4"
+    local description="$5"
+    local emoji="$6"
+
+    # Check if resource name is found
+    if [ -z "$resource_name" ]; then
+        echo -e "${YELLOW}⚠️  $description service NOT found in $namespace namespace. Exiting...${NC}"
+        exit 1
+    fi
+    
+    # Create port-forward
+    oc port-forward "$resource_name" "$local_port:$remote_port" -n "$namespace" >/dev/null 2>&1 &
+    echo -e "${GREEN}✅ Found $description: $emoji (resource: $resource_name, namespace: $namespace) available at: http://localhost:$local_port${NC}"
+}
+
 # Function to find and start port forwards
 start_port_forwards() {
     echo -e "${BLUE}🔍 Finding pods and starting port-forwards...${NC}"
-    
-    # Find Thanos pod
-    THANOS_POD=$(oc get pods -n "$PROMETHEUS_NAMESPACE" -o name | grep thanos-querier | head -1 | cut -d'/' -f2 || echo "")
-    if [ -z "$THANOS_POD" ]; then
-        THANOS_POD=$(oc get pods -n "$PROMETHEUS_NAMESPACE" -o name | grep prometheus | head -1 | cut -d'/' -f2 || echo "")
-    fi
-    
-    if [ -n "$THANOS_POD" ]; then
-        echo -e "${GREEN}✅ Found Thanos pod: $THANOS_POD${NC}"
-        oc port-forward pod/"$THANOS_POD" "$THANOS_PORT:9090" -n "$PROMETHEUS_NAMESPACE" >/dev/null 2>&1 &
-        echo -e "${GREEN}   📊 Thanos available at: http://localhost:$THANOS_PORT${NC}"
-    else
-        echo -e "${RED}❌ No Thanos/Prometheus pod found${NC}"
-        exit 1
-    fi
+
+    THANOS_POD=$(oc get pods -n "$PROMETHEUS_NAMESPACE" -o name -l 'app.kubernetes.io/component=query-layer,app.kubernetes.io/instance=thanos-querier' | head -1)
+    create_port_forward "$THANOS_POD" "$THANOS_PORT" "9090" "$PROMETHEUS_NAMESPACE" "Thanos" "📊"
     
     # Find LlamaStack pod
-    LLAMASTACK_POD=$(oc get pods -n "$DEFAULT_NAMESPACE" -o name | grep -E "(llama-stack|llamastack)" | head -1 | cut -d'/' -f2 || echo "")
-    if [ -n "$LLAMASTACK_POD" ]; then
-        echo -e "${GREEN}✅ Found LlamaStack pod: $LLAMASTACK_POD${NC}"
-        oc port-forward pod/"$LLAMASTACK_POD" "$LLAMASTACK_PORT:8321" -n "$DEFAULT_NAMESPACE" >/dev/null 2>&1 &
-        echo -e "${GREEN}   🦙 LlamaStack available at: http://localhost:$LLAMASTACK_PORT${NC}"
-    else
-        echo -e "${RED}❌  LlamaStack pod not found. Exiting...${NC}"
-        exit 1
-    fi
+    LLAMASTACK_SERVICE=$(oc get services -n "$DEFAULT_NAMESPACE" -o name -l 'app.kubernetes.io/instance=rag, app.kubernetes.io/name=llamastack')
+    create_port_forward "$LLAMASTACK_SERVICE" "$LLAMASTACK_PORT" "8321" "$DEFAULT_NAMESPACE" "LlamaStack" "🦙"
     
     # Find Llama Model service
-    LLAMA_MODEL_SERVICE=$(oc get services -n "$LLAMA_MODEL_NAMESPACE" -o name | grep -E "(llama-3|predictor)" | grep -v stack | head -1 | cut -d'/' -f2 || echo "")
-    if [ -n "$LLAMA_MODEL_SERVICE" ]; then
-        echo -e "${GREEN}✅ Found Llama Model service: $LLAMA_MODEL_SERVICE in [$LLAMA_MODEL_NAMESPACE] namespace${NC}"
-        oc port-forward service/"$LLAMA_MODEL_SERVICE" "$LLAMA_MODEL_PORT:8080" -n "$LLAMA_MODEL_NAMESPACE" >/dev/null 2>&1 &
-        echo -e "${GREEN}   🤖 Llama Model available at: http://localhost:$LLAMA_MODEL_PORT${NC}"
-    else
-        echo -e "${RED}❌  Llama Model service not found in namespace: $LLAMA_MODEL_NAMESPACE. Exiting...${NC}"
-        exit 1
-    fi
+    LLAMA_MODEL_SERVICE=$(oc get services -n "$LLAMA_MODEL_NAMESPACE" -o name -l 'app=isvc.llama-3-2-3b-instruct-predictor')
+    create_port_forward "$LLAMA_MODEL_SERVICE" "$LLAMA_MODEL_PORT" "8080" "$LLAMA_MODEL_NAMESPACE" "Llama Model" "🤖"
     
     # Find Tempo gateway service
-    TEMPO_SERVICE=$(oc get services -n "$OBSERVABILITY_NAMESPACE" -o name -l 'app.kubernetes.io/name=tempo,app.kubernetes.io/component=gateway' | cut -d'/' -f2 || echo "")
-    if [ -n "$TEMPO_SERVICE" ]; then
-        echo -e "${GREEN}✅ Found Tempo gateway service: $TEMPO_SERVICE${NC}"
-        oc port-forward service/"$TEMPO_SERVICE" "$TEMPO_PORT:8080" -n "$OBSERVABILITY_NAMESPACE" >/dev/null 2>&1 &
-        echo -e "${GREEN}   🔍 Tempo available at: https://localhost:$TEMPO_PORT${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Tempo gateway service not found - trace functionality will NOT be available${NC}"
-    fi
+    TEMPO_SERVICE=$(oc get services -n "$OBSERVABILITY_NAMESPACE" -o name -l 'app.kubernetes.io/name=tempo,app.kubernetes.io/component=gateway')
+    create_port_forward "$TEMPO_SERVICE" "$TEMPO_PORT" "8080" "$OBSERVABILITY_NAMESPACE" "Tempo" "🔍"
 
     sleep 3  # Give port-forwards time to establish
 }
