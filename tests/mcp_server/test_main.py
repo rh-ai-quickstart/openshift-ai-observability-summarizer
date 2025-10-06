@@ -1,6 +1,11 @@
+import sys
+import os
 from unittest.mock import Mock, patch
 
 import pytest
+
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 import mcp_server.main as main_mod
 

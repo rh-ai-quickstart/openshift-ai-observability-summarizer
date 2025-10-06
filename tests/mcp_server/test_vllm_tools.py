@@ -1,4 +1,9 @@
+import sys
+import os
 from unittest.mock import patch
+
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 import src.mcp_server.tools.observability_vllm_tools as tools
 
