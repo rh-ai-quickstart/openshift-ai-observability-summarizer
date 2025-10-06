@@ -157,7 +157,7 @@ create_port_forward() {
 
     # Check if resource name is found
     if [ -z "$resource_name" ]; then
-        echo -e "${YELLOW}⚠️  $description service NOT found in $namespace namespace. Exiting...${NC}"
+        echo -e "${YELLOW}⚠️  $description resource NOT found in $namespace namespace. Exiting...${NC}"
         exit 1
     fi
     
@@ -178,7 +178,7 @@ start_port_forwards() {
     create_port_forward "$LLAMASTACK_SERVICE" "$LLAMASTACK_PORT" "8321" "$DEFAULT_NAMESPACE" "LlamaStack" "🦙"
     
     # Find Llama Model service
-    LLAMA_MODEL_SERVICE=$(oc get services -n "$LLAMA_MODEL_NAMESPACE" -o name -l 'app=isvc.llama-3-2-3b-instruct-predictor')
+    LLAMA_MODEL_SERVICE=$(oc get services -n "$LLAMA_MODEL_NAMESPACE" -o name -l "serving.kserve.io/inferenceservice=$LLM_MODEL, component=predictor")
     create_port_forward "$LLAMA_MODEL_SERVICE" "$LLAMA_MODEL_PORT" "8080" "$LLAMA_MODEL_NAMESPACE" "Llama Model" "🤖"
     
     # Find Tempo gateway service
