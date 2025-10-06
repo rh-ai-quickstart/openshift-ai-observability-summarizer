@@ -1,10 +1,15 @@
 """Tests for Tempo MCP tools."""
 
 import pytest
+import sys
+import os
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
 
-import src.mcp_server.tools.tempo_query_tool as tempo_tools
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+
+import src.mcp_server.tools.tempo as tempo_tools
 
 
 def _texts(result):
@@ -15,7 +20,7 @@ def _texts(result):
 class TestQueryTempoTool:
     """Test query_tempo_tool function."""
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_query_tempo_tool_success(self, mock_tempo_class):
         """Test successful trace query."""
         # Mock the TempoQueryTool instance
@@ -66,7 +71,7 @@ class TestQueryTempoTool:
         assert "ui" in text
         assert "1500" in text
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_query_tempo_tool_no_traces(self, mock_tempo_class):
         """Test query with no traces found."""
         mock_tempo = MagicMock()
@@ -96,7 +101,7 @@ class TestQueryTempoTool:
         text = result[0]["text"]
         assert "No traces found" in text or "0 traces" in text
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_query_tempo_tool_error(self, mock_tempo_class):
         """Test query with error response."""
         mock_tempo = MagicMock()
@@ -128,7 +133,7 @@ class TestQueryTempoTool:
 class TestGetTraceDetailsTool:
     """Test get_trace_details_tool function."""
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_get_trace_details_success(self, mock_tempo_class):
         """Test successful trace details retrieval."""
         mock_tempo = MagicMock()
@@ -166,7 +171,7 @@ class TestGetTraceDetailsTool:
         assert "GET /api/users" in text
         assert "ui" in text
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_get_trace_details_error(self, mock_tempo_class):
         """Test trace details with error response."""
         mock_tempo = MagicMock()
@@ -192,7 +197,7 @@ class TestGetTraceDetailsTool:
 class TestChatTempoTool:
     """Test chat_tempo_tool function."""
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_chat_tempo_tool_success(self, mock_tempo_class):
         """Test successful conversational trace analysis."""
         mock_tempo = MagicMock()
@@ -224,7 +229,7 @@ class TestChatTempoTool:
         assert "abc123" in text
         assert "ui" in text
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_chat_tempo_tool_no_traces(self, mock_tempo_class):
         """Test conversational analysis with no traces."""
         mock_tempo = MagicMock()
@@ -246,7 +251,7 @@ class TestChatTempoTool:
         text = result[0]["text"]
         assert "No traces found" in text or "0 traces" in text
 
-    @patch("src.mcp_server.tools.tempo_query_tool.TempoQueryTool")
+    @patch("src.mcp_server.tools.tempo.mcp_tools.TempoQueryTool")
     def test_chat_tempo_tool_error(self, mock_tempo_class):
         """Test conversational analysis with error."""
         mock_tempo = MagicMock()
@@ -274,7 +279,7 @@ class TestUtilityFunctions:
 
     def test_extract_time_range_from_question(self):
         """Test time range extraction from natural language questions."""
-        from src.mcp_server.tools.tempo_query_tool import extract_time_range_from_question
+        from src.mcp_server.tools.tempo import extract_time_range_from_question
         
         test_cases = [
             ("Show me traces from the last 24 hours", "last 24h"),
@@ -300,7 +305,7 @@ class TestTempoQueryToolClass:
             "TEMPO_URL": "https://tempo.example.com:8080",
             "TEMPO_TENANT_ID": "test-tenant"
         }):
-            from src.mcp_server.tools.tempo_query_tool import TempoQueryTool
+            from src.mcp_server.tools.tempo import TempoQueryTool
             tool = TempoQueryTool()
             
             assert tool.tempo_url == "https://tempo.example.com:8080"
@@ -310,7 +315,7 @@ class TestTempoQueryToolClass:
     @patch("httpx.AsyncClient")
     def test_tempo_query_tool_default_config(self, mock_client):
         """Test TempoQueryTool with default configuration."""
-        from src.mcp_server.tools.tempo_query_tool import TempoQueryTool
+        from src.mcp_server.tools.tempo import TempoQueryTool
         tool = TempoQueryTool()
         
         assert tool.tempo_url == "https://tempo-tempostack-gateway.observability-hub.svc.cluster.local:8080"
@@ -328,7 +333,7 @@ class TestTempoQueryToolClass:
         
         mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
         
-        from src.mcp_server.tools.tempo_query_tool import TempoQueryTool
+        from src.mcp_server.tools.tempo import TempoQueryTool
         tool = TempoQueryTool()
         
         import asyncio
@@ -345,7 +350,7 @@ class TestTempoQueryToolClass:
         
         mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
         
-        from src.mcp_server.tools.tempo_query_tool import TempoQueryTool
+        from src.mcp_server.tools.tempo import TempoQueryTool
         tool = TempoQueryTool()
         
         import asyncio

@@ -46,7 +46,7 @@ class ObservabilityMCPServer:
             find_best_metric_with_metadata_v2,  # Smart metric selection v2
             find_best_metric_with_metadata,   # Smart metric selection v1
         )
-        from .tools.tempo_query_tool import (
+        from .tools.tempo import (
             query_tempo_tool,
             get_trace_details_tool,
             chat_tempo_tool,
