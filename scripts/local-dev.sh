@@ -52,7 +52,7 @@ parse_args() {
     DEFAULT_NAMESPACE=""
     LLAMA_MODEL_NAMESPACE=""
     MODEL_CONFIG_SOURCE="local"  # Default to local
-    LLM_MODEL=""  # Optional LLM model for config generation
+    LLM_MODEL=$(get_default_model)  # Optional LLM model for config generation
 
     # Parse standard arguments using getopts
     while getopts "n:N:m:M:c:C:l:L:" opt; do
@@ -321,11 +321,11 @@ start_local_services() {
 
 # Main execution
 main() {
-    parse_args "$@"
-    check_prerequisites
-
     # Source the shared script once (for model config generation and default model)
     source scripts/generate-model-config.sh
+
+    parse_args "$@"
+    check_prerequisites
 
     # Set cleanup trap only after successful prerequisite checks
     trap cleanup EXIT INT TERM
@@ -336,13 +336,7 @@ main() {
     echo -e "${BLUE}  DEFAULT_NAMESPACE: $DEFAULT_NAMESPACE${NC}"
     echo -e "${BLUE}  LLAMA_MODEL_NAMESPACE: $LLAMA_MODEL_NAMESPACE${NC}"
     echo -e "${BLUE}  MODEL_CONFIG_SOURCE: $MODEL_CONFIG_SOURCE${NC}"
-    if [ "$MODEL_CONFIG_SOURCE" = "local" ]; then
-        if [ -n "$LLM_MODEL" ]; then
-            echo -e "${BLUE}  LLM_MODEL: $LLM_MODEL${NC}"
-        else
-            echo -e "${BLUE}  LLM_MODEL: $(get_default_model) (default)${NC}"
-        fi
-    fi
+    echo -e "${BLUE}  LLM_MODEL: $LLM_MODEL${NC}"
     echo -e "${BLUE}--------------------------------${NC}\n"
 
     start_port_forwards

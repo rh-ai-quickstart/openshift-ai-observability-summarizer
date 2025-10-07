@@ -301,8 +301,8 @@ install-metric-ui: namespace
 .PHONY: install-mcp-server
 install-mcp-server: namespace
 	@echo "Deploying MCP Server"
-	@echo "Generating model configuration for MCP Server (LLM=$(LLM)) if provided..."
-	@$(if $(LLM),$(MAKE) generate-model-config LLM=$(LLM),echo "LLM not set; skipping model config generation")
+	@echo "Generating model configuration for MCP Server (LLM=$(LLM))"
+	@$(MAKE) generate-model-config LLM=$(LLM)
 	@echo "  → [$(GEN_MODEL_CONFIG_PREFIX).output] contains the model config generation output"
 	@echo "Checking ClusterRole grafana-prometheus-reader for MCP..."
 	@if oc get clusterrole grafana-prometheus-reader > /dev/null 2>&1; then \
@@ -313,7 +313,7 @@ install-mcp-server: namespace
 			--set rbac.createGrafanaRole=false \
 			$(if $(MCP_SERVER_ROUTE_HOST),--set route.host='$(MCP_SERVER_ROUTE_HOST)',) \
 			$(if $(LLAMA_STACK_URL),--set llm.url='$(LLAMA_STACK_URL)',) \
-			$(if $(wildcard $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml),-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml,); \
+			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
 	else \
 		echo "ClusterRole does not exist. Deploying and creating Grafana role..."; \
 		cd deploy/helm && helm upgrade --install $(MCP_SERVER_RELEASE_NAME) $(MCP_SERVER_CHART_PATH) -n $(NAMESPACE) \
@@ -322,7 +322,7 @@ install-mcp-server: namespace
 			--set rbac.createGrafanaRole=true \
 			$(if $(MCP_SERVER_ROUTE_HOST),--set route.host='$(MCP_SERVER_ROUTE_HOST)',) \
 			$(if $(LLAMA_STACK_URL),--set llm.url='$(LLAMA_STACK_URL)',) \
-			$(if $(wildcard $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml),-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml,); \
+			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
 	fi
 
 .PHONY: install-rag
