@@ -10,169 +10,11 @@ import pandas as pd
 import os
 import json
 import re
-import logging
-import math
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 
-import logging
-from common.pylogger import get_python_logger
+from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 
-# Initialize structured logger once - other modules should use logging.getLogger(__name__)
-get_python_logger()
-
-logger = logging.getLogger(__name__)
-
-from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL, MODEL_CONFIG
-from fastapi import HTTPException
-from .llm_client import summarize_with_llm
-from .response_validator import ResponseType
-from .llm_client import (
-    build_openshift_prompt,
-    build_openshift_metrics_context,
-    build_openshift_chat_prompt,
-)
-NAMESPACE_SCOPED = "namespace_scoped"
-CLUSTER_WIDE = "cluster_wide"
-
-def choose_prometheus_step(
-    start_ts: int,
-    end_ts: int,
-    max_points_per_series: int = 11000,
-    min_step_seconds: int = 30,
-) -> str:
-    """Select an appropriate Prometheus step to keep points per series under limits.
-
-    Returns a Prometheus duration string like "30s", "1m", "5m", "1h".
-    """
-    try:
-        duration_seconds = max(0, int(end_ts) - int(start_ts))
-        # Use (max_points - 1) because query_range is inclusive of endpoints
-        raw_step_seconds = max(
-            min_step_seconds,
-            math.ceil(duration_seconds / max(1, (max_points_per_series - 1))),
-        )
-
-        # Round up to the next "nice" bucket
-        buckets = [
-            1, 2, 5, 10, 15, 30,
-            60, 120, 300, 600, 900, 1800,
-            3600, 7200, 14400, 21600, 43200,
-        ]
-        step_seconds = next((b for b in buckets if b >= raw_step_seconds), buckets[-1])
-
-        if step_seconds % 3600 == 0:
-            return f"{step_seconds // 3600}h"
-        if step_seconds % 60 == 0:
-            return f"{step_seconds // 60}m"
-        return f"{step_seconds}s"
-    except Exception:
-        # Fallback to previous default on any error
-        return f"{max(min_step_seconds, 30)}s"
-
-
-
-def _auth_headers() -> Dict[str, str]:
-    """Create Authorization headers only when a plausible token is present.
-
-    Avoid sending a default file path or empty string as a token to local
-    Prometheus, which can cause request failures in some setups.
-    """
-    try:
-        token = (THANOS_TOKEN or "").strip()
-        if not token:
-            return {}
-        # Heuristic: if token looks like a filesystem path, skip auth header
-        if token.startswith("/") or token.lower().startswith("file:"):
-            return {}
-        return {"Authorization": f"Bearer {token}"}
-    except Exception:
-        return {}
-
-
-def extract_first_json_object_from_text(text: str) -> Optional[Dict[str, Any]]:
-    """Extract a JSON object from arbitrary text, robust to extra prose and nesting.
-
-    Strategy:
-    - Prefer fenced code blocks (```json ... ``` or ``` ... ```)
-    - Scan text with a bracket-depth parser that respects strings/escapes
-    - Parse all candidates; if a list at top-level, select the first dict
-    - Prefer dicts containing promql/summary; else choose the largest
-    """
-    candidates = []  # list of tuples: (raw_str, parsed_dict)
-
-    def _try_add(parsed_obj, raw_str: str):
-        # If a list, pick the first dict element
-        if isinstance(parsed_obj, list):
-            for el in parsed_obj:
-                if isinstance(el, dict):
-                    candidates.append((raw_str, el))
-                    return
-        elif isinstance(parsed_obj, dict):
-            candidates.append((raw_str, parsed_obj))
-
-    def _collect_from_string(source: str):
-        # Try whole string
-        try:
-            _try_add(json.loads(source), source)
-        except Exception:
-            pass
-
-        # Depth-aware scan for JSON objects
-        n = len(source)
-        i = 0
-        while i < n:
-            if source[i] == '{':
-                depth = 0
-                in_str = False
-                esc = False
-                j = i
-                while j < n:
-                    ch = source[j]
-                    if in_str:
-                        if esc:
-                            esc = False
-                        elif ch == '\\':
-                            esc = True
-                        elif ch == '"':
-                            in_str = False
-                    else:
-                        if ch == '"':
-                            in_str = True
-                        elif ch == '{':
-                            depth += 1
-                        elif ch == '}':
-                            depth -= 1
-                            if depth == 0:
-                                segment = source[i : j + 1]
-                                try:
-                                    _try_add(json.loads(segment), segment)
-                                except Exception:
-                                    pass
-                                break
-                    j += 1
-                i = j
-            i += 1
-
-    # 1) Fenced code blocks
-    for block in re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE):
-        _collect_from_string(block)
-
-    # 2) Whole text
-    _collect_from_string(text)
-
-    if not candidates:
-        return None
-
-    def _score(item):
-        raw, obj = item
-        keys = {str(k).lower() for k in obj.keys()}
-        has_promql = 1 if ("promql" in keys or "promqls" in keys) else 0
-        has_summary = 1 if ("summary" in keys) else 0
-        return (has_promql + has_summary, len(raw))
-
-    best = max(candidates, key=_score)
-    return best[1]
 
 def get_models_helper() -> List[str]:
     """
@@ -182,7 +24,7 @@ def get_models_helper() -> List[str]:
         List of model names in format "namespace | model_name"
     """
     try:
-        headers = _auth_headers()
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
 
         # Try multiple vLLM metrics with longer time windows
         vllm_metrics_to_check = [
@@ -225,14 +67,14 @@ def get_models_helper() -> List[str]:
                         return sorted(list(model_set))
 
                 except Exception as e:
-                    logger.warning(
+                    print(
                         f"Error checking {metric_name} with {time_window}s window: {e}"
                     )
                     continue
 
         return sorted(list(model_set))
     except Exception as e:
-        logger.error("Error getting models", exc_info=e)
+        print("Error getting models:", e)
         return []
 
 
@@ -247,7 +89,7 @@ def get_namespaces_helper() -> List[str]:
         Sorted list of namespace names
     """
     try:
-        headers = _auth_headers()
+        headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
 
         # Try multiple vLLM metrics with longer time windows
         vllm_metrics_to_check = [
@@ -290,14 +132,14 @@ def get_namespaces_helper() -> List[str]:
                         return sorted(list(namespace_set))
 
                 except Exception as e:
-                    logger.warning(
+                    print(
                         f"Error checking {metric_name} with {time_window}s window: {e}"
                     )
                     continue
 
         return sorted(list(namespace_set))
     except Exception as e:
-        logger.error("Error getting namespaces", exc_info=e)
+        print("Error getting namespaces:", e)
         return []
 
 
@@ -355,90 +197,45 @@ def discover_vllm_metrics():
         }
 
         for friendly_name, metric_name in gpu_metrics.items():
-            # Handle expressions (like memory GB conversion) by checking base metric presence
-            if friendly_name == "GPU Memory Usage (GB)":
-                if "DCGM_FI_DEV_FB_USED" in all_metrics:
-                    metric_mapping[friendly_name] = "avg(DCGM_FI_DEV_FB_USED) / (1024*1024*1024)"
-                continue
-
             if metric_name in all_metrics:
                 metric_mapping[friendly_name] = f"avg({metric_name})"
 
-        # If vLLM GPU cache usage is unavailable, alias GPU Usage (%) to DCGM utilization
-        if "GPU Usage (%)" not in metric_mapping and "DCGM_FI_DEV_GPU_UTIL" in all_metrics:
-            metric_mapping["GPU Usage (%)"] = "avg(DCGM_FI_DEV_GPU_UTIL)"
+        # Filter for vLLM metrics
+        vllm_metrics = [metric for metric in all_metrics if metric.startswith("vllm:")]
 
-        # Build vLLM-derived queries based on available metrics
-        vllm_metrics = set(m for m in all_metrics if m.startswith("vllm:"))
-
-        # Tokens - For dashboard display, prefer current totals over increases
-        # This shows accumulated tokens rather than recent activity
-        if "vllm:request_prompt_tokens_sum" in vllm_metrics:
-            metric_mapping["Prompt Tokens Created"] = "vllm:request_prompt_tokens_sum"
-        elif "vllm:prompt_tokens_total" in vllm_metrics:
-            metric_mapping["Prompt Tokens Created"] = "sum(vllm:prompt_tokens_total)"
-        elif "vllm:request_prompt_tokens_created" in vllm_metrics:
-            metric_mapping["Prompt Tokens Created"] = "sum(increase(vllm:request_prompt_tokens_created[1h]))"
-        elif "vllm:request_prompt_tokens_total" in vllm_metrics:
-            metric_mapping["Prompt Tokens Created"] = "sum(increase(vllm:request_prompt_tokens_total[1h]))"
-
-        if "vllm:request_generation_tokens_sum" in vllm_metrics:
-            metric_mapping["Output Tokens Created"] = "vllm:request_generation_tokens_sum"
-        elif "vllm:generation_tokens_total" in vllm_metrics:
-            metric_mapping["Output Tokens Created"] = "sum(vllm:generation_tokens_total)"
-        elif "vllm:request_generation_tokens_created" in vllm_metrics:
-            metric_mapping["Output Tokens Created"] = "sum(increase(vllm:request_generation_tokens_created[1h]))"
-        elif "vllm:request_generation_tokens_total" in vllm_metrics:
-            metric_mapping["Output Tokens Created"] = "sum(increase(vllm:request_generation_tokens_total[1h]))"
-
-        # Requests running (gauge)
-        if "vllm:num_requests_running" in vllm_metrics:
-            metric_mapping["Requests Running"] = "vllm:num_requests_running"
-
-        # GPU cache usage percent exposed by vLLM (model-scoped proxy for GPU usage)
-        # This is preferred over DCGM_FI_DEV_GPU_UTIL as it's model-specific
-        if "vllm:gpu_cache_usage_perc" in vllm_metrics:
-            metric_mapping["GPU Usage (%)"] = "avg(vllm:gpu_cache_usage_perc)"
-        elif "vllm:gpu_memory_usage" in vllm_metrics:
-            # Alternative vLLM GPU metric
-            metric_mapping["GPU Usage (%)"] = "avg(vllm:gpu_memory_usage)"
-
-        # P95 latency from histogram buckets
-        if "vllm:e2e_request_latency_seconds_bucket" in vllm_metrics:
-            metric_mapping["P95 Latency (s)"] = (
-                "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))"
-            )
-
-        # Inference time average = sum(rate(sum)) / sum(rate(count))
-        if (
-            "vllm:request_inference_time_seconds_sum" in vllm_metrics
-            and "vllm:request_inference_time_seconds_count" in vllm_metrics
-        ):
-            metric_mapping["Inference Time (s)"] = (
-                "sum(rate(vllm:request_inference_time_seconds_sum[5m])) / "
-                "sum(rate(vllm:request_inference_time_seconds_count[5m]))"
-            )
-
-        # Add any other vLLM metrics with a generic friendly name if not already mapped
+        # Add vLLM-specific metrics
         for metric in vllm_metrics:
-            if metric in (
-                "vllm:request_prompt_tokens_created",
-                "vllm:request_prompt_tokens_total",
-                "vllm:request_generation_tokens_created",
-                "vllm:request_generation_tokens_total",
-                "vllm:num_requests_running",
-                "vllm:e2e_request_latency_seconds_bucket",
-                "vllm:request_inference_time_seconds_sum",
-                "vllm:request_inference_time_seconds_count",
-            ):
-                continue
+            # Convert metric name to friendly display name
             friendly_name = metric.replace("vllm:", "").replace("_", " ").title()
-            if friendly_name not in metric_mapping:
-                metric_mapping[friendly_name] = metric
+
+            # Special handling for common metrics
+            if "token" in metric.lower() and "prompt" in metric.lower():
+                friendly_name = "Prompt Tokens Created"
+            elif "token" in metric.lower() and (
+                "generation" in metric.lower() or "output" in metric.lower()
+            ):
+                friendly_name = "Output Tokens Created"
+            elif "latency" in metric.lower() and "e2e" in metric.lower():
+                friendly_name = "P95 Latency (s)"
+            elif (
+                "gpu" in metric.lower()
+                and "usage" in metric.lower()
+                and "perc" in metric.lower()
+            ):
+                friendly_name = "GPU Usage (%)"
+            elif "request" in metric.lower() and "running" in metric.lower():
+                friendly_name = "Requests Running"
+            elif "inference" in metric.lower() and "time" in metric.lower():
+                friendly_name = "Inference Time (s)"
+            else:
+                # Keep original friendly conversion
+                friendly_name = metric.replace("vllm:", "").replace("_", " ").title()
+
+            metric_mapping[friendly_name] = metric
 
         return metric_mapping
     except Exception as e:
-        logger.error("Error discovering vLLM metrics: %s", e)
+        print(f"Error discovering vLLM metrics: {e}")
         # Enhanced fallback with comprehensive GPU metrics and vLLM metrics
         return {
             "GPU Temperature (°C)": "avg(DCGM_FI_DEV_GPU_TEMP)",
@@ -446,12 +243,12 @@ def discover_vllm_metrics():
             "GPU Memory Usage (GB)": "avg(DCGM_FI_DEV_FB_USED) / (1024*1024*1024)",
             "GPU Energy Consumption (Joules)": "avg(DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION)",
             "GPU Memory Temperature (°C)": "avg(DCGM_FI_DEV_MEMORY_TEMP)",
-            "GPU Usage (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
-            "Prompt Tokens Created": "vllm:request_prompt_tokens_sum",
-            "Output Tokens Created": "vllm:request_generation_tokens_sum",
+            "GPU Utilization (%)": "avg(DCGM_FI_DEV_GPU_UTIL)",
+            "Prompt Tokens Created": "vllm:request_prompt_tokens_created",
+            "Output Tokens Created": "vllm:request_generation_tokens_created",
             "Requests Running": "vllm:num_requests_running",
-            "P95 Latency (s)": "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))",
-            "Inference Time (s)": "sum(rate(vllm:request_inference_time_seconds_sum[5m])) / sum(rate(vllm:request_inference_time_seconds_count[5m]))",
+            "P95 Latency (s)": "vllm:e2e_request_latency_seconds_count",
+            "Inference Time (s)": "vllm:request_inference_time_seconds_count",
         }
 
 
@@ -473,7 +270,7 @@ def discover_dcgm_metrics():
         nvidia_metrics = [metric for metric in all_metrics if "nvidia" in metric.lower()]
         gpu_metrics = [metric for metric in all_metrics if "gpu" in metric.lower() and not metric.startswith("vllm:")]
 
-        logger.info("Found %d DCGM metrics, %d NVIDIA metrics, %d GPU metrics", len(dcgm_metrics), len(nvidia_metrics), len(gpu_metrics))
+        print(f"🔍 Found {len(dcgm_metrics)} DCGM metrics, {len(nvidia_metrics)} NVIDIA metrics, {len(gpu_metrics)} GPU metrics")
 
         # Create a mapping of useful GPU metrics for fleet monitoring
         gpu_mapping = {}
@@ -509,7 +306,7 @@ def discover_dcgm_metrics():
 
         # Priority 2: nvidia-smi or alternative metrics if DCGM not available
         if not gpu_mapping:
-            logger.info("No DCGM metrics found, checking for alternative GPU metrics...")
+            print("🔍 No DCGM metrics found, checking for alternative GPU metrics...")
             
             # Look for common GPU metric patterns
             gpu_patterns = {
@@ -527,12 +324,12 @@ def discover_dcgm_metrics():
                     if matching_metrics:
                         # Use the first matching metric
                         gpu_mapping[friendly_name] = f"avg({matching_metrics[0]})"
-                        logger.info("Found alternative GPU metric: %s -> %s", friendly_name, matching_metrics[0])
+                        print(f"✅ Found alternative GPU metric: {friendly_name} -> {matching_metrics[0]}")
                         break
 
         # Priority 3: Generic GPU metrics
         if not gpu_mapping:
-            logger.info("No specific GPU metrics found, checking for generic patterns...")
+            print("🔍 No specific GPU metrics found, checking for generic patterns...")
             for metric in gpu_metrics:
                 metric_lower = metric.lower()
                 if "temperature" in metric_lower or "temp" in metric_lower:
@@ -545,13 +342,13 @@ def discover_dcgm_metrics():
                     gpu_mapping["GPU Memory Used"] = f"avg({metric})"
 
         if gpu_mapping:
-            logger.info("Successfully discovered %d GPU metrics", len(gpu_mapping))
+            print(f"✅ Successfully discovered {len(gpu_mapping)} GPU metrics")
         else:
-            logger.warning("No GPU metrics found - cluster may not have GPUs or GPU monitoring")
+            print("⚠️ No GPU metrics found - cluster may not have GPUs or GPU monitoring")
 
         return gpu_mapping
     except Exception as e:
-        logger.error("Error discovering GPU metrics", exc_info=e)
+        print(f"Error discovering GPU metrics: {e}")
         return {}
 
 
@@ -704,7 +501,7 @@ def discover_cluster_metrics_dynamically():
         limited_metrics = dict(list(cluster_metrics.items())[:50])
         return limited_metrics
     except Exception as e:
-        logger.error("Error discovering cluster metrics", exc_info=e)
+        print(f"Error discovering cluster metrics: {e}")
         return {}
 
 
@@ -785,238 +582,57 @@ def get_namespace_specific_metrics(category):
     return namespace_aware_metrics.get(category, {})
 
 
-def _select_openshift_metrics_for_scope(
-    metric_category: str,
-    scope: str,
-    namespace: Optional[str],
-) -> Tuple[Dict[str, str], Optional[str]]:
-    """Select metrics dict and namespace filter based on scope/category.
-
-    Returns (metrics_to_fetch, namespace_for_query)
-    """
-    openshift_metrics = get_openshift_metrics()
-
-    if scope == NAMESPACE_SCOPED and namespace:
-        namespace_metrics = get_namespace_specific_metrics(metric_category)
-        metrics_to_fetch = (
-            namespace_metrics if namespace_metrics else openshift_metrics.get(metric_category, {})
-        )
-    else:
-        metrics_to_fetch = openshift_metrics.get(metric_category, {})
-
-    namespace_for_query = namespace if scope == NAMESPACE_SCOPED else None
-    return metrics_to_fetch, namespace_for_query
-
-
-def analyze_openshift_metrics(
-    metric_category: str,
-    scope: str,
-    namespace: Optional[str],
-    start_ts: int,
-    end_ts: int,
-    summarize_model_id: Optional[str],
-    api_key: Optional[str],
-) -> Dict[str, Any]:
-    """
-    Returns a dict matching the API response fields (health_prompt, llm_summary, metrics, etc.).
-    Raises HTTPException for client (400) and server (500) errors.
-    """
-    metrics_to_fetch, namespace_for_query = _select_openshift_metrics_for_scope(
-        metric_category, scope, namespace
-    )
-
-    # Fetch metrics; if Prometheus fails, raise immediately so MCP tool can surface PROMETHEUS_ERROR
-    metric_dfs: Dict[str, Any] = {}
-    try:
-        for label, query in metrics_to_fetch.items():
-            df = fetch_openshift_metrics(
-                query,
-                start_ts,
-                end_ts,
-                namespace_for_query,
-            )
-            metric_dfs[label] = df
-    except requests.exceptions.RequestException:
-        # Bubble up Prometheus errors unchanged; MCP layer maps them to PrometheusError
-        raise
-    # Build scope description
-    scope_description = f"{scope.replace('_', ' ').title()}"
-    if scope == NAMESPACE_SCOPED and namespace:
-        scope_description += f" ({namespace})"
-
-    # Build OpenShift metrics prompt
-    prompt = build_openshift_prompt(
-        metric_dfs, metric_category, namespace_for_query, scope_description
-    )
-    # Summarize; if LLM service fails, raise HTTPException to be mapped to LLMServiceError by MCP
-    try:
-        summary = summarize_with_llm(
-            prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
-        )
-    except requests.exceptions.RequestException:
-        # Re-raise so MCP layer can classify as LLM service error
-        raise
- 
-    # Serialize metric DataFrames
-    serialized_metrics: Dict[str, Any] = {}
-    for label, df in metric_dfs.items():
-            if "timestamp" not in df.columns:
-                df["timestamp"] = pd.Series(dtype="datetime64[ns]")
-            if "value" not in df.columns:
-                df["value"] = pd.Series(dtype="float")
-            serialized_metrics[label] = df[["timestamp", "value"]].to_dict(orient="records")
-
-    return {
-        "metric_category": metric_category,
-        "scope": scope,
-        "namespace": namespace,
-        "health_prompt": prompt,
-        "llm_summary": summary,
-        "metrics": serialized_metrics,
-    }
-
-
-def chat_openshift_metrics(
-    metric_category: str,
-    question: str,
-    scope: str,
-    namespace: Optional[str],
-    start_ts: int,
-    end_ts: int,
-    summarize_model_id: Optional[str],
-    api_key: Optional[str],
-) -> Dict[str, Any]:
-    """
-    Build a chat-oriented OpenShift analysis:
-    - Validates inputs (raises HTTPException on errors)
-    - Fetches metrics per category/scope
-    - Builds prompt and invokes LLM
-    - Parses LLM JSON to extract promql and summary
-    Returns dict with at least: {"promql": str, "summary": str}
-    """
-    # Select metrics without raising (validation is done by callers)
-    metrics_to_fetch, namespace_for_query = _select_openshift_metrics_for_scope(
-        metric_category, scope, namespace
-    )
-    metric_dfs: Dict[str, Any] = {}
-    for label, query in metrics_to_fetch.items():
-        # Allow Prometheus connectivity/request exceptions to propagate so callers
-        # (e.g., MCP tools) can surface structured PROMETHEUS_ERROR instead of
-        # falling back to a generic "no data" message.
-        df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
-        metric_dfs[label] = df
-
-    # If no data at all, avoid LLM call and return helpful message
-    has_any_data = any(isinstance(df, pd.DataFrame) and not df.empty for df in metric_dfs.values())
-    if not has_any_data:
-        return {
-            "promql": "",
-            "summary": (
-                "No metric data found for the selected category/scope in the time window. "
-                "Try a broader window (e.g., last 6h) or a different category."
-            ),
-        }
-
-    # Build scope description and prompt
-    scope_description = f"{scope.replace('_', ' ').title()}"
-    if scope == NAMESPACE_SCOPED and namespace:
-        scope_description += f" ({namespace})"
-
-    metrics_data_summary = build_openshift_metrics_context(
-        metric_dfs, metric_category, namespace_for_query, scope_description
-    )
-
-    chat_scope_value = "fleet_wide" if scope == CLUSTER_WIDE else "namespace_specific"
-    prompt = build_openshift_chat_prompt(
-        question=question,
-        metrics_context=metrics_data_summary,
-        time_range_info=None,
-        chat_scope=chat_scope_value,
-        target_namespace=namespace_for_query if scope == NAMESPACE_SCOPED else None,
-        alerts_context="",
-    )
-
-    llm_response = summarize_with_llm(
-        prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
-    )
-    # Parse JSON content robustly (handles extra text and fenced code blocks)
-    promql = ""
-    summary = llm_response
-    parsed = extract_first_json_object_from_text(llm_response)
-    if isinstance(parsed, dict):
-        # Allow both a single promql and a list of promqls (take first)
-        promql_value = parsed.get("promql")
-        if not promql_value and isinstance(parsed.get("promqls"), list) and parsed["promqls"]:
-            promql_value = parsed["promqls"][0]
-        promql = (promql_value or "").strip() if isinstance(promql_value, str) else (promql_value or "")
-        if not isinstance(promql, str):
-            promql = ""
-        summary = (parsed.get("summary") or llm_response).strip()
-
-        # Add namespace filter when needed
-        if promql and namespace and "namespace=" not in promql:
-            if "{" in promql:
-                promql = promql.replace("{", f'{{namespace="{namespace}", ', 1)
-            else:
-                promql = f'{promql}{{namespace="{namespace}"}}'
-    return {
-        "promql": promql,
-        "summary": summary,
-    }
-
 # --- Metric Fetching Functions ---
 
 def fetch_metrics(query, model_name, start, end, namespace=None):
     """Fetch metrics from Prometheus for vLLM models"""
-    promql_query = query
-
-    # Inject labels for vLLM metrics inside rate()/histogram_quantile expressions
-    def _inject_labels(expr: str, model: str, ns: Optional[str]) -> str:
-        # Helper to build label matcher
-        if "|" in model:
-            model_ns, actual_model = map(str.strip, model.split("|", 1))
+    # Handle GPU metrics that don't have model_name labels (they're global/node-level metrics)
+    if query.startswith("avg(DCGM_") or "DCGM_" in query:
+        # GPU metrics are node-level, not model-specific
+        promql_query = query
+    else:
+        # Handle vLLM metrics that have model_name and namespace labels
+        if namespace:
+            namespace = namespace.strip()
+            if "|" in model_name:
+                model_namespace, actual_model_name = map(
+                    str.strip, model_name.split("|", 1)
+                )
+                promql_query = f'{query}{{model_name="{actual_model_name}", namespace="{namespace}"}}'
+            else:
+                promql_query = (
+                    f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
+                )
         else:
-            model_ns, actual_model = None, model.strip()
+            # Original logic if no namespace is explicitly provided (for backward compatibility or other endpoints)
+            if "|" in model_name:
+                namespace, model_name = map(str.strip, model_name.split("|", 1))
+                promql_query = (
+                    f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
+                )
+            else:
+                model_name = model_name.strip()
+                promql_query = f'{query}{{model_name="{model_name}"}}'
 
-        ns_value = (ns or model_ns or "").strip()
-        label_clause = f'model_name="{actual_model}"' + (f', namespace="{ns_value}"' if ns_value else "")
-
-        # Match complete vllm metric names that don't already have labels
-        # Use inline lambda to make the dependency on label_clause explicit
-        expr = re.sub(
-            r"\b(vllm:[\w:]+)(?!\{)",
-            lambda m: f"{m.group(1)}{{{label_clause}}}",
-            expr,
-        )
-        
-        return expr
-
-    # GPU metrics are global; inject only for vLLM metrics
-    if "vllm:" in promql_query:
-        promql_query = _inject_labels(promql_query, model_name, namespace)
-
-    headers = _auth_headers()
+    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
     try:
-        step = choose_prometheus_step(start, end)
-        logger.debug("Fetching Prometheus metrics for vLLM, query: %s, start: %s, end: %s: step: %s", query, start, end, step)
         response = requests.get(
             f"{PROMETHEUS_URL}/api/v1/query_range",
             headers=headers,
-            params={"query": promql_query, "start": start, "end": end, "step": step},
+            params={"query": promql_query, "start": start, "end": end, "step": "30s"},
             verify=VERIFY_SSL,
             timeout=30,  # Add timeout
         )
         response.raise_for_status()
         result = response.json()["data"]["result"]
-
     except requests.exceptions.ConnectionError as e:
-        logger.warning("Prometheus connection error for query '%s': %s", promql_query, e)
+        print(f"⚠️ Prometheus connection error for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        logger.warning("Prometheus timeout for query '%s': %s", promql_query, e)
+        print(f"⚠️ Prometheus timeout for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        logger.warning("Prometheus request error for query '%s': %s", promql_query, e)
+        print(f"⚠️ Prometheus request error for query '{promql_query}': {e}")
         return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []
@@ -1038,12 +654,9 @@ def fetch_metrics(query, model_name, start, end, namespace=None):
 
 
 def fetch_openshift_metrics(query, start, end, namespace=None):
-    """Fetch OpenShift metrics with optional namespace filtering.
+    """Fetch OpenShift metrics with optional namespace filtering"""
+    headers = {"Authorization": f"Bearer {THANOS_TOKEN}"}
 
-    Network/request exceptions are raised to allow callers (e.g., MCP tools)
-    to convert them into structured errors for the UI.
-    """
-    headers = _auth_headers()
     # Add namespace filter to the query if specified
     if namespace:
         # Skip if namespace already exists in the query
@@ -1091,27 +704,24 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
                         break
 
     try:
-        step = choose_prometheus_step(start, end)
-        logger.debug("Fetching Prometheus metrics for OpenShift, query: %s, start: %s, end: %s: step: %s", query, start, end, step)
         response = requests.get(
             f"{PROMETHEUS_URL}/api/v1/query_range",
             headers=headers,
-            params={"query": query, "start": start, "end": end, "step": step},
+            params={"query": query, "start": start, "end": end, "step": "30s"},
             verify=VERIFY_SSL,
             timeout=30,  # Add timeout
         )
         response.raise_for_status()
         result = response.json()["data"]["result"]
-        logger.debug("Metrics fetched successfully")
     except requests.exceptions.ConnectionError as e:
-        logger.warning("Prometheus connection error for OpenShift query '%s': %s", query, e)
-        raise
+        print(f"⚠️ Prometheus connection error for OpenShift query '{query}': {e}")
+        return pd.DataFrame()  # Return empty DataFrame on connection error
     except requests.exceptions.Timeout as e:
-        logger.warning("Prometheus timeout for OpenShift query '%s': %s", query, e)
-        raise
+        print(f"⚠️ Prometheus timeout for OpenShift query '{query}': {e}")
+        return pd.DataFrame()  # Return empty DataFrame on timeout
     except requests.exceptions.RequestException as e:
-        logger.warning("Prometheus request error for OpenShift query '%s': %s", query, e)
-        raise
+        print(f"⚠️ Prometheus request error for OpenShift query '{query}': {e}")
+        return pd.DataFrame()  # Return empty DataFrame on other request errors
 
     rows = []
     for series in result:
@@ -1129,128 +739,3 @@ def fetch_openshift_metrics(query, start, end, namespace=None):
             rows.append(row)
 
     return pd.DataFrame(rows) 
-
-
-# --- Business logic for MCP tools (moved from tools module) ---
-
-def get_summarization_models() -> List[str]:
-    """Return available summarization model IDs from MODEL_CONFIG.
-
-    External models are sorted after internal ones to match UI expectations.
-    """
-    try:
-        if not isinstance(MODEL_CONFIG, dict) or not MODEL_CONFIG:
-            return []
-        sorted_items = sorted(MODEL_CONFIG.items(), key=lambda x: x[1].get("external", True))
-        return [name for name, _ in sorted_items]
-    except Exception:
-        return []
-
-
-def get_cluster_gpu_info() -> Dict[str, Any]:
-    """Fetch cluster GPU info from Prometheus (DCGM exporter).
-
-    Returns a dict with total_gpus, vendors, models, temperatures, power_usage.
-    """
-    headers = _auth_headers()
-    info: Dict[str, Any] = {
-        "total_gpus": 0,
-        "vendors": [],
-        "models": [],
-        "temperatures": [],
-        "power_usage": [],
-    }
-    try:
-        resp = requests.get(
-            f"{PROMETHEUS_URL}/api/v1/query",
-            headers=headers,
-            params={"query": "DCGM_FI_DEV_GPU_TEMP"},
-            verify=VERIFY_SSL,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        result = resp.json().get("data", {}).get("result", [])
-        info["total_gpus"] = len(result)
-        temps = [float(series.get("value", [None, None])[1]) for series in result if series.get("value")]
-        info["temperatures"] = temps
-        if temps:
-            info["vendors"] = ["NVIDIA"]
-            info["models"] = ["GPU"]
-    except Exception:
-        # Keep defaults on error
-        pass
-    return info
-
-
-def get_namespace_model_deployment_info(namespace: str, model: str) -> Dict[str, Any]:
-    """Heuristic deployment info by probing kube_pod_info and vLLM cache timeline."""
-    headers = _auth_headers()
-    try:
-        # Probe pods in namespace
-        query = f'kube_pod_info{{namespace="{namespace}"}}'
-        r = requests.get(
-            f"{PROMETHEUS_URL}/api/v1/query",
-            headers=headers,
-            params={"query": query},
-            verify=VERIFY_SSL,
-            timeout=30,
-        )
-        r.raise_for_status()
-        result = r.json().get("data", {}).get("result", [])
-    except Exception:
-        result = []
-
-    from datetime import datetime as _dt, timedelta as _td
-    now = _dt.utcnow()
-    is_new = False
-    deploy_date: Optional[str] = None
-
-    if result:
-        try:
-            one_week_ago = int((now - _td(days=7)).timestamp())
-            vq = f'vllm:cache_config_info{{namespace="{namespace}"}}'
-            vr = requests.get(
-                f"{PROMETHEUS_URL}/api/v1/query_range",
-                headers=headers,
-                params={"query": vq, "start": one_week_ago, "end": int(now.timestamp()), "step": "1h"},
-                verify=VERIFY_SSL,
-                timeout=30,
-            )
-            if vr.status_code == 200:
-                vres = vr.json().get("data", {}).get("result", [])
-                if not vres:
-                    is_new = True
-                    deploy_date = now.strftime("%Y-%m-%d")
-                else:
-                    three_days_ago = now - _td(days=3)
-                    for series in vres:
-                        values = series.get("values", [])
-                        if values:
-                            first_ts = float(values[0][0])
-                            first_time = _dt.utcfromtimestamp(first_ts)
-                            if first_time > three_days_ago:
-                                is_new = True
-                                deploy_date = first_time.strftime("%Y-%m-%d")
-                            break
-        except Exception:
-            is_new = True
-            deploy_date = now.strftime("%Y-%m-%d")
-    else:
-        is_new = True
-        deploy_date = now.strftime("%Y-%m-%d")
-
-    message = None
-    if is_new:
-        message = (
-            f"New deployment detected in namespace '{namespace}'. "
-            f"Metrics will appear once the model starts processing requests. "
-            f"This typically takes 5-10 minutes after the first inference request."
-        )
-
-    return {
-        "is_new_deployment": is_new,
-        "deployment_date": deploy_date,
-        "message": message,
-        "namespace": namespace,
-        "model": model,
-    }

@@ -20,6 +20,9 @@ The **OpenShift AI Observability Summarizer** is an open source, CNCF-style proj
 ```
 summarizer/
 ├── src/                    # Main source code
+│   ├── api/               # FastAPI metrics API
+│   │   ├── metrics_api.py # Main API endpoints
+│   │   └── report_assets/ # Report generation assets
 │   ├── core/              # Core business logic
 │   │   ├── config.py      # Configuration management
 │   │   ├── llm_client.py  # LLM communication
@@ -40,6 +43,7 @@ summarizer/
 │       └── alert_receiver.py # Alert handling
 ├── deploy/helm/           # Helm charts for deployment
 │   ├── mcp-server/        # MCP server Helm chart
+│   ├── metrics-api/       # Metrics API Helm chart
 │   ├── ui/                # UI Helm chart
 │   └── rag/               # RAG components (llama-stack, llm-service)
 ├── tests/                 # Test suite
@@ -60,62 +64,42 @@ summarizer/
 - `yq` (YAML processor)
 - Docker or Podman
 
-### macOS: WeasyPrint for local PDF reports (optional)
-WeasyPrint is used for generating PDF reports. Containers and CI handle dependencies automatically via `uv`, but for local macOS development you may need a system install:
-
-```bash
-brew install weasyprint
-weasyprint --version
-
-# If WeasyPrint cannot find libraries at runtime, set:
-export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH
-```
-
 
 ### Local Development
 ```bash
-# Set up port-forwarding to cluster services (default LLM: llama-3.2-3b-instruct)
+# Set up port-forwarding to cluster services
 ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
-
-# With specific LLM model (optional)
-./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -l llama-3.1-8b-instruct
 
 # If model is in different namespace:
 ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
 
-# Use cluster config instead of generating new one:
-./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -c cluster
-
 # This script sets up:
 # - Virtual environment activation (.venv)
-# - MODEL_CONFIG generation (merges base models + specified LLM)
 # - Port-forwarding to Llamastack (localhost:8321)
 # - Port-forwarding to Model service (localhost:8080)
 # - Port-forwarding to Thanos (localhost:9090)
-# - MCP Server (localhost:8085)
+# - Metrics API (localhost:8000)
 # - Streamlit UI (localhost:8501)
 
-# Examples:
-./scripts/local-dev.sh -n default-ns                      # Default LLM
-./scripts/local-dev.sh -n default-ns -l llama-3.1-8b-instruct  # Custom LLM
-./scripts/local-dev.sh -n default-ns -m model-ns          # Model in different namespace
-./scripts/local-dev.sh -n default-ns -c cluster           # Use cluster config
+# Example:
+./scripts/local-dev.sh -n default-ns
+./scripts/local-dev.sh -n default-ns -m model-ns  # Model in different namespace
 ```
 
 **Note**: The script automatically:
 - Activates Python virtual environment if `.venv` exists
-- Generates MODEL_CONFIG by merging base external models (OpenAI, Google, Anthropic) with your specified LLM
 - Uses service-based port forwarding for better reliability
 - Supports separate namespaces for different services
 
 ## 🏗️ Architecture & Data Flow
 
 ### Core Components
-1. **MCP Server** (`src/mcp_server/`): Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
+1. **Metrics API** (`src/api/metrics_api.py`): FastAPI backend serving metrics analysis and chat endpoints
 2. **UI** (`src/ui/ui.py`): Streamlit multi-dashboard frontend
 3. **Core Logic** (`src/core/`): Business logic modules for metrics processing and LLM integration
-4. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
-5. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
+4. **MCP Server** (`src/mcp_server/`): Model Context Protocol server for AI assistant integration
+5. **Alerting** (`src/alerting/`): Alert handling and Slack notifications
+6. **Helm Charts** (`deploy/helm/`): OpenShift deployment configuration
 
 ### Data Flow
 1. **Natural Language Question** → PromQL generation via LLM
@@ -171,6 +155,7 @@ open htmlcov/index.html
 make build
 
 # Build individual components
+make build-metrics-api    # FastAPI backend
 make build-ui            # Streamlit UI
 make build-alerting      # Alerting service
 make build-mcp-server    # MCP server
@@ -208,58 +193,9 @@ make install NAMESPACE=your-namespace \
   LLM_URL=http://llama-3-2-3b-instruct-predictor.dev.svc.cluster.local
 
 # Deploy individual components
+make install-metric-mcp NAMESPACE=your-namespace    # Metrics API only
 make install-mcp-server NAMESPACE=your-namespace    # MCP server only
-make install-metric-ui NAMESPACE=your-namespace     # UI only
 ```
-
-### Observability Stack Management
-
-The project includes a comprehensive observability stack with flexible deployment options:
-
-#### **Complete Observability Stack**
-```bash
-# Install complete observability stack (MinIO + TempoStack + OTEL + tracing)
-# Note: NAMESPACE is required for tracing setup
-make install-observability-stack NAMESPACE=your-namespace
-
-# Uninstall complete observability stack
-# Note: NAMESPACE is required for tracing removal
-make uninstall-observability-stack NAMESPACE=your-namespace
-```
-
-#### **Individual Observability Components**
-```bash
-# Install individual components
-make install-minio                                           # MinIO storage only (uses observability-hub namespace)
-make install-observability                                   # TempoStack + OTEL only (uses observability-hub namespace)
-make setup-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
-
-# Uninstall individual components
-make uninstall-minio                                         # MinIO storage only (uses observability-hub namespace)
-make uninstall-observability                                 # TempoStack + OTEL only (uses observability-hub namespace)
-make remove-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
-```
-
-#### **NAMESPACE Requirements**
-- **`install-observability-stack` / `uninstall-observability-stack`**: Require NAMESPACE for tracing components
-- **`install-minio` / `uninstall-minio`**: Use hardcoded `observability-hub` namespace
-- **`install-observability` / `uninstall-observability`**: Use hardcoded `observability-hub` namespace  
-- **`setup-tracing` / `remove-tracing`**: Require NAMESPACE parameter
-
-#### **MinIO Chart Simplification**
-The MinIO chart has been simplified to use a single template file (`minio-simple.yaml`) that:
-- Deploys MinIO as a StatefulSet with built-in bucket creation
-- Uses MinIO's native `mc` client for bucket and user management
-- Eliminates the need for separate initialization jobs
-- Reduces complexity from 7 template files to 2 (including helpers)
-- Provides more reliable and maintainable MinIO deployment
-
-#### **Observability Stack Features**
-- **MinIO**: S3-compatible object storage for trace data and log data persistence
-- **TempoStack**: Multitenant trace storage and analysis with OpenShift integration
-- **OpenTelemetry Collector**: Distributed tracing collection and forwarding
-- **Auto-instrumentation**: Automatic Python application tracing setup
-- **Dependency Management**: Proper installation/uninstallation order with dependency chains
 
 ### Management
 ```bash
@@ -308,95 +244,6 @@ Common models include:
 - `llama-3-3-70b-instruct`
 - `llama-guard-3-8b` (safety model)
 
-### Model Configuration Generation
-
-**Location**: `scripts/generate-model-config.sh`
-
-**Purpose**: Single source of truth for dynamically generating model configurations. Used by both Makefile (OpenShift deployment) and local-dev.sh (local development).
-
-**Architecture**:
-```
-generate-model-config.sh
-├── Used by Makefile (with --helm-format flag)
-│   └── Generates: JSON + Helm YAML values file
-└── Used by local-dev.sh (without flag)
-    └── Generates: JSON only
-```
-
-**How it works**:
-1. **Template Substitution**: Reads `deploy/helm/default-model.json.template` and substitutes:
-   - `$MODEL_ID` → Full model path (e.g., `meta-llama/Llama-3.2-3B-Instruct`)
-   - `$MODEL_NAME` → Service name (e.g., `llama-3-2-3b-instruct`)
-
-2. **JSON Merging**: Merges the LLM-specific config with base external models from `deploy/helm/model-config.json`:
-   ```bash
-   jq -s '.[0] * .[1]' new_model_config.json model-config.json > final_config.json
-   ```
-
-3. **Export**: Sets `MODEL_CONFIG` environment variable for use by services
-
-**Parameters**:
-- **LLM model name** (optional): Model identifier (default: `llama-3-2-3b-instruct`)
-- **`--helm-format` flag** (optional): Generate Helm values YAML file in addition to JSON
-
-**Output Files** (in `/tmp`):
-- `gen_model_config-list_models_output.txt` - Available models from Helm chart
-- `gen_model_config-final_config.json` - Merged JSON configuration
-- `gen_model_config-for_helm.yaml` - Helm values format (only with `--helm-format`)
-
-**Usage Examples**:
-```bash
-# Direct usage (for debugging/testing)
-source scripts/generate-model-config.sh
-generate_model_config                                    # Use default model
-generate_model_config "llama-3.1-8b-instruct"           # Specific model, JSON only
-generate_model_config "llama-3.2-3b-instruct" --helm-format  # JSON + Helm YAML
-
-# Automatic usage via Makefile
-make install NAMESPACE=your-ns LLM=llama-3.1-8b-instruct
-# → Calls: generate_model_config "llama-3.1-8b-instruct" --helm-format
-
-# Automatic usage via local-dev.sh
-./scripts/local-dev.sh -n your-ns -l llama-3.1-8b-instruct
-# → Calls: generate_model_config "llama-3.1-8b-instruct" (no --helm-format)
-```
-
-**Example: Config Merging Process**:
-```bash
-# 1. Template (default-model.json.template)
-{
-  "$MODEL_ID": {
-    "external": false,
-    "requiresApiKey": false,
-    "serviceName": "$MODEL_NAME"
-  }
-}
-
-# 2. After substitution (new_model_config.json)
-{
-  "meta-llama/Llama-3.2-3B-Instruct": {
-    "external": false,
-    "requiresApiKey": false,
-    "serviceName": "llama-3-2-3b-instruct"
-  }
-}
-
-# 3. Base config (model-config.json)
-{
-  "openai/gpt-4o-mini": { ... },
-  "google/gemini-2.5-flash": { ... },
-  "anthropic/claude-sonnet-4-20250514": { ... }
-}
-
-# 4. Final merged config (final_config.json)
-{
-  "meta-llama/Llama-3.2-3B-Instruct": { ... },  # ← LLM-specific
-  "openai/gpt-4o-mini": { ... },                 # ← Base external models
-  "google/gemini-2.5-flash": { ... },
-  "anthropic/claude-sonnet-4-20250514": { ... }
-}
-```
-
 ## 🔍 Common Development Patterns
 
 ### Adding New Metrics
@@ -405,10 +252,10 @@ make install NAMESPACE=your-ns LLM=llama-3.1-8b-instruct
 3. Update UI components to display the metrics
 4. Add corresponding tests
 
-### Adding New MCP Tools
+### Adding New LLM Endpoints
 1. Define request/response models in `src/core/models.py`
 2. Implement business logic in appropriate `src/core/` module
-3. Add MCP tool in `src/mcp_server/tools/`
+3. Add FastAPI endpoint in `src/api/metrics_api.py`
 4. Add corresponding tests
 
 ### Error Handling
@@ -479,42 +326,25 @@ make uninstall NAMESPACE=test-namespace
 ### Port Forwarding
 ```bash
 # Manual port-forwarding (if script fails)
-
-# Thanos querier (pod-based, use head -1 since multiple pods may exist)
-THANOS_POD=$(oc get pods -n openshift-monitoring -o name -l 'app.kubernetes.io/component=query-layer,app.kubernetes.io/instance=thanos-querier' | head -1)
-oc port-forward $THANOS_POD 9090:9090 -n openshift-monitoring &
-
-# LlamaStack (service-based)
-LLAMASTACK_SERVICE=$(oc get services -n <DEFAULT_NAMESPACE> -o name -l 'app.kubernetes.io/instance=rag, app.kubernetes.io/name=llamastack')
-oc port-forward $LLAMASTACK_SERVICE 8321:8321 -n <DEFAULT_NAMESPACE> &
-
-# Llama Model service (service-based)
-LLAMA_MODEL_SERVICE=$(oc get services -n <MODEL_NAMESPACE> -o name -l 'app=isvc.llama-3-2-3b-instruct-predictor')
-oc port-forward $LLAMA_MODEL_SERVICE 8080:8080 -n <MODEL_NAMESPACE> &
-
-# Tempo gateway (service-based)
-TEMPO_SERVICE=$(oc get services -n observability-hub -o name -l 'app.kubernetes.io/name=tempo,app.kubernetes.io/component=gateway')
-oc port-forward $TEMPO_SERVICE 8082:8080 -n observability-hub &
+# Note: Replace <pod-name> with actual pod names from 'oc get pods'
+oc port-forward pod/<thanos-pod-name> 9090:9090 -n openshift-monitoring &
+oc port-forward pod/<llamastack-pod-name> 8321:8321 -n <DEFAULT_NAMESPACE> &
+oc port-forward service/<model-service-name> 8080:8080 -n <MODEL_NAMESPACE> &
 ```
-
-**Note**:
-- Thanos uses pod-based forwarding with `head -1` because multiple thanos-querier pods may exist
-- Other services use service-based forwarding for better reliability
-- Replace `<DEFAULT_NAMESPACE>` and `<MODEL_NAMESPACE>` with your actual namespaces
 
 ### Logs
 ```bash
 # View pod logs (replace with your actual namespace)
+oc logs -f deployment/metrics-api -n <DEFAULT_NAMESPACE>
 oc logs -f deployment/metric-ui -n <DEFAULT_NAMESPACE>
-oc logs -f deployment/mcp-server -n <DEFAULT_NAMESPACE>
 oc logs -f deployment/metric-alerting -n <DEFAULT_NAMESPACE>
 ```
 
 ### Metrics
 ```bash
-# Access MCP server health/metrics
-oc port-forward svc/mcp-server 8085:8085 -n <DEFAULT_NAMESPACE>
-# Then visit http://localhost:8085/health
+# Access Prometheus metrics
+oc port-forward svc/metrics-api 8000:8000 -n <DEFAULT_NAMESPACE>
+# Then visit http://localhost:8000/metrics
 ```
 
 ## 🛠️ Useful Makefile Targets
@@ -526,6 +356,7 @@ oc port-forward svc/mcp-server 8085:8085 -n <DEFAULT_NAMESPACE>
 
 ### Building
 - `make build` - Build all container images
+- `make build-metrics-api` - Build FastAPI backend
 - `make build-ui` - Build Streamlit UI
 - `make build-alerting` - Build alerting service
 - `make build-mcp-server` - Build MCP server
@@ -533,20 +364,10 @@ oc port-forward svc/mcp-server 8085:8085 -n <DEFAULT_NAMESPACE>
 ### Deployment
 - `make install` - Deploy to OpenShift
 - `make install-with-alerts` - Deploy with alerting
+- `make install-metric-mcp` - Deploy metrics API only
 - `make install-mcp-server` - Deploy MCP server only
-- `make install-metric-ui` - Deploy UI only
 - `make status` - Check deployment status
 - `make uninstall` - Remove deployment
-
-### Observability Stack
-- `make install-observability-stack` - Install complete observability stack
-- `make uninstall-observability-stack` - Uninstall complete observability stack
-- `make install-minio` - Install MinIO storage only
-- `make uninstall-minio` - Uninstall MinIO storage only
-- `make install-observability` - Install TempoStack + OTEL only
-- `make uninstall-observability` - Uninstall TempoStack + OTEL only
-- `make setup-tracing` - Enable auto-instrumentation
-- `make remove-tracing` - Disable auto-instrumentation
 
 ### Configuration
 - `make config` - Show current configuration
@@ -646,9 +467,10 @@ oc get events -n <DEFAULT_NAMESPACE> --sort-by='.lastTimestamp'
 ## 🎯 Quick Reference
 
 ### File Locations
-- **MCP Server**: `src/mcp_server/main.py`
+- **Main API**: `src/api/metrics_api.py`
 - **Core Logic**: `src/core/llm_summary_service.py`
 - **UI**: `src/ui/ui.py`
+- **MCP Server**: `src/mcp_server/main.py`
 - **Tests**: `tests/`
 - **Helm Charts**: `deploy/helm/`
 

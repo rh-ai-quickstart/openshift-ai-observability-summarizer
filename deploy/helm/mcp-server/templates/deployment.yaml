@@ -43,14 +43,6 @@ spec:
             {{- end }}
             - name: PROMETHEUS_URL
               value: "{{ .Values.env.PROMETHEUS_URL }}"
-            - name: MAX_TIME_RANGE_DAYS
-              value: "{{ .Values.env.MAX_TIME_RANGE_DAYS }}"
-            - name: DEFAULT_TIME_RANGE_DAYS
-              value: "{{ .Values.env.DEFAULT_TIME_RANGE_DAYS }}"
-            - name: TEMPO_URL
-              value: "{{ .Values.env.TEMPO_URL }}"
-            - name: TEMPO_TENANT_ID
-              value: "{{ .Values.env.TEMPO_TENANT_ID }}"
             - name: NAMESPACE
               value: "{{ .Release.Namespace }}"
             - name: THANOS_TOKEN
@@ -58,16 +50,13 @@ spec:
                 secretKeyRef:
                   name: mcp-analyzer
                   key: token
-            - name: LLM_URL
-              value: "http://llama-3-2-3b-instruct-predictor.{{ .Release.Namespace }}.svc.cluster.local:8080/v1/openai/v1"
-            - name: LLM_API_TOKEN
-              value: "{{ .Values.llm.apiToken }}"
             {{- if .Values.llm.url }}
             - name: LLAMA_STACK_URL
               value: "{{ .Values.llm.url }}"
-            {{- else }}
-            - name: LLAMA_STACK_URL
-              value: "http://llamastack.{{ .Release.Namespace }}.svc.cluster.local:8321/v1/openai/v1"
+            {{- end }}
+            {{- if .Values.llm.apiToken }}
+            - name: LLM_API_TOKEN
+              value: "{{ .Values.llm.apiToken }}"
             {{- end }}
             - name: MODEL_CONFIG
               value: '{{ .Values.modelConfig | toJson }}'
@@ -78,9 +67,9 @@ spec:
                 - -f
                 - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
             initialDelaySeconds: 30
-            periodSeconds: 60
-            timeoutSeconds: 30
-            failureThreshold: 6
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             exec:
               command:
@@ -88,9 +77,9 @@ spec:
                 - -f
                 - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
             initialDelaySeconds: 10
-            periodSeconds: 20
-            timeoutSeconds: 20
-            failureThreshold: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

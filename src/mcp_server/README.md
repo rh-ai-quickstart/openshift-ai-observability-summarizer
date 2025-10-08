@@ -9,22 +9,12 @@ The MCP server provides the following tools:
 - **`list_models`** - Discover available vLLM models from Prometheus metrics
 - **`list_namespaces`** - List monitored Kubernetes namespaces with observability data
 - **`get_model_config`** - Get available LLM models for summarization and analysis
-- **`list_summarization_models`** - List summarization models from MODEL_CONFIG (internal/external)
-- **`get_gpu_info`** - Return cluster GPU info (count, vendors, models, temperatures)
-- **`get_deployment_info`** - Heuristic deployment info for a model in a namespace
 - **`analyze_vllm`** - Analyze vLLM metrics for a model and summarize with an LLM
-- **`analyze_openshift`** - Analyze OpenShift metrics by category and scope, returning an LLM summary
-- **`list_openshift_metric_groups`** - List all cluster-wide OpenShift metric categories
-- **`list_openshift_namespace_metric_groups`** - List OpenShift categories that support namespace-scoped analysis
-- **`query_tempo_tool`** - Query traces from Tempo by service, operation, and time range
-- **`get_trace_details_tool`** - Get detailed trace information by trace ID
-- **`chat_tempo_tool`** - Conversational interface for Tempo trace analysis
 
 ## 📋 Prerequisites
 
 - Development Environment: Running via `scripts/local-dev.sh`
 - Prometheus Access: Port 9090 accessible (usually via port-forward)
-- Tempo Access: Port 8082 accessible (usually via port-forward)
 - vLLM Models: Deployed in OpenShift with metrics enabled
 - Python 3.11+: For MCP server execution
 
@@ -116,138 +106,6 @@ Explicit tool invocation (for MCP Inspector or advanced users):
 }
 ```
 
-### Analyze OpenShift Metrics
-- "Analyze OpenShift Fleet Overview for the last hour."
-- "Analyze OpenShift Workloads & Pods in namespace myns from 12:00 to 13:00 UTC."
-
-### Tempo Trace Analysis
-- "Show me traces from the last 24 hours"
-- "Find slow traces from the last week"
-- "Show me traces from ui service"
-- "Get details for trace 60c62fb63e30036df58e6bcf4e224c63"
-
-Explicit tool invocation for Tempo:
-```json
-{
-  "tool": "query_tempo_tool",
-  "args": {
-    "query": "service.name=ui",
-    "start_time": "2024-01-01T00:00:00Z",
-    "end_time": "2024-01-01T23:59:59Z",
-    "limit": 20
-  }
-}
-```
-
-```json
-{
-  "tool": "get_trace_details_tool",
-  "args": {
-    "trace_id": "60c62fb63e30036df58e6bcf4e224c63"
-  }
-}
-```
-
-```json
-{
-  "tool": "chat_tempo_tool",
-  "args": {
-    "question": "Show me slow traces from the last 24 hours"
-  }
-}
-```
-
-Explicit tool invocation:
-```json
-{
-  "tool": "analyze_openshift",
-  "args": {
-    "metric_category": "Fleet Overview",
-    "scope": "cluster_wide",
-    "time_range": "last 1h",
-    "summarize_model_id": "meta-llama/Llama-3.2-3B-Instruct"
-  }
-}
-```
-
-Namespace-scoped example:
-```json
-{
-  "tool": "analyze_openshift",
-  "args": {
-    "metric_category": "Workloads & Pods",
-    "scope": "namespace_scoped",
-    "namespace": "myns",
-    "start_datetime": "2025-01-01T00:00:00Z",
-    "end_datetime": "2025-01-01T01:00:00Z",
-    "summarize_model_id": "meta-llama/Llama-3.2-3B-Instruct"
-  }
-}
-```
-
-### List OpenShift Metric Groups
-```json
-{ "tool": "list_openshift_metric_groups" }
-```
-Returns a bullet list of available cluster-wide categories, e.g.:
-- Fleet Overview
-- Services & Networking
-- Jobs & Workloads
-- Storage & Config
-- Workloads & Pods
-- GPU & Accelerators
-- Storage & Networking
-- Application Services
-
-### List OpenShift Namespace Metric Groups
-```json
-{ "tool": "list_openshift_namespace_metric_groups" }
-```
-Returns namespace-capable categories:
-- Workloads & Pods
-- Storage & Networking
-- Application Services
-
-### Summarization Models (new)
-
-```json
-{ "tool": "list_summarization_models" }
-```
-Returns a formatted list of available summarization model IDs (internal shown before external). The UI parses this bullet list into a string array for selection.
-
-### GPU Info (new)
-
-```json
-{ "tool": "get_gpu_info" }
-```
-Returns JSON with cluster GPU info:
-
-```json
-{
-  "total_gpus": 4,
-  "vendors": ["NVIDIA"],
-  "models": ["GPU"],
-  "temperatures": [45.0, 47.5, 50.1, 49.0],
-  "power_usage": []
-}
-```
-
-### Deployment Info (new)
-
-```json
-{ "tool": "get_deployment_info", "args": { "namespace": "myns", "model": "my-model" } }
-```
-Returns JSON with heuristic deployment status for the namespace/model:
-
-```json
-{
-  "is_new_deployment": true,
-  "deployment_date": "2025-01-01",
-  "message": "New deployment detected in namespace 'myns'. Metrics will appear once the model starts processing requests. This typically takes 5-10 minutes after the first inference request.",
-  "namespace": "myns",
-  "model": "my-model"
-}
-```
 
 
 #### Model identifiers quick guide (MCP)
@@ -314,25 +172,9 @@ Troubleshooting tips:
 | `list_models` | Lists available vLLM models from metrics | Format: `"namespace | model_name"` |
 | `list_namespaces` | Lists monitored Kubernetes namespaces | Sorted list of namespace names |
 | `get_model_config` | Gets LLM models for summarization | Internal/external model configurations |
-| `list_summarization_models` | Lists summarization model IDs | Bullet list; UI parses to List of strings |
-| `get_gpu_info` | Returns GPU fleet info | JSON: total_gpus, vendors, models, temperatures, power_usage |
-| `get_deployment_info` | Returns deployment status for a model/namespace | JSON: is_new_deployment, deployment_date, message, namespace, model |
 | `analyze_vllm` |  fetch metrics, build prompt, summarize | Text summary with prompt and metrics preview |
-| `analyze_openshift` | Analyze metrics for a given category/scope | Text block with LLM summary and context |
-| `list_openshift_metric_groups` | Lists cluster-wide OpenShift categories | Bullet list of categories |
-| `list_openshift_namespace_metric_groups` | Lists namespace-capable categories | Bullet list of categories |
 
-The vLLM discovery tools query Prometheus metrics using identical logic as the main metrics API. The model config tool reads environment configuration for LLM models.
-
-The Tempo tools provide distributed tracing analysis capabilities for OpenShift applications.
-
-### Tempo Tools
-
-| Tool | Description | Returns |
-|------|-------------|---------|
-| `query_tempo_tool` | Query traces from Tempo by service/operation/time | List of trace information with analysis |
-| `get_trace_details_tool` | Get detailed trace information by trace ID | Detailed trace data with spans |
-| `chat_tempo_tool` | Conversational interface for trace analysis | Natural language analysis of traces | 
+The vLLM discovery tools query Prometheus metrics using identical logic as the main metrics API. The model config tool reads environment configuration for LLM models. 
 
 ## 🔗 Integration Architecture
 
@@ -348,40 +190,6 @@ The Tempo tools provide distributed tracing analysis capabilities for OpenShift 
 ```
 
 ## 🔧 Development
-
-### Running Tests (mcp_server)
-
-Use these commands from the project root to run the MCP Server unit tests:
-
-```bash
-# Run all mcp_server tests
-PYTHONPATH=src pytest -q tests/mcp_server
-
-# Run a specific test file
-PYTHONPATH=src pytest -q tests/mcp_server/test_api.py
-
-# Run a single test function
-PYTHONPATH=src pytest -q tests/mcp_server/test_tools.py -k test_analyze_vllm_success
-```
-
-Notes:
-- `PYTHONPATH=src` lets tests import `mcp_server` from the source tree.
-
-Using uv (alternative):
-
-```bash
-# Install test dependencies defined in pyproject.toml
-uv sync --group test
-
-# Run all mcp_server tests
-PYTHONPATH=src uv run pytest -q tests/mcp_server
-
-# Run a specific test file
-PYTHONPATH=src uv run pytest -q tests/mcp_server/test_api.py
-
-# Run a single test function
-PYTHONPATH=src uv run pytest -q tests/mcp_server/test_tools.py -k test_analyze_vllm_success
-```
 
 ### Local Development with Port Forwarding
 
@@ -591,18 +399,4 @@ pip list | grep obs-mcp-server
 1. **Claude Desktop**: Restart the application after configuration changes
 2. **Cursor IDE**: Restart Cursor IDE to load new MCP configuration  
 3. **Path Issues**: Use `python setup_integration.py` to auto-detect correct paths
-
-## ⏱️ Prometheus Query Range and Step
-
-- MAX_TIME_RANGE_DAYS: The MCP server enforces a maximum time window for all range queries. This limit is configurable via the environment variable `MAX_TIME_RANGE_DAYS` (default 90). Requests exceeding this window return a validation error.
-- Default window: When users do not provide a time range (no `time_range` or explicit `start_datetime`/`end_datetime`), the server defaults to the last `DEFAULT_TIME_RANGE_DAYS` (default 90) days.
-- Step selection: For `query_range` requests, the server computes a Prometheus step so that the number of points per series stays within safe bounds (≈ 11k points). The raw step is chosen as `ceil((end-start)/(max_points-1))` and then rounded up to the nearest "nice" bucket (1,2,5,10,15,30,60s, 2,5,10,15,30m, 1,2,4,6,12h). This ensures large ranges automatically use coarser resolution to keep queries performant and avoid large payloads.
-
-Example (Helm):
-
-```bash
-# Set maximum range to 60 days at deploy-time
-helm upgrade --install mcp-server deploy/helm/mcp-server -n <ns> \
-  --set env.MAX_TIME_RANGE_DAYS=60
-```
 

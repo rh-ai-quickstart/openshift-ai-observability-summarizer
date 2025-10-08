@@ -22,41 +22,5 @@
       "prompt_rate": 0.0000003,
       "output_rate": 0.000001
     }
-  },
-  "anthropic/claude-opus-4-1-20250805": {
-    "external": true,
-    "requiresApiKey": true,
-    "serviceName": null,
-    "provider": "anthropic",
-    "apiUrl": "https://api.anthropic.com/v1/messages",
-    "modelName": "claude-opus-4-1-20250805",
-    "cost": {
-      "prompt_rate": 0.000015,
-      "output_rate": 0.000075
-    }
-  },
-  "anthropic/claude-sonnet-4-20250514": {
-    "external": true,
-    "requiresApiKey": true,
-    "serviceName": null,
-    "provider": "anthropic",
-    "apiUrl": "https://api.anthropic.com/v1/messages",
-    "modelName": "claude-sonnet-4-20250514",
-    "cost": {
-      "prompt_rate": 0.000003,
-      "output_rate": 0.000015
-    }
-  },
-  "anthropic/claude-3-5-haiku-20241022": {
-    "external": true,
-    "requiresApiKey": true,
-    "serviceName": null,
-    "provider": "anthropic", 
-    "apiUrl": "https://api.anthropic.com/v1/messages",
-    "modelName": "claude-3-5-haiku-20241022",
-    "cost": {
-      "prompt_rate": 0.000001,
-      "output_rate": 0.000005
-    }
   }
 } 

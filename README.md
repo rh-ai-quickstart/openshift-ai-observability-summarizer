@@ -69,32 +69,19 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 - Custom alert thresholds and conditions
 
 ### **6. Distributed Tracing Integration**
-- **Complete Observability Stack**: MinIO storage + TempoStack + OpenTelemetry Collector + auto-instrumentation
-- **Tracing support** with OpenTelemetry and Tempo to monitor request flows across your AI services
-- **Flexible deployment**: Install complete stack or individual components as needed
+- Tracing support with OpenTelemetry and Tempo to monitor request flows across your AI services.
 
-### **7. AI Assistant Integration (MCP Server)**
+### **6. AI Assistant Integration (MCP Server)**
 - **Model Context Protocol (MCP) server** for AI assistants (Claude Desktop, Cursor IDE)
 - **Natural language analysis** - ask questions like "What is the GPU temperature?"
 - **Real-time data access** - connects directly to Prometheus/Thanos
 - **AI-powered insights** - full LLM integration for intelligent metric analysis
-
-Supports stdio and HTTP (SSE) transports. See `src/mcp_server/README.md` for configuration examples.
 
 📖 **Quick Setup**: 
 ```bash
 cd src/mcp_server && python setup_integration.py
 ```
 See [`src/mcp_server/README.md`](src/mcp_server/README.md) for complete documentation.
-
-### **8. 🤖 Chat with Prometheus - Claude Desktop Intelligence**
-- **Claude Desktop-style interface** with autonomous tool calling and real-time progress visibility
-- **Dynamic metric selection** from 3500+ available metrics using AI-powered analysis  
-- **Intelligent PromQL generation** with automatic aggregation and filtering
-- **Rich contextual responses** including operational insights, health assessments, and technical details
-- **Multi-iteration analysis** - Claude uses multiple tools sequentially for comprehensive understanding
-
-Ask questions like: *"How many pods are running?"*, *"What's the GPU temperature?"*, *"Token generation rate?"* and get Claude Desktop-quality responses with full transparency of the AI reasoning process.
 
 ---
 
@@ -119,17 +106,33 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ## Architecture
 
-![Architecture](docs/img/arch-2.jpg)
+### Core Components
 
-### **Core Components**
-- **Prometheus/Thanos**: Metrics collection and long-term storage
-- **vLLM**: Model serving with /metrics endpoint
+### **Monitoring Stack**
+- **Prometheus**: Prometheus scrapes the /metrics endpoint offered by vLLM. It can store metrics itself in its own time-series database on a local disk which is
+                  highly optimized for fast queries on recent data. This is perfect for real-time monitoring and alerting but is not
+                  ideal for long term and multi-year storage. This is where Thanos Querier comes in.
+- **Thanos Querier**: Extends Prometheus by solving the problem of long-term retention. Thanos is capable of taking data blocks that Prometheus saves to
+                      its local disk and uploading them to inexpensive and durable object storage, like Amazon S3, Google Cloud Storage, or Azure Blob Storage.
+                      Querier gives you a cost-effective way of retaining years of metrics data available for historical analysis and trend reporting.
+                      Querier sidecars run alongside your Prometheus servers, providing access to real-time and recent metrics.                  
 - **DCGM**: GPU monitoring and telemetry
 - **Streamlit UI**: Multi-dashboard interface (vLLM, OpenShift, Chat)
-- **MCP Server**: Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
-- **LLM Stack**: Llama models for AI-powered insights and summaries
+- **FastAPI Backend**: metrics-api for web UI and report generation
+- **MCP Server**: Model Context Protocol server for AI assistant integration
+- **Report Generator**: PDF/HTML/Markdown export capabilities
+- **llm-service:** LLM inference (Llama models)
+- **llama-stack:** Backend API
+- **vLLM:** Model serving, exports Prometheus /metrics
+- **Prometheus/Thanos:** Metrics scraping, long-term storage
+- **DCGM:** GPU monitoring
+- **Streamlit UI:** Multi-dashboard frontend
+- **MCP:** Metric Collection & Processing backend
+- **Report Generator:** PDF/HTML/Markdown export
 
-### **Key Features**
+![Architecture](docs/img/arch-2.jpg)
+
+### **Key Components**
 1. **vLLM Dashboard**: Monitor model performance, GPU usage, latency
 2. **OpenShift Dashboard**: Fleet monitoring with cluster-wide and namespace views
 3. **Chat Interface**: Interactive Q&A with metrics-aware AI assistant
@@ -224,60 +227,21 @@ make install NAMESPACE=your-namespace ALERTS=TRUE
 ```
 Enabling alerting will deploy alert rules, a cron job to monitor vLLM metrics, and AI-powered Slack notifications.
 
-### Observability Stack Management
-
-The project includes a complete observability stack with flexible deployment options:
-
-#### **Complete Stack Installation**
-```bash
-# Install complete observability stack (MinIO + TempoStack + OTEL + tracing)
-# Note: NAMESPACE is required for tracing setup
-make install-observability-stack NAMESPACE=your-namespace
-
-# Uninstall complete observability stack
-# Note: NAMESPACE is required for tracing removal
-make uninstall-observability-stack NAMESPACE=your-namespace
-```
-
-#### **Individual Component Management**
-```bash
-# Install individual components
-make install-minio                                           # MinIO storage only (uses observability-hub namespace)
-make install-observability                                   # TempoStack + OTEL only (uses observability-hub namespace)
-make setup-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
-
-# Uninstall individual components
-make uninstall-minio                                         # MinIO storage only (uses observability-hub namespace)
-make uninstall-observability                                 # TempoStack + OTEL only (uses observability-hub namespace)
-make remove-tracing NAMESPACE=your-namespace                 # Auto-instrumentation only (requires NAMESPACE)
-```
-
-#### **NAMESPACE Requirements**
-- **Complete Stack**: `install-observability-stack` and `uninstall-observability-stack` require NAMESPACE for tracing components
-- **Storage & Core**: `install-minio`, `uninstall-minio`, `install-observability`, `uninstall-observability` use hardcoded `observability-hub` namespace
-- **Tracing Only**: `setup-tracing` and `remove-tracing` require NAMESPACE parameter
-
-#### **Observability Features**
-- **MinIO**: S3-compatible object storage for trace data and log data
-- **TempoStack**: Multitenant trace storage and analysis
-- **OpenTelemetry Collector**: Distributed tracing collection
-- **Auto-instrumentation**: Automatic Python application tracing
-
 ### Accessing the Application
 
 The default configuration deploys:
-- **llm-service** - LLM inference
+- **llm-service** - LLM inference 
 - **llama-stack** - Backend API
 - **pgvector** - Vector database
+- **metric-mcp** - Metrics collection & processing API
 - **metric-ui** - Multi-dashboard Streamlit interface
-- **mcp-server** - Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
 - **OpenTelemetry Collector** - Distributed tracing collection
 - **Tempo** - Trace storage and analysis
 - **MinIO** - Object storage for traces
 
-Navigate to your **OpenShift Cluster → Networking → Routes** to find the application URL(s). You can also navigate to **Observe → Traces** in the OpenShift console to view traces.
+Navigate to your **Openshift Cluster --> Networking --> Route** and you should be able to see the route for your application. You can also navigate to **Observe > Traces** in the OpenShift console to view traces.
 
-On terminal you can access the route with:
+On terminal you can access the route with -
 
 ```bash
 oc get route
@@ -286,10 +250,10 @@ NAME              HOST/PORT                                                     
 metric-ui-route   metric-ui-route-llama-1.apps.tsisodia-spark.2vn8.p1.openshiftapps.com          metric-ui-svc   8501   edge/Redirect   None
 ```
 
-### OpenShift Summarizer Dashboard 
+### Openshift Summarizer Dashboard 
 ![UI](docs/img/os.png)
 
-### vLLM Summarizer Dashboard 
+### vLLM SUmmarizer Dashboard 
 ![UI](docs/img/vllm.png)
 
 ### Chat with Prometheus 
@@ -302,7 +266,7 @@ metric-ui-route   metric-ui-route-llama-1.apps.tsisodia-spark.2vn8.p1.openshifta
 To uninstall:
 
 ```bash
-make uninstall NAMESPACE=your-namespace
+make uninstall NAMESPACE=metric-summarizer
 ```
 
 ---
@@ -310,7 +274,7 @@ make uninstall NAMESPACE=your-namespace
 ## Usage
 
 ### **Multi-Dashboard Interface**
-Access via the OpenShift route: `oc get route`
+Access via the OpenShift route: `oc get route ui`
 
 #### **vLLM Metric Summarizer**
 1. Select your AI model and namespace
@@ -359,17 +323,30 @@ The project includes a comprehensive Makefile that simplifies building, pushing,
 
 The application consists of multiple services that need to be built as container images for OpenShift deployment.
 
+#### **Build All Images**
+
 ```bash
-# Build all container images
+# Build all container images (metrics-api, metric-ui, metric-alerting)
 make build
 
-# Build with custom version
-make build VERSION=v1.0.0
+# Build with custom tag
+make build TAG=v1.0.0
 
-# Build individual components
-make build-ui            # Streamlit UI  
-make build-alerting      # Alerting Service
-make build-mcp-server    # MCP Server
+# Build with custom registry
+make build REGISTRY=your-registry.com/your-org
+```
+
+#### **Build Individual Components**
+
+```bash
+# Build FastAPI Backend (metrics-api)
+make build-metrics-api
+
+# Build Streamlit UI (metric-ui)
+make build-ui
+
+# Build Alerting Service (metric-alerting)
+make build-alerting
 ```
 
 #### **Push Images to Registry**
@@ -378,13 +355,13 @@ make build-mcp-server    # MCP Server
 # Push all images to registry
 make push
 
-# Push with custom version
-make push VERSION=v1.0.0
+# Push with custom tag
+make push TAG=v1.0.0
 
 # Push individual components
+make push-metrics-api
 make push-ui
 make push-alerting
-make push-mcp-server
 ```
 
 #### **Complete Build and Push Workflow**
@@ -394,7 +371,7 @@ make push-mcp-server
 make build-and-push
 
 # With custom configuration
-make build-and-push VERSION=v1.0.0 REGISTRY=your-registry.com/your-org
+make build-and-push TAG=v1.0.0 REGISTRY=your-registry.com/your-org
 ```
 
 ### Deploy to OpenShift
@@ -437,8 +414,8 @@ The Makefile supports various configuration options via environment variables:
 # Set custom registry
 export REGISTRY=your-registry.com/your-org
 
-# Set custom version
-export VERSION=v1.0.0
+# Set custom tag
+export TAG=v1.0.0
 
 # Set target platform
 export PLATFORM=linux/amd64
@@ -447,9 +424,26 @@ export PLATFORM=linux/amd64
 make config
 ```
 
+### Local Development
+
+For local development with port-forwarding:
+
+```bash
+# Set up local development environment
+make install-local NAMESPACE=your-namespace
+
+# If model is in different namespace
+make install-local NAMESPACE=default-ns MODEL_NAMESPACE=model-ns
+```
+
+This will run the `./scripts/local-dev.sh` script to set up port-forwarding to Llamastack, llm-service, and Thanos.
+
 ### Available Models
 
-See [Choosing different models](#choosing-different-models) section for the complete list of available models.
+```bash
+# List available models for deployment
+make list-models
+```
 
 ### Cleanup
 
@@ -458,9 +452,10 @@ See [Choosing different models](#choosing-different-models) section for the comp
 make clean
 ```
 
+
 ## Local Development via Port-Forwarding
 
-For local development of the UI and MCP server, use the unified development environment script that handles port-forwarding to Llamastack, LLM service, and Thanos.
+For local development of the metrics API/UI and MCP server, use the unified development environment script that handles port-forwarding to Llamastack, LLM service, and Thanos.
 
 **Pre-requisites**:
 1. You have a deployment on the cluster already.
@@ -483,8 +478,7 @@ If you prefer to run the script manually, follow these steps:
 
 1. **Make sure you are logged into the cluster and can execute `oc` commands against the cluster.**
 2. Install `uv` by following instructions on the [uv website](https://github.com/astral-sh/uv)
-3. Sync up the environment and development dependencies using `uv` in the base directory
-
+3. Sync up the environment and development dependencies using `uv` in the base directory:
 ### Quick Start
 ```bash
 # 1. Setup environment
@@ -494,64 +488,18 @@ uv sync --group dev
 # 2. Start development environment (includes all port forwarding)
 ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>
 
-# 3. With specific LLM model (optional, default: llama-3.2-3b-instruct)
-./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -l llama-3.1-8b-instruct
-
-# 4. If model is in different namespace (optional)
+# 3. If model is in different namespace (optional)
 ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -m <MODEL_NAMESPACE>
-
-# 5. Use cluster model config instead of local generation (optional)
-./scripts/local-dev.sh -n <DEFAULT_NAMESPACE> -c cluster
-
-# 6. For different log levels (optional)
-PYTHON_LOG_LEVEL=DEBUG ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>   # Debug logs
-PYTHON_LOG_LEVEL=WARN ./scripts/local-dev.sh -n <DEFAULT_NAMESPACE>    # Warning only
 ```
 
 ### What the script does:
 - ✅ **Activates Python virtual environment** (.venv)
-- ✅ **Generates MODEL_CONFIG** - Dynamically merges base models (OpenAI, Google, Anthropic) with specified LLM
 - ✅ **Port forwards Prometheus/Thanos** (localhost:9090)
-- ✅ **Port forwards LLM server** (localhost:8321)
+- ✅ **Port forwards LLM server** (localhost:8321) 
 - ✅ **Port forwards Model service** (localhost:8080)
-- ✅ **Starts MCP server** (localhost:8085)
+- ✅ **Starts metrics API** (localhost:8000)
 - ✅ **Starts Streamlit UI** (localhost:8501)
 - ✅ **Configures environment** for MCP server development
-- ✅ **Sets configurable logging** (PYTHON_LOG_LEVEL=INFO by default, override with env var)
-
-**Model Configuration**:
-- By default, generates config for `llama-3.2-3b-instruct` + base external models
-- Use `-l <model>` to specify a different LLM model from your deployment
-- Use `-c cluster` to use existing cluster deployment config instead of generating new one
-
-### Model Configuration Generation Architecture
-
-The project uses `scripts/generate-model-config.sh` as the **single source of truth** for model configuration generation. This shared script is used by both:
-- **Makefile** (for OpenShift deployment): Calls with `--helm-format` flag to generate Helm values file
-- **local-dev.sh** (for local development): Calls without flag for JSON-only output
-
-**How it works**:
-1. Merges `deploy/helm/model-config.json` (base external models: OpenAI, Google, Anthropic)
-2. With LLM-specific config from `deploy/helm/default-model.json.template`
-3. Generates final merged configuration as JSON
-
-**Output files** (in `/tmp`):
-- `gen_model_config-final_config.json` - Merged JSON configuration
-- `gen_model_config-for_helm.yaml` - Helm values format (only with `--helm-format` flag)
-
-**Usage**:
-```bash
-# Direct usage (for debugging)
-source scripts/generate-model-config.sh
-generate_model_config "llama-3.1-8b-instruct"           # JSON only
-generate_model_config "llama-3.2-3b-instruct" --helm-format  # JSON + Helm YAML
-
-# Via Makefile (automatic)
-make install NAMESPACE=ns LLM=llama-3.1-8b-instruct
-
-# Via local-dev.sh (automatic)
-./scripts/local-dev.sh -n ns -l llama-3.1-8b-instruct
-```
 
 ### For MCP/AI Assistant Development
 After running `scripts/local-dev.sh`, you can:
@@ -568,7 +516,14 @@ obs-mcp-server --test-config
 The output should look like this:
 ![Command Output](docs/img/local-dev-expected.png)
 
- 
+#### Macos weasyprint install
+
+**Still verifying whether we need this setup or not as weasyprint is installed using `uv` in previous step.**
+
+In order to run the metrics API locally you'll need to install weasyprint:
+1. Install via brew `brew install weasyprint`
+2. Ensure installation `weasyprint --version`
+3. Set **DYLD_FALLBACK_LIBRARY_PATH** `export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH`
 
 ## Running Tests with Pytest
 
@@ -581,17 +536,17 @@ The test suite is located in the `tests/` directory, with the tests for each ser
 uv sync --group test
 ```
 
-2. Use the `pytest` command to run all tests
+2. Use the `pytest` command go run all tests
 
 ```bash
 # Run all tests with verbose output and coverage
 uv run pytest -v --cov=src --cov-report=html --cov-report=term
 
-# Run only API tests
-uv run pytest -v tests/api/
+# Run only MCP tests
+uv run pytest -v tests/mcp/
 
 # Run specific test file
-uv run pytest -v tests/api/test_api_endpoints.py
+uv run pytest -v tests/mcp/test_api_endpoints.py
 ```
 
 To view a detailed coverage report after generating, open `htmlcov/index.html`.
@@ -600,17 +555,55 @@ To view a detailed coverage report after generating, open `htmlcov/index.html`.
 
 ## GitHub Actions CI/CD
 
-Automated workflows cover testing, building, deploying, and undeploying. Configure OpenShift and registry secrets, and the pipelines will run on PRs and merges.
+The project uses 5 automated GitHub Actions workflows for comprehensive CI/CD:
 
-📖 See [docs/GITHUB_ACTIONS.md](docs/GITHUB_ACTIONS.md) for full workflow details and setup.
+### Workflow Overview
+- **PR Review**: Run Tests and Rebase Check (parallel during PR review)
+- **Post-Merge**: Build → Deploy (sequential after merge)
+- **Manual**: Undeploy (manual only with safety confirmation)
+
+### Key Changes
+- **Semantic Versioning**: Now prioritizes PR labels and PR title over commit messages
+- **Deploy Workflow**: Default namespace `dev`
+- **Undeploy Workflow**: Manual execution only with required safety confirmation
+
+### Quick Setup
+1. **Service Account**: Run `./scripts/ocp-setup.sh -s -t -n <namespace>` to create OpenShift service account
+2. **GitHub Secrets**: Configure `OPENSHIFT_SERVER`, `OPENSHIFT_TOKEN`, `HUGGINGFACE_API_KEY`, `QUAY_USERNAME`, `QUAY_PASSWORD`
+3. **Ready**: Workflows automatically run on PR events and merges
+
+📖 **[Complete GitHub Actions Documentation](docs/GITHUB_ACTIONS.md)** - Detailed workflow configuration, service account setup, troubleshooting, and manual execution instructions.
 
 ---
 
 ## Semantic Versioning
 
-Semantic versions are derived automatically from PR labels/titles, falling back to commit messages.
+This project uses automated semantic versioning based on PR labels, PR titles, and commit message conventions. Version bumps are determined by analyzing PRs in order of priority when merged.
 
-📖 See [docs/SEMANTIC_VERSIONING.md](docs/SEMANTIC_VERSIONING.md) for complete rules and examples.
+### Version Bump Priority Order
+1. **PR Labels** (highest priority) - Add labels like `major`, `feature`, `bugfix`
+2. **PR Title** (medium priority) - Use conventional commit format in PR title
+3. **Commit Messages** (fallback) - Traditional commit message analysis
+
+### Version Bump Rules
+- **Major (`X`.0.0)**: Breaking changes - Keywords: `BREAKING CHANGE:`, `BREAKING CHANGE` (colon optional), `breaking:`, `!:`, `major:`
+- **Minor (X.`Y`.0)**: New features - Keywords: `feat:`, `feature:`, `add:`, `minor:`
+- **Patch (X.Y.`Z`)**: Bug fixes and other changes - Keywords: `patch`, `bugfix`, `fix`, `documentation` (no colons)
+
+### Quick Examples
+```bash
+# Recommended: Use PR labels
+PR with label "feature:" → Minor bump
+PR with label "bugfix" → Patch bump
+PR with label "major:" → Major bump
+
+# Alternative: Use PR title
+"feat: add user authentication" → Minor bump
+"fix: resolve login timeout" → Patch bump  
+"refactor!: redesign API endpoints" → Major bump
+```
+
+📖 **[Complete Semantic Versioning Documentation](docs/SEMANTIC_VERSIONING.md)** - Detailed rules, implementation, examples, and troubleshooting.
 
 ---
 
@@ -623,10 +616,6 @@ The project uses Helm charts for OpenShift deployment with centralized image man
 - **Helm overrides**: `--set image.repository=$(IMAGE_NAME)` and `--set image.tag=$(VERSION)`
 
 📖 **[Complete Helm Charts Documentation](docs/HELM_CHARTS.md)** - Detailed information about Helm chart structure, image management, deployment patterns, and customization options.
-
-### Logging
-
-All services use centralized structured logging. Control verbosity via the `PYTHON_LOG_LEVEL` environment variable (e.g., `INFO`, `DEBUG`). Helm values expose this for `ui` and `mcp-server`.
 
 ---
 

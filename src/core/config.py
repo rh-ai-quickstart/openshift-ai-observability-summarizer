@@ -7,14 +7,7 @@ that are shared across FastAPI, Streamlit UI, and MCP servers.
 
 import os
 import json
-import logging
 from typing import Dict, Any
-from common.pylogger import get_python_logger
-
-# Initialize structured logger once - other modules should use logging.getLogger(__name__)
-get_python_logger()
-
-logger = logging.getLogger(__name__)
 
 
 def load_model_config() -> Dict[str, Any]:
@@ -23,7 +16,7 @@ def load_model_config() -> Dict[str, Any]:
         model_config_str = os.getenv("MODEL_CONFIG", "{}")
         return json.loads(model_config_str)
     except Exception as e:
-        logger.warning("Could not parse MODEL_CONFIG: %s", e)
+        print(f"Warning: Could not parse MODEL_CONFIG: {e}")
         return {}
 
 
@@ -41,20 +34,12 @@ def load_thanos_token() -> str:
 
 def get_ca_verify_setting():
     """Get SSL certificate verification setting."""
-    # Check if VERIFY_SSL environment variable is set
-    verify_ssl_env = os.getenv("VERIFY_SSL")
-    if verify_ssl_env is not None:
-        # Convert string to boolean
-        return verify_ssl_env.lower() in ("true", "1", "yes", "on")
-
-    # Fallback to CA bundle check
     ca_bundle_path = "/etc/pki/ca-trust/extracted/pem/ca-bundle.crt"
     return ca_bundle_path if os.path.exists(ca_bundle_path) else True
 
 
 # Main configuration settings
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-TEMPO_URL = os.getenv("TEMPO_URL", "http://localhost:8080")
 LLAMA_STACK_URL = os.getenv("LLAMA_STACK_URL", "http://localhost:8321/v1/openai/v1")
 LLM_API_TOKEN = os.getenv("LLM_API_TOKEN", "")
 
@@ -67,10 +52,3 @@ VERIFY_SSL = get_ca_verify_setting()
 # Chat scope values used across the codebase
 CHAT_SCOPE_FLEET_WIDE = "fleet_wide"
 FLEET_WIDE_DISPLAY = "Fleet-wide"
-
-# Time range constraints
-# Maximum time range allowed for analysis (in days)
-MAX_TIME_RANGE_DAYS: int = int(os.getenv("MAX_TIME_RANGE_DAYS", "90"))
-
-# Default time range when none is provided (in days)
-DEFAULT_TIME_RANGE_DAYS: int = int(os.getenv("DEFAULT_TIME_RANGE_DAYS", "90"))

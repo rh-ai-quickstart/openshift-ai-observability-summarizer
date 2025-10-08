@@ -1,6 +1,6 @@
 image:
   repository: quay.io/ecosystem-appeng/aiobs-metrics-ui
-  tag: 0.13.6
+  tag: 0.4.2
   pullPolicy: IfNotPresent
 
 service:
@@ -11,9 +11,7 @@ env:
   PROMETHEUS_URL: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
   LLM_URL: "http://llm-service:8012"
   LLM_API_TOKEN: ""
-  PYTHON_LOG_LEVEL: "INFO"
   
-# Configurable MCP server service name and port - can be overridden
-mcpServer:
-  serviceName: "mcp-server-svc"  # Should match the MCP server release name + "-svc"
-  port: 8085
+# Configurable metrics API service name - can be overridden
+metricsApi:
+  serviceName: "metrics-api-svc"

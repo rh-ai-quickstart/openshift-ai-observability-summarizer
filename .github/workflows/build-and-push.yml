@@ -147,6 +147,11 @@ jobs:
     strategy:
       matrix:
         include:
+          - name: metrics-api
+            context: src
+            dockerfile: src/api/Dockerfile
+            component: metrics-api
+
           - name: metrics-ui
             context: src
             dockerfile: src/ui/Dockerfile
@@ -214,6 +219,10 @@ jobs:
           echo "Repository: ${{ github.repository }}"
           echo "Actor: ${{ github.actor }}"
           echo "::endgroup::"
+
+      - name: Update metrics-api values.yaml
+        run: |
+          sed -i 's|tag: .*|tag: ${{ needs.semantic-version.outputs.version }}|' deploy/helm/metrics-api/values.yaml
 
       - name: Update ui values.yaml
         run: |

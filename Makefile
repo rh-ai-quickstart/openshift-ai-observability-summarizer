@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server install-observability-stack uninstall-observability-stack clean config test,$(MAKECMDGOALS)))
+ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-metrics-api build-ui build-alerting build-mcp-server push push-metrics-api push-ui push-alerting push-mcp-server install-observability uninstall-observability clean config test,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -14,10 +14,11 @@ MAKEFLAGS += --no-print-directory
 REGISTRY ?= quay.io
 ORG ?= ecosystem-appeng
 IMAGE_PREFIX ?= aiobs
-VERSION ?= 0.13.6
+VERSION ?= 0.4.2
 PLATFORM ?= linux/amd64
 
 # Container image names
+METRICS_API_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-api
 METRICS_UI_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-ui
 METRICS_ALERTING_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-metrics-alerting
 MCP_SERVER_IMAGE = $(REGISTRY)/$(ORG)/$(IMAGE_PREFIX)-mcp-server
@@ -39,13 +40,6 @@ endif
 POSTGRES_USER ?= postgres
 POSTGRES_PASSWORD ?= rag_password
 POSTGRES_DBNAME ?= rag_blueprint
-# MinIO configuration for observability storage (traces, logs, metrics)
-MINIO_USER ?= admin
-MINIO_PASSWORD ?= minio123
-MINIO_HOST ?= minio
-MINIO_PORT ?= 9000
-# MinIO bucket configuration (comma-separated list)
-MINIO_BUCKETS ?= tempo,loki
 
 # HF_TOKEN is only required if LLM_URL is not set
 HF_TOKEN ?= $(shell \
@@ -57,14 +51,14 @@ HF_TOKEN ?= $(shell \
 )
 
 RAG_CHART := rag
-MINIO_CHART := minio-observability-storage
-MINIO_CHART_PATH := minio
+METRICS_API_RELEASE_NAME ?= metrics-api
+METRICS_API_CHART_PATH ?= metrics-api
 METRICS_UI_RELEASE_NAME ?= ui
 METRICS_UI_CHART_PATH ?= ui
 MCP_SERVER_RELEASE_NAME ?= mcp-server
 MCP_SERVER_CHART_PATH ?= mcp-server
 TOLERATIONS_TEMPLATE=[{"key":"$(1)","effect":"NoSchedule","operator":"Exists"}]
-GEN_MODEL_CONFIG_PREFIX = /tmp/gen_model_config
+GEN_MODEL_CONFIG_PREFIX = "/tmp/gen_model_config"
 
 # Unified model configuration map
 # Load model configuration from separate JSON file
@@ -84,7 +78,6 @@ ALERTING_RELEASE_NAME ?= alerting
 # Observability configuration
 OBSERVABILITY_NAMESPACE ?= observability-hub # currently hard-coded in instrumentation.yaml
 INSTRUMENTATION_PATH ?= observability/otel-collector/scripts/instrumentation.yaml
-MINIO_NAMESPACE ?= observability-hub
 
 # LLM URL processing constants
 DEFAULT_LLM_PORT_AND_PATH := :8080/v1
@@ -126,18 +119,6 @@ helm_pgvector_args = \
     --set pgvector.secret.password=$(POSTGRES_PASSWORD) \
     --set pgvector.secret.dbname=$(POSTGRES_DBNAME)
 
-helm_minio_args = \
-    --set minio.secret.user=$(MINIO_USER) \
-    --set minio.secret.password=$(MINIO_PASSWORD) \
-    --set minio.secret.host=$(MINIO_HOST) \
-    --set-string minio.secret.port=$(MINIO_PORT) \
-    --set-json minio.buckets='[$(shell echo "$(MINIO_BUCKETS)" | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$$/"/')]'
-
-helm_tempo_args = \
-    --set minio.s3.accessKeyId=$(MINIO_USER) \
-    --set minio.s3.accessKeySecret=$(MINIO_PASSWORD) \
-    --set minio.s3.bucket=tempo
-
 .PHONY: help
 help:
 	@echo "OpenShift AI Observability Summarizer - Build & Deploy"
@@ -146,10 +127,12 @@ help:
 	@echo ""
 	@echo "Build & Push:"
 	@echo "  build              - Build all container images"
+	@echo "  build-metrics-api  - Build FastAPI backend (metrics-api)"
 	@echo "  build-ui           - Build Streamlit UI (metric-ui)"
 	@echo "  build-alerting     - Build Alerting Service (metric-alerting)"
 	@echo "  build-mcp-server   - Build MCP Server (mcp-server)"
 	@echo "  push               - Push all container images to registry"
+	@echo "  push-metrics-api   - Push metrics-api image"
 	@echo "  push-ui            - Push metric-ui image"
 	@echo "  push-alerting      - Push metric-alerting image"
 	@echo "  push-mcp-server    - Push mcp-server image"
@@ -159,6 +142,7 @@ help:
 	@echo "  install-with-alerts - Deploy with alerting enabled"
 	@echo "  install-local      - Set up local development environment"
 	@echo "  install-rag        - Install RAG backend services only"
+	@echo "  install-metric-mcp - Install metrics API only"
 	@echo "  install-metric-ui  - Install UI only"
 	@echo "  install-mcp-server - Install MCP server only"
 	@echo "  uninstall          - Uninstall from OpenShift"
@@ -167,17 +151,11 @@ help:
 	@echo "  generate-model-config - Generate JSON config for specified LLM using template"
 	@echo "  install-ingestion-pipeline - Install extra ingestion pipelines"
 	@echo ""
-	@echo "Observability Stack:"
-	@echo "  install-observability-stack - Install complete observability stack (MinIO + TempoStack + OTEL + tracing)"
-	@echo "  uninstall-observability-stack - Uninstall complete observability stack (tracing + TempoStack + OTEL + MinIO)"
-	@echo ""
-	@echo "Individual Components:"
-	@echo "  install-observability - Install TempoStack and OTEL Collector only"
-	@echo "  uninstall-observability - Uninstall TempoStack and OTEL Collector only"
-	@echo "  setup-tracing - Enable auto-instrumentation for tracing in target namespace (idempotent)"
+	@echo "Tracing:"
+	@echo "  install-observability - Install TempoStack and OpenTelemetry Collector for tracing"
+	@echo "  setup-tracing - Enable auto-instrumentation for tracing in target namespace"
 	@echo "  remove-tracing - Disable auto-instrumentation for tracing in target namespace"
-	@echo "  install-minio - Install MinIO observability storage backend only"
-	@echo "  uninstall-minio - Uninstall MinIO observability storage backend only"
+	@echo "  uninstall-observability - Uninstall observability components (Tempo and OTEL Collector)"
 	@echo ""
 	@echo "Alerting:"
 	@echo "  install-alerts     - Install alerting Helm chart"
@@ -208,14 +186,20 @@ help:
 	@echo "  SAFETY             - Safety model id"
 	@echo "  ALERTS             - Set to TRUE to install alerting with main deployment"
 	@echo "  SLACK_WEBHOOK_URL  - Slack Webhook URL for alerting (will prompt if not provided)"
-	@echo "  MINIO_USER         - MinIO username for observability storage (default: admin)"
-	@echo "  MINIO_PASSWORD     - MinIO password for observability storage (default: minio123)"
-	@echo "  MINIO_BUCKETS      - Comma-separated list of MinIO buckets to create (default: tempo,loki)"
 	@echo ""
 
 .PHONY: build
-build: build-ui build-alerting build-mcp-server
+build: build-metrics-api build-ui build-alerting build-mcp-server
 	@echo "✅ All container images built successfully"
+
+.PHONY: build-metrics-api
+build-metrics-api:
+	@echo "🔨 Building FastAPI Backend (metrics-api)..."
+	@cd src && $(BUILD_TOOL) buildx build --platform $(PLATFORM) \
+		-f api/Dockerfile \
+		-t $(METRICS_API_IMAGE):$(VERSION) \
+		.
+	@echo "✅ metrics-api image built: $(METRICS_API_IMAGE):$(VERSION)"
 
 .PHONY: build-ui
 build-ui:
@@ -245,8 +229,16 @@ build-mcp-server:
 	@echo "✅ mcp-server image built: $(MCP_SERVER_IMAGE):$(VERSION)"
 
 .PHONY: push
-push: push-ui push-alerting push-mcp-server
+push: push-metrics-api push-ui push-alerting push-mcp-server
 	@echo "✅ All container images pushed successfully"
+
+
+
+.PHONY: push-metrics-api
+push-metrics-api:
+	@echo "📤 Pushing metrics-api image..."
+	@$(BUILD_TOOL) push $(METRICS_API_IMAGE):$(VERSION)
+	@echo "✅ metrics-api image pushed"
 
 .PHONY: push-ui
 push-ui:
@@ -284,12 +276,40 @@ namespace:
 
 .PHONY: depend
 depend:
-	@echo "Updating Helm dependencies (for $(RAG_CHART))..."
+	@echo "Updating Helm dependencies..."
 	@cd deploy/helm && helm dependency update $(RAG_CHART) || exit 1
 
-	@echo "Updating Helm dependencies (for $(MINIO_CHART))..."
-	@cd deploy/helm && helm dependency update $(MINIO_CHART_PATH) || exit 1
 
+.PHONY: install-metric-mcp
+install-metric-mcp: namespace
+	@echo "Installing MCP by generating dynamic model configuration for $(LLM)"
+	@$(MAKE) generate-model-config LLM=$(LLM) > /dev/null 2>&1
+
+	@echo "Checking ClusterRole grafana-prometheus-reader..."
+	@(echo "modelConfig:"; cat $(GEN_MODEL_CONFIG_PREFIX)-final_config.json | sed 's/^/  /') > $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
+	if oc get clusterrole grafana-prometheus-reader > /dev/null 2>&1; then \
+		echo "ClusterRole exists. Deploying without creating Grafana role..."; \
+		cd deploy/helm && helm upgrade --install $(METRICS_API_RELEASE_NAME) $(METRICS_API_CHART_PATH) -n $(NAMESPACE) \
+			--set rbac.createGrafanaRole=false \
+			--set image.repository=$(METRICS_API_IMAGE) \
+			--set image.tag=$(VERSION) \
+			--set-json listModels.modelId.enabledModelIds='$(LLM_JSON)' \
+			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
+	else \
+		echo "ClusterRole does not exist. Deploying and creating Grafana role..."; \
+		cd deploy/helm && helm upgrade --install $(METRICS_API_RELEASE_NAME) $(METRICS_API_CHART_PATH) -n $(NAMESPACE) \
+			--set rbac.createGrafanaRole=true \
+			--set image.repository=$(METRICS_API_IMAGE) \
+			--set image.tag=$(VERSION) \
+			--set-json listModels.modelId.enabledModelIds='$(LLM_JSON)' \
+			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
+	fi
+
+	@echo "Files used for Metric MCP deployment:"
+	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml"
+	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-final_config.json"
+	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt"
+	
 
 .PHONY: install-metric-ui
 install-metric-ui: namespace
@@ -301,9 +321,14 @@ install-metric-ui: namespace
 .PHONY: install-mcp-server
 install-mcp-server: namespace
 	@echo "Deploying MCP Server"
-	@echo "Generating model configuration for MCP Server (LLM=$(LLM))"
-	@$(MAKE) generate-model-config LLM=$(LLM)
-	@echo "  → [$(GEN_MODEL_CONFIG_PREFIX).output] contains the model config generation output"
+	@echo "Generating model configuration for MCP Server (LLM=$(LLM)) if provided..."
+	@$(if $(LLM),$(MAKE) generate-model-config LLM=$(LLM) > /dev/null 2>&1,echo "LLM not set; skipping model config generation")
+	@if [ -f $(GEN_MODEL_CONFIG_PREFIX)-final_config.json ]; then \
+		(echo "modelConfig:"; cat $(GEN_MODEL_CONFIG_PREFIX)-final_config.json | sed 's/^/  /') > $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
+		echo "Prepared modelConfig values file: $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml"; \
+	else \
+		echo "No generated model config found; proceeding without modelConfig override"; \
+	fi
 	@echo "Checking ClusterRole grafana-prometheus-reader for MCP..."
 	@if oc get clusterrole grafana-prometheus-reader > /dev/null 2>&1; then \
 		echo "ClusterRole exists. Deploying without creating Grafana role..."; \
@@ -313,7 +338,7 @@ install-mcp-server: namespace
 			--set rbac.createGrafanaRole=false \
 			$(if $(MCP_SERVER_ROUTE_HOST),--set route.host='$(MCP_SERVER_ROUTE_HOST)',) \
 			$(if $(LLAMA_STACK_URL),--set llm.url='$(LLAMA_STACK_URL)',) \
-			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
+			$(if $(wildcard $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml),-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml,); \
 	else \
 		echo "ClusterRole does not exist. Deploying and creating Grafana role..."; \
 		cd deploy/helm && helm upgrade --install $(MCP_SERVER_RELEASE_NAME) $(MCP_SERVER_CHART_PATH) -n $(NAMESPACE) \
@@ -322,15 +347,17 @@ install-mcp-server: namespace
 			--set rbac.createGrafanaRole=true \
 			$(if $(MCP_SERVER_ROUTE_HOST),--set route.host='$(MCP_SERVER_ROUTE_HOST)',) \
 			$(if $(LLAMA_STACK_URL),--set llm.url='$(LLAMA_STACK_URL)',) \
-			-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml; \
+			$(if $(wildcard $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml),-f $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml,); \
 	fi
+	@echo "Files used for MCP Server deployment (if present):"
+	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-for_helm.yaml"
+	@echo "  - $(GEN_MODEL_CONFIG_PREFIX)-final_config.json"
 
 .PHONY: install-rag
 install-rag: namespace
 	@$(eval LLM_SERVICE_ARGS := $(call helm_llm_service_args))
 	@$(eval LLAMA_STACK_ARGS := $(call helm_llama_stack_args))
 	@$(eval PGVECTOR_ARGS := $(call helm_pgvector_args))
-
 	@echo "Installing $(RAG_CHART) helm chart (backend services only)"
 	@cd deploy/helm && helm -n $(NAMESPACE) upgrade --install $(RAG_CHART) $(RAG_CHART) \
 	--atomic --timeout 25m \
@@ -341,13 +368,15 @@ install-rag: namespace
 	@oc wait -n $(NAMESPACE) --for=condition=Ready --timeout=60m inferenceservice --all ||:
 	@echo "$(RAG_CHART) installed successfully"
 
-
 .PHONY: install
-install: namespace depend validate-llm install-observability-stack install-rag install-metric-ui install-mcp-server delete-jobs
+install: namespace depend validate-llm install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs
 	@if [ "$(ALERTS)" = "TRUE" ]; then \
 		echo "ALERTS flag is set to TRUE. Installing alerting..."; \
 		$(MAKE) install-alerts NAMESPACE=$(NAMESPACE); \
 	fi
+	@echo "Installing OpenTelemetry Collector and Tempo..."
+	@$(MAKE) install-observability
+	@$(MAKE) setup-tracing NAMESPACE=$(NAMESPACE)
 	@echo "Installation complete."
 
 .PHONY: install-with-alerts
@@ -358,7 +387,7 @@ install-with-alerts:
 		exit 1; \
 	fi
 	@echo "🚀 Deploying to OpenShift namespace: $(NAMESPACE) with alerting"
-	@$(MAKE) namespace depend validate-llm install-observability-stack install-rag install-metric-ui install-mcp-server delete-jobs install-alerts NAMESPACE=$(NAMESPACE)
+	@$(MAKE) namespace depend validate-llm install-rag install-metric-mcp install-metric-ui install-mcp-server delete-jobs install-alerts NAMESPACE=$(NAMESPACE)
 	@echo "✅ Deployment with alerting completed"
 
 # Delete all jobs in the namespace
@@ -406,8 +435,8 @@ uninstall:
 	@echo "🗑️  Uninstalling from OpenShift namespace: $(NAMESPACE)"
 	@echo "Uninstalling $(RAG_CHART) helm chart"
 	- @helm -n $(NAMESPACE) uninstall $(RAG_CHART) --ignore-not-found
-	@echo "Removing pgvector PVCs from $(NAMESPACE)"
-	- @oc delete pvc -n $(NAMESPACE) -l app.kubernetes.io/name=pgvector ||:
+	@echo "Removing pgvector and minio PVCs from $(NAMESPACE)"
+	- @oc get pvc -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^(pg|minio)-data' | xargs -I {} oc delete pvc -n $(NAMESPACE) {} ||:
 	@if helm list -n $(NAMESPACE) -q | grep -q "^$(ALERTING_RELEASE_NAME)$$"; then \
 		echo "→ Detected alerting chart $(ALERTING_RELEASE_NAME). Uninstalling alerting..."; \
 		$(MAKE) uninstall-alerts NAMESPACE=$(NAMESPACE); \
@@ -415,21 +444,15 @@ uninstall:
 
 	@echo "Uninstalling $(METRICS_UI_RELEASE_NAME) helm chart"
 	- @helm -n $(NAMESPACE) uninstall $(METRICS_UI_RELEASE_NAME) --ignore-not-found
+	@echo "Uninstalling $(METRICS_API_RELEASE_NAME) helm chart"
+	- @helm -n $(NAMESPACE) uninstall $(METRICS_API_RELEASE_NAME) --ignore-not-found
 	@echo "Uninstalling $(MCP_SERVER_RELEASE_NAME) helm chart (if installed)"
 	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME) --ignore-not-found
 
-	@if [ "$(UNINSTALL_OBSERVABILITY)" = "true" ]; then \
-		echo "Uninstalling observability stack (includes tracing and MinIO)"; \
-		$(MAKE) uninstall-observability-stack NAMESPACE=$(NAMESPACE) || true; \
-	else \
-		echo "\n❌ WARNING: UNINSTALL_OBSERVABILITY is not set to 'true'"; \
-		echo "   Skipping removal of shared observability infrastructure to protect other teams."; \
-		echo "   This infrastructure (TempoStack, OTel Collector) is shared by multiple applications.\n"; \
-		echo "   To remove observability infrastructure, run:"; \
-		echo "     → make uninstall NAMESPACE=$(NAMESPACE) UNINSTALL_OBSERVABILITY=true\n"; \
-		echo "   Or remove components individually:"; \
-		echo "     → make uninstall-observability-stack NAMESPACE=$(NAMESPACE)  # (includes tracing and MinIO)"; \
-	fi
+	@echo "Removing tracing instrumentation from namespace $(NAMESPACE)"
+	- @$(MAKE) remove-tracing NAMESPACE=$(NAMESPACE) || true
+	@echo "Uninstalling observability stack"
+	- @$(MAKE) uninstall-observability || true
 
 	@echo "\nRemaining resources in namespace $(NAMESPACE):"
 	@echo " → Pods..."
@@ -487,6 +510,10 @@ install-local:
 clean:
 	@echo "🧹 Cleaning up local images..."
 	@ERRORS=0; \
+	if ! $(BUILD_TOOL) rmi $(METRICS_API_IMAGE):$(VERSION) 2>/dev/null; then \
+		echo "⚠️  Could not remove $(METRICS_API_IMAGE):$(VERSION) (may not exist)"; \
+		ERRORS=$$((ERRORS + 1)); \
+	fi; \
 	if ! $(BUILD_TOOL) rmi $(METRICS_UI_IMAGE):$(VERSION) 2>/dev/null; then \
 		echo "⚠️  Could not remove $(METRICS_UI_IMAGE):$(VERSION) (may not exist)"; \
 		ERRORS=$$((ERRORS + 1)); \
@@ -539,6 +566,7 @@ config:
 	@echo "  Version: $(VERSION)"
 	@echo "  Platform: $(PLATFORM)"
 	@echo "  Build Tool: $(BUILD_TOOL)"
+	@echo "  Metrics API Image: $(METRICS_API_IMAGE):$(VERSION)"
 	@echo "  Metric UI Image: $(METRICS_UI_IMAGE):$(VERSION)"
 	@echo "  Metric Alerting Image: $(METRICS_ALERTING_IMAGE):$(VERSION)"
 	@echo "  MCP Server Image: $(MCP_SERVER_IMAGE):$(VERSION)"
@@ -646,7 +674,30 @@ uninstall-alerts: revert-config
 # Generate model configuration JSON for the specified LLM
 .PHONY: generate-model-config
 generate-model-config: validate-llm
-	@bash -c 'source scripts/generate-model-config.sh && generate_model_config "$(LLM)" --helm-format' > $(GEN_MODEL_CONFIG_PREFIX).output 2>&1
+	@echo "→ Generating model configuration for LLM: $(LLM)"
+
+	@echo "  → Running list-models to find available models..."; \
+	$(MAKE) list-models > $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt 2>&1; \
+	echo "  → list-models output saved to $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt"; \
+	MODEL_LINE=$$(grep "model: $(LLM) (" $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt); \
+	echo "  → Searching for model: $(LLM)"; \
+	if [ -z "$$MODEL_LINE" ]; then \
+		echo "\n❌ Error: Model '$(LLM)' not found in available models"; \
+		echo "\n→ Available models:"; \
+		cat $(GEN_MODEL_CONFIG_PREFIX)-list_models_output.txt; \
+		exit 1; \
+	fi; \
+	echo "  → Found MODEL_LINE: $$MODEL_LINE"; \
+	echo "  → Trying to extract MODEL_NAME and MODEL_ID from MODEL_LINE"; \
+	MODEL_NAME=$$(echo "$$MODEL_LINE" | sed 's/model: \([^(]*\)(.*)/\1/' | tr -d '[:space:]'); \
+	MODEL_ID=$$(echo "$$MODEL_LINE" | sed 's/model: [^(]*(\([^)]*\))/\1/' | tr -d '[:space:]'); \
+	echo "  → Extracted MODEL_NAME: $$MODEL_NAME, MODEL_ID: $$MODEL_ID"; \
+	echo "→ Generating JSON configuration..."; \
+	sed "s|\$$MODEL_ID|$$MODEL_ID|g; s|\$$MODEL_NAME|$$MODEL_NAME|g" deploy/helm/default-model.json.template > $(GEN_MODEL_CONFIG_PREFIX)-new_model_config.json; \
+	echo "  → Merging with existing MODEL_CONFIG_JSON..."; \
+	echo "✅ Final merged configuration is saved in $(GEN_MODEL_CONFIG_PREFIX)-final_config.json"; \
+	jq -s '.[0] * .[1]' $(GEN_MODEL_CONFIG_PREFIX)-new_model_config.json deploy/helm/model-config.json > $(GEN_MODEL_CONFIG_PREFIX)-final_config.json; \
+	rm -f $(GEN_MODEL_CONFIG_PREFIX)-new_model_config.json
 
 # Validate that LLM variable is set and non-empty
 .PHONY: validate-llm
@@ -658,40 +709,22 @@ validate-llm:
 
 .PHONY: install-observability
 install-observability:
-	@echo "→ Checking if OpenTelemetry Collector and Tempo already exist in namespace $(OBSERVABILITY_NAMESPACE)"
-	@if helm list -n $(OBSERVABILITY_NAMESPACE) 2>/dev/null | grep -q "^tempo\s"; then \
-		echo "  → TempoStack already installed, skipping..."; \
-	else \
-		echo "Installing TempoStack in namespace $(OBSERVABILITY_NAMESPACE)"; \
-		cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
-			--namespace $(OBSERVABILITY_NAMESPACE) \
-			--create-namespace \
-			--set global.namespace=$(OBSERVABILITY_NAMESPACE) \
-			$(helm_tempo_args); \
-	fi
+	@echo "Installing TempoStack and MinIO in namespace $(OBSERVABILITY_NAMESPACE)"
+	@cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--create-namespace \
+		--set global.namespace=$(OBSERVABILITY_NAMESPACE)
 
-	@if helm list -n $(OBSERVABILITY_NAMESPACE) 2>/dev/null | grep -q "^otel-collector\s"; then \
-		echo "  → OpenTelemetry Collector already installed, skipping..."; \
-	else \
-		echo "Installing Open Telemetry Collector in namespace $(OBSERVABILITY_NAMESPACE)"; \
-		cd deploy/helm && helm upgrade --install otel-collector ./observability/otel-collector \
-			--namespace $(OBSERVABILITY_NAMESPACE) \
-			--create-namespace \
-			--set global.namespace=$(OBSERVABILITY_NAMESPACE); \
-	fi
-
-.PHONY: install-observability-stack
-install-observability-stack: install-minio setup-tracing install-observability
+	@echo "Installing Open Telemetry Collector in namespace $(OBSERVABILITY_NAMESPACE)"
+	@cd deploy/helm && helm upgrade --install otel-collector ./observability/otel-collector \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--create-namespace \
+		--set global.namespace=$(OBSERVABILITY_NAMESPACE)
 
 .PHONY: setup-tracing
 setup-tracing: namespace
-	@echo "→ Setting up auto-instrumentation for tracing in namespace $(NAMESPACE)"
-	@if oc get instrumentation python-instrumentation -n $(NAMESPACE) >/dev/null 2>&1; then \
-		echo "  → Instrumentation already exists in namespace $(NAMESPACE), skipping..."; \
-	else \
-		echo "  → Applying instrumentation configuration to namespace $(NAMESPACE)"; \
-		cd deploy/helm && oc apply -f $(INSTRUMENTATION_PATH) -n $(NAMESPACE); \
-	fi
+	@echo "Setting up auto-instrumentation for tracing in namespace $(NAMESPACE)"
+	@cd deploy/helm && oc apply -f $(INSTRUMENTATION_PATH) -n $(NAMESPACE)
 	@oc annotate namespace $(NAMESPACE) instrumentation.opentelemetry.io/inject-python="true" --overwrite
 
 .PHONY: remove-tracing
@@ -702,41 +735,6 @@ remove-tracing: namespace
 
 .PHONY: uninstall-observability
 uninstall-observability:
-	@echo "Uninstalling TempoStack and Otel Collector in namespace $(OBSERVABILITY_NAMESPACE)"
+	@echo "Uninstalling TempoStack and MinIO and Otel Collector in namespace $(OBSERVABILITY_NAMESPACE)"
 	@helm uninstall tempo -n $(OBSERVABILITY_NAMESPACE)
 	@helm uninstall otel-collector -n $(OBSERVABILITY_NAMESPACE)
-
-	@echo "Removing TempoStack PVCs from $(OBSERVABILITY_NAMESPACE)"
-	- @oc delete pvc -n $(OBSERVABILITY_NAMESPACE) -l app.kubernetes.io/name=tempo --timeout=30s ||:
-
-.PHONY: uninstall-observability-stack
-uninstall-observability-stack: remove-tracing uninstall-observability uninstall-minio
-
-
-.PHONY: install-minio
-install-minio:
-	@$(eval MINIO_ARGS := $(call helm_minio_args))
-
-	@echo "→ Checking if $(MINIO_CHART) already exists in namespace $(MINIO_NAMESPACE)"
-	@if helm list -n $(MINIO_NAMESPACE) 2>/dev/null | grep -q "^$(MINIO_CHART)\s"; then \
-		echo "  → $(MINIO_CHART) already installed, skipping..."; \
-	else \
-		echo "Installing $(MINIO_CHART) helm chart"; \
-		cd deploy/helm && helm -n $(MINIO_NAMESPACE) upgrade --install $(MINIO_CHART) $(MINIO_CHART_PATH) \
-		--atomic --timeout 5m \
-		$(MINIO_ARGS); \
-		oc wait -n $(MINIO_NAMESPACE) --for=condition=Ready --timeout=5m inferenceservice --all ||:; \
-		echo "$(MINIO_CHART) installed successfully"; \
-	fi
-	@echo "→ Cleaning up broken upstream routes (pointing to non-existent 'minio' service)"
-	- @oc delete route minio-api minio-webui -n $(MINIO_NAMESPACE) --ignore-not-found ||:
-	@echo "  → Broken upstream routes cleaned up"
-
-
-.PHONY: uninstall-minio
-uninstall-minio:
-	@echo "Uninstalling $(MINIO_CHART) in namespace $(MINIO_NAMESPACE)"
-	@helm -n $(MINIO_NAMESPACE) uninstall $(MINIO_CHART) --ignore-not-found
-
-	@echo "Removing minio PVCs from $(MINIO_NAMESPACE)"
-	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=$(MINIO_CHART) --timeout=30s ||:

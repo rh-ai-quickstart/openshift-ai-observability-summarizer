@@ -10,14 +10,6 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 import requests
 
-import logging
-from common.pylogger import get_python_logger
-
-# Initialize structured logger once - other modules should use logging.getLogger(__name__)
-get_python_logger()
-
-logger = logging.getLogger(__name__)
-
 # Import configuration
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL as verify, CHAT_SCOPE_FLEET_WIDE, FLEET_WIDE_DISPLAY
 
@@ -28,7 +20,8 @@ def generate_promql_from_question(question: str, namespace: Optional[str], model
     """
     question_lower = question.lower()
     queries = []
-    logger.info("Analyzing question: %s", question)
+    
+    print(f"🔍 Analyzing question: {question}")
     
     # Calculate time range duration for dynamic intervals
     duration_seconds = end_ts - start_ts
@@ -44,8 +37,8 @@ def generate_promql_from_question(question: str, namespace: Optional[str], model
     else:
         rate_interval = "6h"   # For longer periods, use 6h intervals
     
-    logger.info("Time range: %.1fh, interval=%s", duration_hours, rate_interval)
-    logger.info("Scope: %s", FLEET_WIDE_DISPLAY if is_fleet_wide else f"Namespace: {namespace}")
+    print(f"📊 Time range: {duration_hours:.1f} hours, using interval: {rate_interval}")
+    print(f"🌐 Scope: {FLEET_WIDE_DISPLAY if is_fleet_wide else f'Namespace: {namespace}'}")
     
     # STEP 1: Try Enhanced Dynamic System First (TEMPORARILY DISABLED)
     # try:
@@ -65,18 +58,18 @@ def generate_promql_from_question(question: str, namespace: Optional[str], model
     #             
     # except Exception as e:
     #     print(f"⚠️ Enhanced system failed, falling back to original: {e}")
-    logger.info("Enhanced system temporarily disabled, using direct pattern matching")
+    print("⚠️ Enhanced system temporarily disabled, using direct pattern matching")
     
     # STEP 2: Fallback to Original System
-    logger.debug("Using original pattern matching system")
+    print("🔄 Using original pattern matching system...")
     
     # Step 1: Discover available metrics from Thanos
     available_metrics = discover_available_metrics_from_thanos(namespace, model_name, is_fleet_wide)
-    logger.debug("Discovered %d available metrics", len(available_metrics))
+    print(f"🔍 Discovered {len(available_metrics)} available metrics")
     
     # Step 2: Direct pattern matching (simple and reliable)
     selected_queries, pattern_detected = select_queries_directly(question_lower, namespace, model_name, rate_interval, is_fleet_wide)
-    logger.debug("Selected %d direct queries", len(selected_queries))
+    print(f"🎯 Selected {len(selected_queries)} direct queries")
     
     # Step 3: Add the selected queries
     for query in selected_queries:
@@ -86,7 +79,7 @@ def generate_promql_from_question(question: str, namespace: Optional[str], model
     # If no specific metrics discovered/selected, add intelligent defaults
     # But DON'T add defaults if user asked a SPECIFIC question that was successfully detected
     if len(queries) == 0 or (len(queries) == 1 and not pattern_detected):
-        logger.info("No specific metrics discovered, adding basic defaults")
+        print("🔧 No specific metrics discovered, adding basic defaults")
         if is_fleet_wide:
             default_queries = [
                 f'vllm:num_requests_running{{model_name="{model_name}"}}',  # No namespace filter
@@ -133,7 +126,7 @@ def extract_time_period_from_question(question: str) -> Optional[str]:
         if match:
             try:
                 result = converter(match)
-                logger.debug("Extracted time period: '%s' -> '%s'", match.group(0), result)
+                print(f"🕐 Extracted time period: '{match.group(0)}' -> '{result}'")
                 return result
             except:
                 continue
@@ -151,7 +144,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     
     # Extract time period from question text for PromQL rate intervals
     question_rate_interval = extract_time_period_from_question(question_lower) or rate_interval
-    logger.debug("Using rate interval: %s (from question: %s)", question_rate_interval, extract_time_period_from_question(question_lower) is not None)
+    print(f"🕐 Using rate interval: {question_rate_interval} (from question: {extract_time_period_from_question(question_lower) is not None})")
     
     # Helper function for clean label construction
     def get_vllm_labels():
@@ -164,7 +157,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     # === ALERTS (HIGH PRIORITY) ===
     
     if any(word in question_lower for word in ["alert", "alerts", "firing", "warning", "critical", "problem", "issue"]):
-        logger.debug("Detected: Alerts question")
+        print("🎯 Detected: Alerts question")
         pattern_detected = True
         if is_fleet_wide:
             queries.append(f'ALERTS{{alertstate="firing"}}')  # No namespace filter for fleet-wide
@@ -175,7 +168,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     
     # Latency patterns
     elif any(word in question_lower for word in ["latency", "p95", "p99", "percentile", "response time", "slow", "fast"]):
-        logger.debug("Detected: Latency question")
+        print("🎯 Detected: Latency question")
         pattern_detected = True
         # Use _count metric as user specifically requested
         labels = get_vllm_labels()
@@ -183,14 +176,14 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     
     # Request patterns (specifically for vLLM requests, not Kubernetes pods)
     elif any(word in question_lower for word in ["vllm request", "model request", "inference request", "llm request"]):
-        logger.debug("Detected: vLLM Request question")
+        print("🎯 Detected: vLLM Request question")
         pattern_detected = True
         labels = get_vllm_labels()
         queries.append(f"vllm:num_requests_running{labels}")
     
     # Token patterns
     elif any(word in question_lower for word in ["token", "tokens", "prompt", "generation", "output"]):
-        logger.debug("Detected: Token question")
+        print("🎯 Detected: Token question")
         pattern_detected = True
         labels = get_vllm_labels()
         if "prompt" in question_lower:
@@ -203,7 +196,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     # === GPU METRICS ===
     
     elif any(word in question_lower for word in ["gpu", "temperature", "utilization", "power"]):
-        logger.debug("Detected: GPU question")
+        print("🎯 Detected: GPU question")
         pattern_detected = True
         if "temperature" in question_lower:
             queries.append("avg(DCGM_FI_DEV_GPU_TEMP)")
@@ -218,7 +211,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     # === KUBERNETES/OPENSHIFT METRICS ===
     
     elif any(word in question_lower for word in ["pod", "pods", "number of pods", "how many pods"]):
-        logger.debug("Detected: Pod question")
+        print("🎯 Detected: Pod question")
         pattern_detected = True
         
         # Enhanced pod phase detection
@@ -233,7 +226,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
         elif any(word in question_lower for word in ["succeeded", "completed", "finished"]):
             detected_phase = "Succeeded"
         
-        logger.debug("Detected pod phase: %s", detected_phase)
+        print(f"🔍 Detected pod phase: {detected_phase}")
         
         if is_fleet_wide:
             queries.append(f'sum(kube_pod_status_phase{{phase="{detected_phase}"}})')
@@ -242,7 +235,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     
     # Deployment patterns
     elif any(word in question_lower for word in ["deployment", "deployments", "deploy"]):
-        logger.debug("Detected: Deployment question")
+        print("🎯 Detected: Deployment question")
         pattern_detected = True
         if is_fleet_wide:
             queries.append("count(kube_deployment_status_replicas)")
@@ -251,7 +244,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     
     # Service patterns
     elif any(word in question_lower for word in ["service", "services", "svc"]):
-        logger.debug("Detected: Service question")
+        print("🎯 Detected: Service question")
         pattern_detected = True
         if is_fleet_wide:
             queries.append("count(kube_service_info)")
@@ -260,42 +253,42 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
     
     # Node patterns
     elif any(word in question_lower for word in ["node", "nodes"]):
-        logger.debug("Detected: Node question")
+        print("🎯 Detected: Node question")
         pattern_detected = True
         queries.append("count(kube_node_status_condition{condition='Ready',status='true'})")
     
     # === NETWORK METRICS ===
     
     elif any(word in question_lower for word in ["network", "bandwidth", "traffic", "connection"]):
-        logger.debug("Detected: Network question")
+        print("🎯 Detected: Network question")
         pattern_detected = True
         queries.append("rate(container_network_receive_bytes_total[5m])")
     
     # === MEMORY METRICS ===
     
     elif any(word in question_lower for word in ["memory", "mem", "ram"]):
-        logger.debug("Detected: Memory question")
+        print("🎯 Detected: Memory question")
         pattern_detected = True
         queries.append("container_memory_usage_bytes")
     
     # === CPU METRICS ===
     
     elif any(word in question_lower for word in ["cpu", "processor"]):
-        logger.debug("Detected: CPU question")
+        print("🎯 Detected: CPU question")
         pattern_detected = True
         queries.append("rate(container_cpu_usage_seconds_total[5m])")
     
     # === STORAGE METRICS ===
     
     elif any(word in question_lower for word in ["storage", "disk", "volume", "persistent"]):
-        logger.debug("Detected: Storage question")
+        print("🎯 Detected: Storage question")
         pattern_detected = True
         queries.append("kubelet_volume_stats_used_bytes")
     
     # === GENERIC/UNKNOWN PATTERNS ===
     
     else:
-        logger.info("No specific pattern detected, using intelligent defaults")
+        print("❓ No specific pattern detected, using intelligent defaults")
         # Add some intelligent defaults based on the namespace
         if is_fleet_wide:
             queries.extend([
@@ -310,7 +303,7 @@ def select_queries_directly(question: str, namespace: Optional[str], model_name:
                 f'avg(DCGM_FI_DEV_GPU_UTIL)'  # GPU utilization
             ])
     
-    logger.debug("Generated %d queries: %s", len(queries), queries)
+    print(f"📝 Generated {len(queries)} queries: {queries}")
     return queries, pattern_detected
 
 
@@ -333,7 +326,7 @@ def discover_available_metrics_from_thanos(namespace: Optional[str], model_name:
         response.raise_for_status()
         all_metric_names = response.json()["data"]
         
-        logger.debug("Found %d total metrics in Thanos", len(all_metric_names))
+        print(f"📋 Found {len(all_metric_names)} total metrics in Thanos")
         
         # Step 2: Categorize ALL metrics (not just filtered subset)
         categorized_metrics = []
@@ -343,11 +336,11 @@ def discover_available_metrics_from_thanos(namespace: Optional[str], model_name:
             if metric_info:  # Only add if we can categorize it
                 categorized_metrics.append(metric_info)
         
-        logger.debug("Categorized %d metrics into types", len(categorized_metrics))
+        print(f"🏷️  Categorized {len(categorized_metrics)} metrics into types")
         return categorized_metrics
         
     except Exception as e:
-        logger.error("Error discovering metrics from Thanos: %s", e)
+        print(f"❌ Error discovering metrics from Thanos: {e}")
         return []
 
 

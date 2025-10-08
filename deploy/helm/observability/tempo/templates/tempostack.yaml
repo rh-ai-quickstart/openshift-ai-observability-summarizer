@@ -16,7 +16,7 @@ metadata:
 spec:
   storage:
     secret:
-      name: minio-tempo-credentials
+      name: minio-tempo
       type: s3
   storageSize: {{ .Values.tempoStack.storageSize }}
   resources:
@@ -34,15 +34,6 @@ spec:
   template:
     gateway:
       enabled: {{ .Values.tempoStack.template.gateway.enabled }}
-    querier:
-      replicas: 1
-      resources:
-        limits:
-          memory: {{ .Values.tempoStack.resources.total.limits.memory }}
-          cpu: {{ .Values.tempoStack.resources.total.limits.cpu }}
-        requests:
-          memory: {{ .Values.tempoStack.resources.total.requests.memory | default "2Gi" }}
-          cpu: {{ .Values.tempoStack.resources.total.requests.cpu | default "1000m" }}
     queryFrontend:
       jaegerQuery:
         enabled: {{ .Values.tempoStack.template.queryFrontend.jaegerQuery.enabled }}

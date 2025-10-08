@@ -26,7 +26,5 @@ spec:
               value: "{{ .Values.env.LLM_URL }}"
             - name: LLM_API_TOKEN
               value: "{{ .Values.env.LLM_API_TOKEN }}"
-            - name: PYTHON_LOG_LEVEL
-              value: "{{ .Values.env.PYTHON_LOG_LEVEL }}"
-            - name: MCP_SERVER_URL
-              value: "http://{{ .Values.mcpServer.serviceName }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.mcpServer.port }}"
+            - name: METRICS_API_URL
+              value: "http://{{ .Values.metricsApi.serviceName }}.{{ .Release.Namespace }}.svc.cluster.local:8000"

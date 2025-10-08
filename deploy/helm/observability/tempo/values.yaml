@@ -19,9 +19,6 @@ tempoStack:
       limits:
         memory: 10Gi
         cpu: 5000m
-      requests:
-        memory: 2Gi
-        cpu: 1000m
   
   # Tenant configuration
   tenants:
@@ -36,30 +33,38 @@ tempoStack:
       enabled: true
     queryFrontend:
       jaegerQuery:
-        enabled: true
+        enabled: false
         # ingress:
         #   type: route
 
-# MinIO storage configuration - now using shared MinIO instance
+# MinIO storage configuration
 minio:
-  # Use shared MinIO instance instead of dedicated deployment
-  enabled: false  # Disable dedicated MinIO deployment
+  # MinIO deployment settings
+  image: quay.io/minio/minio
+  imagePullPolicy: Always
   
-  # Reference to shared MinIO instance
-  shared:
-    serviceName: minio-observability-storage
-    namespace: observability-hub
+  # Storage configuration
+  storage:
+    size: 12Gi
+    storageClass: ""  # Use default storage class
+  
+  # MinIO service configuration
+  service:
+    name: minio-tempo-svc
     ports:
       api: 9000
       console: 9001
   
-  # S3 configuration for Tempo (points to shared MinIO)
-  # Credentials are passed via Makefile helm_tempo_args
+  # MinIO credentials (TEST VALUES - CHANGE IN PRODUCTION)
+  credentials:
+    rootUser: admin
+    rootPassword: minio123
+  
+  # S3 configuration for Tempo
   s3:
-    accessKeyId: "admin"
-    accessKeySecret: "minio123"
+    accessKeyId: admin
+    accessKeySecret: minio123
     bucket: tempo
-    endpoint: http://minio-observability-storage.observability-hub.svc.cluster.local:9000
 
 # RBAC configuration
 rbac:

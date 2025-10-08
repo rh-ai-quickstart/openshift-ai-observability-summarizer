@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: quay.io/ecosystem-appeng/aiobs-mcp-server
-  tag: 0.13.6
+  tag: 0.4.2
   pullPolicy: IfNotPresent
 
 service:
@@ -22,10 +22,6 @@ env:
   MCP_TRANSPORT_PROTOCOL: "http"
   PYTHON_LOG_LEVEL: "INFO"
   PROMETHEUS_URL: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
-  TEMPO_URL: "https://tempo-tempostack-gateway.observability-hub.svc.cluster.local:8080"
-  TEMPO_TENANT_ID: "dev"
-  MAX_TIME_RANGE_DAYS: 90
-  DEFAULT_TIME_RANGE_DAYS: 7
 
 tls:
   enabled: false

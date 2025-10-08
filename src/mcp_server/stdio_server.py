@@ -8,9 +8,6 @@ import sys
 import os
 import builtins
 
-# Add the parent directory to Python path so we can import mcp_server
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 def main():
     """Run the MCP server over STDIO."""
     try:
@@ -37,7 +34,7 @@ def main():
         os.environ["PYTHONUNBUFFERED"] = "1"
         
         # Import and initialize server with print suppressed
-        from mcp_server.observability_mcp import ObservabilityMCPServer
+        from mcp_server.mcp import ObservabilityMCPServer
         server = ObservabilityMCPServer()
         
         # Restore original stdout for MCP JSON-RPC communication

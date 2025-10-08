@@ -25,7 +25,6 @@ dependencies = [
     "structlog>=25.0.0",
     "trio>=0.30.0",
     "mcp[client]>=1.13.0",
-    "anthropic>=0.39.0",
 ]
 
 [dependency-groups]

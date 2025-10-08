@@ -7,20 +7,12 @@ Moved from metrics_api.py to separate business logic
 import os
 import json
 import re
-import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from common.pylogger import get_python_logger
 
 # Import LLM client
 from .llm_client import summarize_with_llm
 from .response_validator import ResponseType
-
-# Initialize structured logger once - other modules should use logging.getLogger(__name__)
-get_python_logger()
-
-logger = logging.getLogger(__name__)
-
 from .config import CHAT_SCOPE_FLEET_WIDE, FLEET_WIDE_DISPLAY
 
 def generate_llm_summary(question: str, thanos_data: Dict[str, Any], model_id: str, api_key: str, namespace: str) -> str:
@@ -28,7 +20,7 @@ def generate_llm_summary(question: str, thanos_data: Dict[str, Any], model_id: s
     Generate LLM summary from Thanos data
     """
     try:
-        logger.info("Generating LLM summary for: %s", question)
+        print(f"🧠 Generating LLM summary for: {question}")
         
         # Check if we have any successful data
         successful_data = {k: v for k, v in thanos_data.items() if v.get("status") == "success"}
@@ -118,7 +110,7 @@ Do not include any formatting instructions, notes, or additional commentary."""
         return formatted_summary
         
     except Exception as e:
-        logger.error("Error generating LLM summary: %s", e)
+        print(f"❌ Error generating LLM summary: {e}")
         return f"❌ Error generating summary: {str(e)}"
 
 
@@ -285,7 +277,7 @@ Keep your response concise and do NOT add any additional notes or commentary.
         return clean_alert_analysis_output(summary, sorted_alert_infos)
         
     except Exception as e:
-        logger.error("Error generating alert analysis: %s", e)
+        print(f"❌ Error generating alert analysis: {e}")
         return f"⚠️ Alert Analysis: Found {len(alert_infos)} active alerts in {namespace}. Error generating detailed analysis: {str(e)}"
 
     

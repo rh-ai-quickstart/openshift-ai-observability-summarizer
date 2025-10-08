@@ -24,12 +24,13 @@ The project uses 5 GitHub Actions workflows with the following execution order a
    - **Trigger:** PRs merged to `main` or `dev` branches, manual dispatch
    - **Purpose:** Builds and pushes container images with semantic versioning
    - **Actions:** 
-   - **Analyzes PR labels and title first**, then falls back to commit messages for version bumps
-   - Gets current version from Makefile (not git tags)
-   - Builds 3 container images (using `IMAGE_PREFIX`-component naming):
-     - aiobs-metrics-ui
-     - aiobs-metrics-alerting
-     - aiobs-mcp-server
+     - **Analyzes PR labels and title first**, then falls back to commit messages for version bumps
+     - Gets current version from Makefile (not git tags)
+     - Builds 4 container images (using `IMAGE_PREFIX`-component naming):
+       - aiobs-metrics-api
+       - aiobs-metrics-ui
+       - aiobs-metrics-alerting
+       - aiobs-mcp-server
      - Updates Helm charts and Makefile with new version (**non-main branches only**)
    - **Image naming:** Semantic versions (e.g., `0.1.2`, `1.0.0`)
    - **Version priority:** PR Labels → PR Title → Commit Messages
@@ -38,11 +39,8 @@ The project uses 5 GitHub Actions workflows with the following execution order a
 
 4. **Deploy to OpenShift** (`.github/workflows/deploy.yml`)
    - **Trigger:** Automatic after successful Build workflow, manual dispatch
-   - **Purpose:** Deploys application and observability stack to OpenShift cluster
+   - **Purpose:** Deploys application to OpenShift cluster
    - **Default namespace:** `dev`
-   - **Components deployed:**
-     - Application components (ui, mcp-server, alerting)
-     - Observability stack (MinIO + TempoStack + OTEL + tracing)
    - **Dependencies:** ✅ **Requires Build and Push workflow success**
 
 5. **Undeploy from OpenShift** (`.github/workflows/undeploy.yml`)
@@ -111,7 +109,6 @@ The service account receives these permissions:
 - **Cluster-level**: Admin permissions for creating cluster resources
 - **Monitoring**: Access to Prometheus, AlertManager, and monitoring components
 - **Observability**: Access to Tempo, OpenTelemetry, and tracing components
-- **Storage**: Access to MinIO object storage for trace data and log data
 
 ### Script Options
 
@@ -176,7 +173,6 @@ Most workflows run automatically, but some can be triggered manually:
 **Deploy to OpenShift:**
 - `namespace`: Target namespace (default: `dev`)
 - `force_deploy`: Deploy even if build workflow didn't run (default: `false`)
-- **Note**: The deploy workflow installs the complete observability stack (MinIO + TempoStack + OTEL + tracing) automatically
 
 **Undeploy from OpenShift:**
 - `namespace`: Target namespace (required)
