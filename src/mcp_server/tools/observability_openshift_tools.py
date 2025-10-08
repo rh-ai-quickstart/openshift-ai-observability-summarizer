@@ -53,6 +53,7 @@ def analyze_openshift(
     end_datetime: Optional[str] = None,
     summarize_model_id: Optional[str] = None,
     api_key: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Analyze OpenShift metrics for a category and scope with structured error handling."""
     # Validate required parameters
@@ -200,7 +201,7 @@ def analyze_openshift(
         return error.to_mcp_response()
 
 
-def list_openshift_metric_groups() -> List[Dict[str, Any]]:
+def list_openshift_metric_groups(session_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Return OpenShift metric group categories (cluster-wide)."""
     groups = list(core_metrics.get_openshift_metrics().keys())
     header = "Available OpenShift Metric Groups (cluster-wide):\n\n"
@@ -208,7 +209,7 @@ def list_openshift_metric_groups() -> List[Dict[str, Any]]:
     return _resp(header + body if groups else "No OpenShift metric groups available.")
 
 
-def list_openshift_namespace_metric_groups() -> List[Dict[str, Any]]:
+def list_openshift_namespace_metric_groups(session_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Return OpenShift metric groups that support namespace-scoped analysis."""
     groups = [
         "Workloads & Pods",
@@ -229,6 +230,7 @@ def chat_openshift(
     end_datetime: Optional[str] = None,
     summarize_model_id: Optional[str] = None,
     api_key: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Chat about OpenShift metrics for a specific category/scope with structured error handling.
 

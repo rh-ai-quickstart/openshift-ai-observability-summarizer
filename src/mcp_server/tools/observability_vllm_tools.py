@@ -98,7 +98,7 @@ def resolve_time_range(
         return now - (DEFAULT_TIME_RANGE_DAYS * 24 * 3600), now
 
 
-def list_models() -> List[Dict[str, Any]]:
+def list_models(session_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """List all available AI models for analysis.
     
     Returns information about both local and external AI models available
@@ -125,7 +125,7 @@ def list_models() -> List[Dict[str, Any]]:
         return error.to_mcp_response()
 
 
-def list_namespaces() -> List[Dict[str, Any]]:
+def list_namespaces(session_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Get list of monitored Kubernetes namespaces.
     
     Retrieves all namespaces that have observability data available
@@ -150,7 +150,7 @@ def list_namespaces() -> List[Dict[str, Any]]:
         return error.to_mcp_response()
 
 
-def get_model_config() -> List[Dict[str, Any]]:
+def get_model_config(session_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Get available LLM models for summarization and analysis.
     
     Uses the exact same logic as the metrics API's /model_config endpoint:
@@ -181,7 +181,7 @@ def get_model_config() -> List[Dict[str, Any]]:
     return _resp(response.strip())
 
 
-def get_vllm_metrics_tool() -> List[Dict[str, Any]]:
+def get_vllm_metrics_tool(session_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Get available vLLM metrics with friendly names.
     
     Dynamically discovers available vLLM and GPU metrics from Prometheus
@@ -256,6 +256,7 @@ def analyze_vllm(
     start_datetime: Optional[str] = None,
     end_datetime: Optional[str] = None,
     api_key: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Analyze vLLM metrics and summarize using LLM. Using the same core functions:
     - get_vllm_metrics() to discover metrics
@@ -391,6 +392,7 @@ def analyze_vllm(
 
 def calculate_metrics(
     metrics_data_json: str,
+    session_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Calculate statistics for provided metrics data.
 
