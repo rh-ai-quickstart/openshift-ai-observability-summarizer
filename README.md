@@ -8,26 +8,21 @@
 <img src="docs/img/logo.png" alt="OpenShift AI Observability Summarizer" width="200"/>
 
 
-[Design Document](https://docs.google.com/document/d/1bXBCL4fbPlRqQxwhGX1p12CS_E6-9oOyFnYSpbQskyI/edit?usp=sharing)
 
-## Overview
 
-OpenShift AI Observability Summarizer is an **open source, CNCF-style project** for advanced monitoring and automated summarization of AI model and OpenShift cluster metrics. It provides an interactive dashboard for analyzing metrics collected from Prometheus and generating human-readable, AI-powered insights and reports.
-
-- **Monitors vLLM deployments, OpenShift fleet health, and GPU utilization**
-- **Generates actionable summaries using LLMs**
-- **Supports alerting, notifications, and exportable reports**
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
-- [GPU Monitoring](#gpu-monitoring)
-- [Architecture](#architecture)
-- [Getting Started](#getting-started)
+- [Detailed description](#detailed-description)
+  - [Features](#features)
+  - [GPU Monitoring](#gpu-monitoring)
+  - [Architecture diagrams](#architecture-diagrams)
+- [Requirements](#requirements)
+- [Deploy](#deploy)
 - [Usage](#usage)
-- [Build & Deploy](#build--deploy)
+- [Advanced deployment instructions](#advanced-deployment-instructions)
 - [Local Development](#local-development-via-port-forwarding)
 - [Running Tests with Pytest](#running-tests-with-pytest)
 - [GitHub Actions CI/CD](#github-actions-cicd)
@@ -36,44 +31,53 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 - [Contributing](#contributing)
 - [Community](#community)
 - [License](#license)
+- [References](#references)
 
 ---
 
 
-## Features
+## Detailed description 
 
-### **1. vLLM Monitoring**
+OpenShift AI Observability Summarizer is an **open source, CNCF-style project** for advanced monitoring and automated summarization of AI model and OpenShift cluster metrics. It provides an interactive dashboard for analyzing metrics collected from Prometheus and generating human-readable, AI-powered insights and reports.
+
+- **Monitors vLLM deployments, OpenShift fleet health, and GPU utilization**
+- **Generates actionable summaries using LLMs**
+- **Supports alerting, notifications, and exportable reports**
+
+### Features
+
+#### **1. vLLM Monitoring**
 - Visualize core vLLM metrics (GPU usage, latency, request volume, etc.)
 - Dynamic DCGM GPU metrics discovery (temperature, power, memory)
 - Real-time performance analysis and anomaly detection
 
-### **2. OpenShift Fleet Monitoring** 
+#### **2. OpenShift Fleet Monitoring** 
 - Cluster-wide and namespace-scoped metric analysis
 - GPU & Accelerators fleet monitoring with comprehensive DCGM metrics
 - Workloads, Storage, Networking, and Application Services monitoring
 - Enhanced unit formatting (°C, Watts, GB, MB/s, etc.)
 
-### **3. AI-Powered Insights**
+#### **3. AI-Powered Insights**
 - Generate summaries using fine-tuned Llama models
 - Chat with an MLOps assistant based on real metrics
 - Support for both internal and external LLM models
 
-### **4. Report Generation**
+#### **4. Report Generation**
 - Export analysis as HTML, PDF, or Markdown reports
 - Time-series charts and metric visualizations
 - Automated metric calculations and trend analysis
 
-### **5. Alerting & Notifications**
+#### **5. Alerting & Notifications**
 - Set up alerts for vLLM models and OpenShift metrics  
 - Slack notifications when alerts are triggered
 - Custom alert thresholds and conditions
 
-### **6. Distributed Tracing Integration**
+#### **6. Distributed Tracing Integration**
 - **Complete Observability Stack**: MinIO storage + TempoStack + OpenTelemetry Collector + auto-instrumentation
 - **Tracing support** with OpenTelemetry and Tempo to monitor request flows across your AI services
 - **Flexible deployment**: Install complete stack or individual components as needed
 
-### **7. AI Assistant Integration (MCP Server)**
+#### **7. AI Assistant Integration (MCP Server)**
 - **Model Context Protocol (MCP) server** for AI assistants (Claude Desktop, Cursor IDE)
 - **Natural language analysis** - ask questions like "What is the GPU temperature?"
 - **Real-time data access** - connects directly to Prometheus/Thanos
@@ -100,7 +104,7 @@ Ask questions like: *"How many pods are running?"*, *"What's the GPU temperature
 
 ### GPU Monitoring
 
-### **DCGM Metrics Support**
+#### **DCGM Metrics Support**
 Automatically discovers and monitors:
 - **Temperature**: GPU core and memory temperature (°C)
 - **Power**: Real-time power consumption (Watts)  
@@ -108,7 +112,7 @@ Automatically discovers and monitors:
 - **Energy**: Total energy consumption (Joules)
 - **Performance**: GPU utilization, clock speeds (MHz)
 
-### **Fleet View**
+#### **Fleet View**
 Monitor GPU health across your entire OpenShift cluster:
 - Cluster-wide GPU temperature averaging
 - Power consumption trends
@@ -117,11 +121,11 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ---
 
-## Architecture
+### Architecture diagrams
 
 ![Architecture](docs/img/arch-2.jpg)
 
-### **Core Components**
+#### **Core Components**
 - **Prometheus/Thanos**: Metrics collection and long-term storage
 - **vLLM**: Model serving with /metrics endpoint
 - **DCGM**: GPU monitoring and telemetry
@@ -129,7 +133,7 @@ Monitor GPU health across your entire OpenShift cluster:
 - **MCP Server**: Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
 - **LLM Stack**: Llama models for AI-powered insights and summaries
 
-### **Key Features**
+#### **Key Features**
 1. **vLLM Dashboard**: Monitor model performance, GPU usage, latency
 2. **OpenShift Dashboard**: Fleet monitoring with cluster-wide and namespace views
 3. **Chat Interface**: Interactive Q&A with metrics-aware AI assistant
@@ -138,7 +142,7 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ---
 
-## Getting Started
+## Requirements
 
 ### Prerequisites
 
@@ -154,8 +158,103 @@ Monitor GPU health across your entire OpenShift cluster:
 - (Optional) DCGM exporter for GPU monitoring
 - (Optional) Slack Webhook URL for alerting ([How to create a Webhook for your Slack Workspace](https://api.slack.com/messaging/webhooks))
 
+### Minimum hardware requirements
 
-### Installing the OpenShift AI Observability Summarizer
+### Minimum software requirements
+
+### Required user permissions 
+
+
+## Deploy
+
+
+```bash
+git clone https://github.com/rh-ai-quickstart/openshift-ai-observability-summarizer.git && \ 
+cd openshift-ai-observability-summarizer
+```
+
+Use the included `Makefile` to install everything:
+```bash
+make install NAMESPACE=your-namespace
+```
+This will install the project with the default LLM deployment, `llama-3-2-3b-instruct`.
+
+**Note:** Please see the [Advanced deployment instructions](#advanced-deployment-instructions) section for more control over your deployment. 
+
+### Delete
+
+```bash
+make uninstall NAMESPACE=your-namespace
+```
+
+---
+
+## Usage
+
+### **Multi-Dashboard Interface**
+
+### Accessing the Application
+
+The default configuration deploys:
+- **llm-service** - LLM inference
+- **llama-stack** - Backend API
+- **pgvector** - Vector database
+- **metric-ui** - Multi-dashboard Streamlit interface
+- **mcp-server** - Model Context Protocol server for metrics analysis, report generation, and AI assistant integration
+- **OpenTelemetry Collector** - Distributed tracing collection
+- **Tempo** - Trace storage and analysis
+- **MinIO** - Object storage for traces
+
+Navigate to your **OpenShift Cluster → Networking → Routes** to find the application URL(s). You can also navigate to **Observe → Traces** in the OpenShift console to view traces.
+
+
+Access via the OpenShift route: `oc get route`
+
+#### **vLLM Metric Summarizer**
+1. Select your AI model and namespace
+2. Choose time range for analysis  
+3. Click **Analyze Metrics** for AI-powered insights
+4. Download reports in HTML/PDF/Markdown format
+
+#### **OpenShift Metrics Dashboard**
+1. Choose metric category (Fleet Overview, GPU & Accelerators, etc.)
+2. Select scope: Cluster-wide or Namespace-scoped
+3. Analyze performance with AI-generated summaries
+4. Monitor GPU temperature, power usage, and utilization across fleet
+
+#### **Chat with Prometheus**
+1. Ask natural language questions about your metrics
+2. Get specific PromQL queries and insights
+3. Interactive troubleshooting with metrics context
+
+#### **Key Monitoring Categories**
+- **Fleet Overview**: Pods, CPU, Memory, GPU temperature
+- **GPU & Accelerators**: Temperature, power, utilization, memory (GB)  
+- **Workloads & Pods**: Container metrics, restarts, failures
+- **Storage & Networking**: I/O rates, network throughput
+- **Application Services**: HTTP metrics, endpoints, errors
+
+#### Generate Reports
+You can generate detailed metric reports in multiple formats directly from the dashboard:
+
+- **HTML Report**: Interactive and visually rich, suitable for sharing or archiving.
+- **PDF Report**: Print-ready, ideal for documentation or compliance needs.
+- **Markdown Report**: Lightweight, easy to edit or integrate into wikis and documentation.
+
+To generate a report:
+1. Complete your analysis in either the vLLM or OpenShift dashboard.
+2. Click the **Download Report** button.
+3. Choose your preferred format (HTML, PDF, or Markdown).
+4. The report will be generated and downloaded automatically, containing charts, summaries, and key insights from your session.
+
+---
+
+## Advanced deployment instructions 
+
+```bash
+git clone https://github.com/rh-ai-quickstart/openshift-ai-observability-summarizer.git && \ 
+cd openshift-ai-observability-summarizer
+```
 
 Use the included `Makefile` to install everything:
 ```bash
@@ -298,60 +397,6 @@ metric-ui-route   metric-ui-route-llama-1.apps.tsisodia-spark.2vn8.p1.openshifta
 ### Report Generated 
 ![UI](docs/img/report.png)
 
-
-To uninstall:
-
-```bash
-make uninstall NAMESPACE=your-namespace
-```
-
----
-
-## Usage
-
-### **Multi-Dashboard Interface**
-Access via the OpenShift route: `oc get route`
-
-#### **vLLM Metric Summarizer**
-1. Select your AI model and namespace
-2. Choose time range for analysis  
-3. Click **Analyze Metrics** for AI-powered insights
-4. Download reports in HTML/PDF/Markdown format
-
-#### **OpenShift Metrics Dashboard**
-1. Choose metric category (Fleet Overview, GPU & Accelerators, etc.)
-2. Select scope: Cluster-wide or Namespace-scoped
-3. Analyze performance with AI-generated summaries
-4. Monitor GPU temperature, power usage, and utilization across fleet
-
-#### **Chat with Prometheus**
-1. Ask natural language questions about your metrics
-2. Get specific PromQL queries and insights
-3. Interactive troubleshooting with metrics context
-
-#### **Key Monitoring Categories**
-- **Fleet Overview**: Pods, CPU, Memory, GPU temperature
-- **GPU & Accelerators**: Temperature, power, utilization, memory (GB)  
-- **Workloads & Pods**: Container metrics, restarts, failures
-- **Storage & Networking**: I/O rates, network throughput
-- **Application Services**: HTTP metrics, endpoints, errors
-
-#### Generate Reports
-You can generate detailed metric reports in multiple formats directly from the dashboard:
-
-- **HTML Report**: Interactive and visually rich, suitable for sharing or archiving.
-- **PDF Report**: Print-ready, ideal for documentation or compliance needs.
-- **Markdown Report**: Lightweight, easy to edit or integrate into wikis and documentation.
-
-To generate a report:
-1. Complete your analysis in either the vLLM or OpenShift dashboard.
-2. Click the **Download Report** button.
-3. Choose your preferred format (HTML, PDF, or Markdown).
-4. The report will be generated and downloaded automatically, containing charts, summaries, and key insights from your session.
-
----
-
-## Build & Deploy
 
 The project includes a comprehensive Makefile that simplifies building, pushing, and deploying the application components.
 
@@ -654,3 +699,14 @@ Licensed under the [MIT License](LICENSE).
 
 ---
 
+## References
+
+* [Design Document](https://docs.google.com/document/d/1bXBCL4fbPlRqQxwhGX1p12CS_E6-9oOyFnYSpbQskyI/edit?usp=sharing)
+
+---
+
+## Tags 
+
+* **Industry:** IT
+* **Product:** OpenShift AI
+* **Use case:** Observability
