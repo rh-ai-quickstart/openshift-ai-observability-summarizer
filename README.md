@@ -5,10 +5,10 @@
 [![Build Status](https://github.com/rh-ai-quickstart/openshift-ai-observability-summarizer/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/rh-ai-quickstart/openshift-ai-observability-summarizer/actions)
 
 
-<img src="docs/img/logo.png" alt="OpenShift AI Observability Summarizer" width="200"/>
+<img src="docs/images/logo.png" alt="OpenShift AI Observability Summarizer" width="200"/>
 
 
-
+Build the practical observability, analytics and summarization environment ITOps teams need to efficiently monitor AI platform usage and performance.
 
 
 ---
@@ -123,7 +123,7 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ### Architecture diagrams
 
-![Architecture](docs/img/arch-2.jpg)
+![Architecture](docs/images/arch-2.jpg)
 
 #### **Core Components**
 - **Prometheus/Thanos**: Metrics collection and long-term storage
@@ -386,16 +386,16 @@ metric-ui-route   metric-ui-route-llama-1.apps.tsisodia-spark.2vn8.p1.openshifta
 ```
 
 ### OpenShift Summarizer Dashboard 
-![UI](docs/img/os.png)
+![UI](docs/images/os.png)
 
 ### vLLM Summarizer Dashboard 
-![UI](docs/img/vllm.png)
+![UI](docs/images/vllm.png)
 
 ### Chat with Prometheus 
-![UI](docs/img/chat.png)
+![UI](docs/images/chat.png)
 
 ### Report Generated 
-![UI](docs/img/report.png)
+![UI](docs/images/report.png)
 
 
 The project includes a comprehensive Makefile that simplifies building, pushing, and deploying the application components.
@@ -611,7 +611,7 @@ obs-mcp-server --test-config
 ```
 
 The output should look like this:
-![Command Output](docs/img/local-dev-expected.png)
+![Command Output](docs/images/local-dev-expected.png)
 
  
 
