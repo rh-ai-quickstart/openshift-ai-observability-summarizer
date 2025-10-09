@@ -160,9 +160,73 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ### Minimum hardware requirements
 
+**Cluster Requirements:**
+- **CPU**: Minimum 12 vCPUs (20+ vCPUs recommended for production)
+- **Memory**: Minimum 48 GB RAM (64+ GB recommended for production)
+- **Storage**: 150 GB persistent storage for metrics, traces, and model weights
+- **GPU**: **Required** for LLM inference - NVIDIA GPU with 16+ GB VRAM (A10G, V100, A100, or equivalent)
+
+**Per-Component Resource Allocation:**
+- **LLM Service (Llama 3.2-3B)**: 2 CPUs, 32 GB RAM, 1 GPU, ~12 GB storage
+- **MCP Server**: 1 CPU, 1 GB RAM
+- **UI (Streamlit)**: 0.5 CPU, 512 MB RAM
+- **Tempo Stack**: 1-5 CPUs, 2-10 GB RAM (scales with trace volume)
+- **OpenTelemetry Collector**: 0.1-0.5 CPU, 128-512 MB RAM
+- **RAG Components**: 2-4 CPUs, 4-8 GB RAM (pgvector, minio)
+
 ### Minimum software requirements
 
-### Required user permissions 
+**OpenShift/Kubernetes:**
+- OpenShift 4.18+ or Kubernetes 1.24+
+- Container runtime (CRI-O, containerd, or Docker)
+
+**Required CLI Tools:**
+- `oc` CLI with cluster-admin permissions
+- `helm` v3.8+
+- `yq` v4.0+ (YAML processor)
+
+**Required Operators/Services:**
+- **Red Hat OpenShift AI** (for LLM serving and inference)
+- Prometheus/Thanos for metrics collection(already installed)
+- Red Hat Build of OpenTelemetry Operator
+- Tempo Operator (for distributed tracing)
+- Cluster Observability Operator
+- **NVIDIA GPU Operator** (for GPU resource management)
+
+**Python Environment (for development):**
+- Python 3.11+
+- pip or uv package manager
+
+**Optional Dependencies:**
+- DCGM Exporter (for GPU monitoring and telemetry)
+- Grafana (for advanced visualization)
+- Slack Workspace (for alerting integration)
+
+### Required user permissions
+
+**OpenShift/Kubernetes Cluster:**
+- **cluster-admin** role for initial deployment and operator installation
+- **Namespace admin** permissions for application namespaces
+- Access to create and manage:
+  - Custom Resource Definitions (CRDs)
+  - ClusterRoles and ClusterRoleBindings
+  - Service Accounts and Secrets
+  - Routes/Ingress resources
+
+**Monitoring Access:**
+- **Prometheus/Thanos query permissions** for metrics access
+- **Tempo read/write permissions** for distributed tracing
+- Access to `openshift-monitoring` namespace (for cluster metrics)
+
+**Service Account Permissions:**
+- **prometheus-reader** role for metrics collection
+- **tempostack-traces-write** role for trace ingestion
+- **tempostack-traces-read** role for trace querying
+
+**Optional Permissions:**
+- **GPU node access** for DCGM metrics collection
+- **Slack webhook permissions** for alerting integration
+- **Container registry push/pull** permissions for custom image builds 
 
 
 ## Deploy
