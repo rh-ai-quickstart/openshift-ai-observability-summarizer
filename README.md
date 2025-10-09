@@ -177,7 +177,7 @@ Monitor GPU health across your entire OpenShift cluster:
 ### Minimum software requirements
 
 **OpenShift/Kubernetes:**
-- OpenShift 4.12+ or Kubernetes 1.24+
+- OpenShift 4.18+ or Kubernetes 1.24+
 - Container runtime (CRI-O, containerd, or Docker)
 
 **Required CLI Tools:**
