@@ -184,7 +184,6 @@ Monitor GPU health across your entire OpenShift cluster:
 - `oc` CLI with cluster-admin permissions
 - `helm` v3.8+
 - `yq` v4.0+ (YAML processor)
-- `kubectl` (if using vanilla Kubernetes)
 
 **Required Operators/Services:**
 - **Red Hat OpenShift AI** (for LLM serving and inference)
