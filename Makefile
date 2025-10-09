@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server install-observability-stack uninstall-observability-stack clean config test,$(MAKECMDGOALS)))
+ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server install-observability-stack uninstall-observability-stack clean config test install-operators uninstall-operators check-operators install-cluster-observability-operator install-opentelemetry-operator install-tempo-operator uninstall-cluster-observability-operator uninstall-opentelemetry-operator uninstall-tempo-operator,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -89,6 +89,8 @@ MINIO_NAMESPACE ?= observability-hub
 # LLM URL processing constants
 DEFAULT_LLM_PORT_AND_PATH := :8080/v1
 
+OPERATOR_MANAGER_SCRIPT := scripts/operator-manager.sh
+
 # Helm argument templates
 
 helm_llm_service_args = \
@@ -170,6 +172,17 @@ help:
 	@echo "Observability Stack:"
 	@echo "  install-observability-stack - Install complete observability stack (MinIO + TempoStack + OTEL + tracing)"
 	@echo "  uninstall-observability-stack - Uninstall complete observability stack (tracing + TempoStack + OTEL + MinIO)"
+	@echo ""
+	@echo "Operators:"
+	@echo "  install-operators - Install all mandatory operators (observability, otel, tempo)"
+	@echo "  install-cluster-observability-operator - Install Cluster Observability Operator (observability)"
+	@echo "  install-opentelemetry-operator - Install OpenTelemetry Operator (otel)"
+	@echo "  install-tempo-operator - Install Tempo Operator (tempo)"
+	@echo "  uninstall-operators - Uninstall all mandatory operators (with confirmation)"
+	@echo "  uninstall-cluster-observability-operator - Uninstall Cluster Observability Operator only"
+	@echo "  uninstall-opentelemetry-operator - Uninstall OpenTelemetry Operator only"
+	@echo "  uninstall-tempo-operator - Uninstall Tempo Operator only"
+	@echo "  check-operators - Check status of all mandatory operators"
 	@echo ""
 	@echo "Individual Components:"
 	@echo "  install-observability - Install TempoStack and OTEL Collector only"
@@ -740,3 +753,116 @@ uninstall-minio:
 
 	@echo "Removing minio PVCs from $(MINIO_NAMESPACE)"
 	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=$(MINIO_CHART) --timeout=30s ||:
+
+# -- Operator Installation targets --
+
+# Install Cluster Observability Operator
+.PHONY: install-cluster-observability-operator
+install-cluster-observability-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -i observability
+
+# Install OpenTelemetry Operator
+.PHONY: install-opentelemetry-operator
+install-opentelemetry-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -i otel
+
+# Install Tempo Operator
+.PHONY: install-tempo-operator
+install-tempo-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -i tempo
+
+# Install all three mandatory operators for Tempo and OpenTelemetry Collector
+.PHONY: install-operators
+install-operators:
+	@echo "📊 Checking operator status for Tempo and OpenTelemetry Collector..."
+	@echo ""
+	@NEED_INSTALL=0; \
+	echo "🔍 Cluster Observability Operator:"; \
+	if $(OPERATOR_MANAGER_SCRIPT) -c observability >/dev/null 2>&1; then \
+		echo "  ✅ Installed"; \
+	else \
+		echo "  ❌ Not installed"; \
+		echo "📦 Installing Cluster Observability Operator..."; \
+		$(MAKE) install-cluster-observability-operator; \
+		NEED_INSTALL=1; \
+	fi; \
+	echo ""; \
+	echo "🔍 OpenTelemetry Operator:"; \
+	if $(OPERATOR_MANAGER_SCRIPT) -c otel >/dev/null 2>&1; then \
+		echo "  ✅ Installed"; \
+	else \
+		echo "  ❌ Not installed"; \
+		echo "📦 Installing OpenTelemetry Operator..."; \
+		$(MAKE) install-opentelemetry-operator; \
+		NEED_INSTALL=1; \
+	fi; \
+	echo ""; \
+	echo "🔍 Tempo Operator:"; \
+	if $(OPERATOR_MANAGER_SCRIPT) -c tempo >/dev/null 2>&1; then \
+		echo "  ✅ Installed"; \
+	else \
+		echo "  ❌ Not installed"; \
+		echo "📦 Installing Tempo Operator..."; \
+		$(MAKE) install-tempo-operator; \
+		NEED_INSTALL=1; \
+	fi; \
+	echo ""; \
+	echo "✅ All mandatory operators installation completed!"; \
+	if [ $$NEED_INSTALL -eq 1 ]; then \
+		echo ""; \
+		echo "📊 Final operator status:"; \
+		$(MAKE) check-operators; \
+	fi
+
+# Uninstall Cluster Observability Operator
+.PHONY: uninstall-cluster-observability-operator
+uninstall-cluster-observability-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -d observability
+
+# Uninstall OpenTelemetry Operator
+.PHONY: uninstall-opentelemetry-operator
+uninstall-opentelemetry-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -d otel
+
+# Uninstall Tempo Operator
+.PHONY: uninstall-tempo-operator
+uninstall-tempo-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -d tempo
+
+# Uninstall all three operators
+.PHONY: uninstall-operators
+uninstall-operators:
+	@echo "🗑️  Uninstalling operators for Tempo and OpenTelemetry Collector..."
+	@echo ""
+	@echo "⚠️  WARNING: This will remove the following operators:"
+	@echo "  → Cluster Observability Operator"
+	@echo "  → Red Hat build of OpenTelemetry Operator"
+	@echo "  → Tempo Operator"
+	@echo ""
+	@echo "This may affect other applications using these operators."
+	@echo ""
+	@read -p "Are you sure you want to continue? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	
+	@$(MAKE) uninstall-cluster-observability-operator
+	@$(MAKE) uninstall-opentelemetry-operator
+	@$(MAKE) uninstall-tempo-operator
+	
+	@echo ""
+	@echo "✅ All operators uninstallation completed!"
+
+# Check operator status
+.PHONY: check-operators
+check-operators:
+	@echo "📊 Checking operator status for Tempo and OpenTelemetry Collector..."
+	@echo ""
+	@echo "🔍 Cluster Observability Operator:"
+	@$(OPERATOR_MANAGER_SCRIPT) -c observability >/dev/null 2>&1 && echo "  ✅ Installed" || echo "  ❌ Not installed"
+	@echo ""
+	@echo "🔍 OpenTelemetry Operator:"
+	@$(OPERATOR_MANAGER_SCRIPT) -c otel >/dev/null 2>&1 && echo "  ✅ Installed" || echo "  ❌ Not installed"
+	@echo ""
+	@echo "🔍 Tempo Operator:"
+	@$(OPERATOR_MANAGER_SCRIPT) -c tempo >/dev/null 2>&1 && echo "  ✅ Installed" || echo "  ❌ Not installed"
+	@echo ""
+	@echo "📋 All operators:"
+	@oc get operators --all-namespaces | grep -E "(cluster-observability|opentelemetry|tempo)" || echo "  → No matching operators found"
