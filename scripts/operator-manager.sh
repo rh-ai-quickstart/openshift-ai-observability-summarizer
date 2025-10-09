@@ -1,11 +1,33 @@
 #!/bin/bash
 
 # OpenShift Operator Management Script
-# Handles installation and checking of OpenShift operators
+# Handles installation/uninstallation and checking of OpenShift operators
 
 # Source common utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
+
+# Operator name constants
+readonly OPERATOR_OBSERVABILITY="observability"
+readonly OPERATOR_OBSERVABILITY_ALT="cluster-observability"
+readonly OPERATOR_OTEL="otel"
+readonly OPERATOR_OTEL_ALT="opentelemetry"
+readonly OPERATOR_TEMPO="tempo"
+
+# Full operator names (subscription.namespace format)
+readonly FULL_NAME_OBSERVABILITY="cluster-observability-operator.openshift-cluster-observability"
+readonly FULL_NAME_OTEL="opentelemetry-product.openshift-opentelemetry-operator"
+readonly FULL_NAME_TEMPO="tempo-product.openshift-tempo-operator"
+
+# YAML file names
+readonly YAML_OBSERVABILITY="cluster-observability.yaml"
+readonly YAML_OTEL="opentelemetry.yaml"
+readonly YAML_TEMPO="tempo.yaml"
+
+
+readonly OPERATOR_ACTION_CHECK="check"
+readonly OPERATOR_ACTION_INSTALL="install"
+readonly OPERATOR_ACTION_UNINSTALL="uninstall"
 
 # Function to display usage
 usage() {
@@ -43,20 +65,21 @@ parse_args() {
     fi
 
     # Initialize variables
-    OPERATOR_NAME=""
-    YAML_FILE=""
-    ACTION=""
+    local OPERATOR_NAME=""
+    local YAML_FILE=""
+    local ACTION=""
 
     # Parse standard arguments using getopts
     while getopts "c:C:i:I:d:D:f:F:hH" opt; do
         case $opt in
-            c|C) ACTION="check"
+            c|C) ACTION="$OPERATOR_ACTION_CHECK"
+                 OPERATOR_NAME="$OPTARG"
+                 OPERATOR_NAME=$(get_operator_full_name "$OPERATOR_NAME") || exit 1
+                 ;;
+            i|I) ACTION="$OPERATOR_ACTION_INSTALL"
                  OPERATOR_NAME="$OPTARG"
                  ;;
-            i|I) ACTION="install"
-                 OPERATOR_NAME="$OPTARG"
-                 ;;
-            d|D) ACTION="delete"
+            d|D) ACTION="$OPERATOR_ACTION_UNINSTALL"
                  OPERATOR_NAME="$OPTARG"
                  ;;
             f|F) YAML_FILE="$OPTARG"
@@ -80,50 +103,41 @@ parse_args() {
         exit 1
     fi
 
-    # For install action, determine operator details if not provided
-    if [ "$ACTION" = "install" ] && [ -z "$YAML_FILE" ]; then
-        OPERATOR_DETAILS=$(get_operator_details "$OPERATOR_NAME")
-        if [ -n "$OPERATOR_DETAILS" ]; then
-            # Split the result: operator_name|yaml_file
-            OPERATOR_NAME=$(echo "$OPERATOR_DETAILS" | cut -d'|' -f1)
-            YAML_FILE=$(echo "$OPERATOR_DETAILS" | cut -d'|' -f2)
-            echo -e "${BLUE}📋 Auto-detected operator: $OPERATOR_NAME${NC}"
-            echo -e "${BLUE}📋 Auto-detected YAML file: $YAML_FILE${NC}"
-        else
-            echo -e "${RED}❌ Unknown operator: $OPERATOR_NAME${NC}"
-            echo -e "${YELLOW}   Available operators: observability, otel, tempo${NC}"
-            echo -e "${YELLOW}   Or specify full operator name with -f flag${NC}"
-            usage
-            exit 1
-        fi
+    # For install/uninstall actions, determine operator details if YAML file not provided
+    if [ -z "$YAML_FILE" ] && { [ "$ACTION" = "$OPERATOR_ACTION_INSTALL" ] || [ "$ACTION" = "$OPERATOR_ACTION_UNINSTALL" ]; }; then
+        OPERATOR_NAME=$(get_operator_full_name "$OPERATOR_NAME") || exit 1
+        YAML_FILE=$(get_operator_yaml "$OPERATOR_NAME") || exit 1
+        echo -e "${BLUE}📋 Auto-detected operator: $OPERATOR_NAME${NC}"
+        echo -e "${BLUE}📋 Auto-detected YAML file: $YAML_FILE${NC}"
     fi
 
-    # For check action, also determine operator details if needed
-    if [ "$ACTION" = "check" ]; then
-        OPERATOR_DETAILS=$(get_operator_details "$OPERATOR_NAME")
-        if [ -n "$OPERATOR_DETAILS" ]; then
-            # Split the result: operator_name|yaml_file
-            OPERATOR_NAME=$(echo "$OPERATOR_DETAILS" | cut -d'|' -f1)
-            echo -e "${BLUE}📋 Checking operator: $OPERATOR_NAME${NC}"
-        fi
-    fi
+    # Check if operator is installed
+    local is_installed=false
+    check_operator "$OPERATOR_NAME" && is_installed=true
 
-    # Execute the action
+    # Execute check/install/uninstall action based on operator status
     case "$ACTION" in
-        "check")
-            if check_operator "$OPERATOR_NAME"; then
+        "$OPERATOR_ACTION_CHECK")
+            if [ "$is_installed" = true ]; then
                 echo -e "${GREEN}✅ Operator $OPERATOR_NAME is installed${NC}"
-                exit 0
             else
                 echo -e "${RED}❌ Operator $OPERATOR_NAME is not installed${NC}"
-                exit 1
             fi
+            exit 0
             ;;
-        "install")
+        "$OPERATOR_ACTION_INSTALL")
+            if [ "$is_installed" = true ]; then
+                echo -e "${GREEN}✅ $OPERATOR_NAME already installed${NC}"
+                exit 0
+            fi
             install_operator "$OPERATOR_NAME" "$YAML_FILE"
             ;;
-        "delete")
-            delete_operator "$OPERATOR_NAME"
+        "$OPERATOR_ACTION_UNINSTALL")
+            if [ "$is_installed" = false ]; then
+                echo -e "${YELLOW}⚠️  Operator $OPERATOR_NAME is not installed${NC}"
+                exit 0
+            fi
+            uninstall_operator "$OPERATOR_NAME" "$YAML_FILE"
             ;;
     esac
 }
@@ -131,6 +145,7 @@ parse_args() {
 # Function to check if an operator exists
 check_operator() {
     local operator_name="$1"
+    echo -e "${BLUE}📋 Checking operator: $operator_name${NC}"    
     if oc get operator "$operator_name" >/dev/null 2>&1; then
         return 0  # Operator exists
     else
@@ -138,86 +153,111 @@ check_operator() {
     fi
 }
 
-# Function to get operator details from simple name
-get_operator_details() {
+# Function to get full operator name from simple name
+get_operator_full_name() {
     local operator_name="$1"
 
     case "$operator_name" in
-        "observability"|"cluster-observability")
-            echo "cluster-observability-operator.openshift-cluster-observability|cluster-observability.yaml"
+        "$OPERATOR_OBSERVABILITY"|"$OPERATOR_OBSERVABILITY_ALT")
+            echo "$FULL_NAME_OBSERVABILITY"
             ;;
-        "otel"|"opentelemetry")
-            echo "opentelemetry-product.openshift-opentelemetry-operator|opentelemetry.yaml"
+        "$OPERATOR_OTEL"|"$OPERATOR_OTEL_ALT")
+            echo "$FULL_NAME_OTEL"
             ;;
-        "tempo")
-            echo "tempo-product.openshift-tempo-operator|tempo.yaml"
+        "$OPERATOR_TEMPO")
+            echo "$FULL_NAME_TEMPO"
             ;;
         *)
-            echo ""
+            echo -e "${RED}❌ Unknown operator: $operator_name${NC}" >&2
+            echo -e "${YELLOW}   Available operators: observability, otel, tempo${NC}" >&2
+            exit 1
             ;;
     esac
 }
 
-# Function to delete an operator
-delete_operator() {
+# Function to get YAML file name from simple operator name
+get_operator_yaml() {
     local operator_name="$1"
-    
-    echo -e "${YELLOW}🗑️  Deleting $operator_name...${NC}"
-    
-    # Get operator details for namespace and subscription name
-    local operator_details=$(get_operator_details "$operator_name")
-    if [ -z "$operator_details" ]; then
-        echo -e "${RED}❌ Unknown operator: $operator_name${NC}"
-        echo -e "${YELLOW}   Available operators: observability, otel, tempo${NC}"
+
+    case "$operator_name" in
+        "$OPERATOR_OBSERVABILITY"|"$OPERATOR_OBSERVABILITY_ALT")
+            echo "$YAML_OBSERVABILITY"
+            ;;
+        "$OPERATOR_OTEL"|"$OPERATOR_OTEL_ALT")
+            echo "$YAML_OTEL"
+            ;;
+        "$OPERATOR_TEMPO")
+            echo "$YAML_TEMPO"
+            ;;
+        *)
+            echo -e "${RED}❌ Unknown operator: $operator_name${NC}" >&2
+            echo -e "${YELLOW}   Available operators: observability, otel, tempo${NC}" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Function to get full YAML path and validate it exists
+get_yaml_path() {
+    local yaml_file="$1"
+    local yaml_path="$SCRIPT_DIR/operators/$yaml_file"
+
+    if [ ! -f "$yaml_path" ]; then
+        echo -e "${RED}❌ Error: YAML file not found: $yaml_path${NC}" >&2
+        exit 1
+    fi
+
+    echo "$yaml_path"
+}
+
+# Function to delete an operator
+uninstall_operator() {
+    local operator_name="$1"
+    local yaml_file="$2"
+
+    echo -e "${YELLOW}🗑️  Uninstalling $operator_name...${NC}"
+
+    local yaml_path=$(get_yaml_path "$yaml_file")
+
+    # Get the subscription name from YAML
+    local subscription_name=$(grep -A2 "kind: Subscription" "$yaml_path" | grep "name:" | awk '{print $2}')
+
+    # Get the actual namespace where the operator is installed by querying the subscription
+    local namespace=$(oc get subscription -A -o json | jq -r ".items[] | select(.metadata.name==\"$subscription_name\") | .metadata.namespace")
+
+    if [ -z "$namespace" ]; then
+        echo -e "${RED}❌ Could not determine namespace for operator $operator_name${NC}"
         return 1
     fi
-    
-    # Extract YAML file from operator details
-    local yaml_file=$(echo "$operator_details" | cut -d'|' -f2)
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local yaml_path="$script_dir/operators/$yaml_file"
-    
-    # Check if operator exists first using the full name
-    local full_operator_name=$(echo "$operator_details" | cut -d'|' -f1)
-    if ! check_operator "$full_operator_name"; then
-        echo -e "${YELLOW}  ⚠️  Operator $operator_name is not installed${NC}"
-        return 0
-    fi
-    
-    echo -e "${BLUE}  📋 Deleting operator using YAML: $yaml_file${NC}"
-    
-    # Use the same YAML file to delete the resources
-    oc delete -f "$yaml_path" 2>/dev/null || true
-    
-    # Also delete the operator resource directly
-    echo -e "${BLUE}  📋 Deleting operator resource: $full_operator_name${NC}"
-    oc delete operator "$full_operator_name" 2>/dev/null || true
-    
+
+    echo -e "${BLUE}  📋 Detected namespace: $namespace${NC}"
+
+    echo -e "${BLUE}  📋 Step 1: Deleting ClusterServiceVersion (CSV)...${NC}"
+    # Delete all CSVs in the operator namespace
+    # This is critical - without deleting the CSV, the operator will be reinstalled
+    oc delete csv -n "$namespace" --all --ignore-not-found=true
+
+    echo -e "${BLUE}  📋 Step 2: Deleting Subscription and OperatorGroup...${NC}"
+    # Delete subscription and operatorgroup but NOT the namespace
+    # We use individual resource deletion instead of 'oc delete -f' to preserve the namespace
+    oc delete subscription,operatorgroup --all -n "$namespace" --ignore-not-found=true
+
+    echo -e "${BLUE}  📋 Step 3: Deleting operator resource: $operator_name${NC}"
+    # Delete the operator resource directly
+    oc delete operator "$operator_name" --ignore-not-found=true
+
     echo -e "${GREEN}✅ $operator_name deletion completed!${NC}"
+    echo -e "${BLUE}  ℹ️  Note: Namespace '$namespace' was preserved${NC}"
 }
 
 # Function to install an operator
 install_operator() {
     local operator_name="$1"
     local yaml_file="$2"
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local yaml_path="$script_dir/operators/$yaml_file"
-
-    # Validate YAML file exists
-    if [ ! -f "$yaml_path" ]; then
-        echo -e "${RED}❌ Error: YAML file not found: $yaml_path${NC}"
-        exit 1
-    fi
 
     echo -e "${BLUE}📦 Installing $operator_name...${NC}"
 
-    # Check if operator is already installed
-    if check_operator "$operator_name"; then
-        echo -e "${GREEN}  ✅ $operator_name already installed${NC}"
-        return 0
-    fi
-
-    echo -e "${YELLOW}  📦 Installing $operator_name...${NC}"
+    local yaml_path=$(get_yaml_path "$yaml_file")
 
     # Apply the subscription
     oc apply -f "$yaml_path"

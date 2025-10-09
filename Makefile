@@ -725,7 +725,6 @@ uninstall-observability:
 .PHONY: uninstall-observability-stack
 uninstall-observability-stack: remove-tracing uninstall-observability uninstall-minio
 
-
 .PHONY: install-minio
 install-minio:
 	@$(eval MINIO_ARGS := $(call helm_minio_args))
@@ -817,17 +816,17 @@ install-operators:
 # Uninstall Cluster Observability Operator
 .PHONY: uninstall-cluster-observability-operator
 uninstall-cluster-observability-operator:
-	@$(OPERATOR_MANAGER_SCRIPT) -d observability
+	@$(OPERATOR_MANAGER_SCRIPT) -u observability
 
 # Uninstall OpenTelemetry Operator
 .PHONY: uninstall-opentelemetry-operator
 uninstall-opentelemetry-operator:
-	@$(OPERATOR_MANAGER_SCRIPT) -d otel
+	@$(OPERATOR_MANAGER_SCRIPT) -u otel
 
 # Uninstall Tempo Operator
 .PHONY: uninstall-tempo-operator
 uninstall-tempo-operator:
-	@$(OPERATOR_MANAGER_SCRIPT) -d tempo
+	@$(OPERATOR_MANAGER_SCRIPT) -u tempo
 
 # Uninstall all three operators
 .PHONY: uninstall-operators
