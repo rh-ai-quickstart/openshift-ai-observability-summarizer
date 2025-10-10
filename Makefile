@@ -816,17 +816,17 @@ install-operators:
 # Uninstall Cluster Observability Operator
 .PHONY: uninstall-cluster-observability-operator
 uninstall-cluster-observability-operator:
-	@$(OPERATOR_MANAGER_SCRIPT) -u observability
+	@$(OPERATOR_MANAGER_SCRIPT) -u observability -n openshift-cluster-observability-operator
 
 # Uninstall OpenTelemetry Operator
 .PHONY: uninstall-opentelemetry-operator
 uninstall-opentelemetry-operator:
-	@$(OPERATOR_MANAGER_SCRIPT) -u otel
+	@$(OPERATOR_MANAGER_SCRIPT) -u otel -n openshift-opentelemetry-operator
 
 # Uninstall Tempo Operator
 .PHONY: uninstall-tempo-operator
 uninstall-tempo-operator:
-	@$(OPERATOR_MANAGER_SCRIPT) -u tempo
+	@$(OPERATOR_MANAGER_SCRIPT) -u tempo -n openshift-tempo-operator
 
 # Uninstall all three operators
 .PHONY: uninstall-operators

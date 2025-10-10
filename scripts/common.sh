@@ -44,6 +44,9 @@ check_openshift_prerequisites() {
     # Check if oc CLI is installed
     check_tool_exists "oc"
     
+    # Check if envsubst is installed (required for variable substitution)
+    check_tool_exists "envsubst"
+    
     # Check if logged in to OpenShift cluster
     check_openshift_login
     

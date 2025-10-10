@@ -1,21 +1,26 @@
 ---
+# Operator: tempo-product
+# Full Name: tempo-product.openshift-tempo-operator
+# CRD Patterns: tempo.grafana.com
+# Note: Uninstalling this operator will delete all CRDs matching the above patterns
+---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: openshift-tempo-operator
+  name: ${NAMESPACE}
 ---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
   name: tempo-operator-group
-  namespace: openshift-tempo-operator
+  namespace: ${NAMESPACE}
 spec: {}
 ---
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: tempo-product
-  namespace: openshift-tempo-operator
+  namespace: ${NAMESPACE}
 spec:
   channel: stable
   name: tempo-product

@@ -24,10 +24,13 @@ readonly YAML_OBSERVABILITY="cluster-observability.yaml"
 readonly YAML_OTEL="opentelemetry.yaml"
 readonly YAML_TEMPO="tempo.yaml"
 
-
 readonly OPERATOR_ACTION_CHECK="check"
 readonly OPERATOR_ACTION_INSTALL="install"
 readonly OPERATOR_ACTION_UNINSTALL="uninstall"
+
+readonly OBSERVABILITY_CRDS="monitoring.rhobs perses.dev observability.openshift.io"
+readonly OTEL_CRDS="opentelemetry.io"
+readonly TEMPO_CRDS="tempo.grafana.com"
 
 # Function to display usage
 usage() {
@@ -36,19 +39,23 @@ usage() {
     echo "Options:"
     echo "  -c/-C OPERATOR_NAME          Check if operator is installed"
     echo "  -i/-I OPERATOR_NAME          Install operator (simple names supported)"
-    echo "  -d/-D OPERATOR_NAME          Delete/uninstall operator (simple names supported)"
-    echo "  -f/-F YAML_FILE              YAML file for operator installation (optional)"
+    echo "  -u/-U OPERATOR_NAME          Uninstall operator (simple names supported)"
+    echo "  -f/-F YAML_FILE              YAML file for operator install/uninstall (optional)"
+    echo "  -n/-N NAMESPACE              Namespace for operator install/uninstall (REQUIRED)"
     echo "  -h, --help                   Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 -c observability          # Check Cluster Observability Operator"
-    echo "  $0 -i observability          # Install Cluster Observability Operator"
-    echo "  $0 -d observability          # Delete Cluster Observability Operator"
-    echo "  $0 -i otel                   # Install OpenTelemetry Operator"
-    echo "  $0 -d otel                    # Delete OpenTelemetry Operator"
-    echo "  $0 -i tempo                  # Install Tempo Operator"
-    echo "  $0 -d tempo                   # Delete Tempo Operator"
-    echo "  $0 -i custom-operator -f custom.yaml  # Install with custom YAML"
+    echo "  $0 -c observability              # Check Cluster Observability Operator"
+    echo "  $0 -i observability -n openshift-cluster-observability-operator  # Install Cluster Observability Operator"
+    echo "  $0 -u observability -n openshift-cluster-observability-operator  # Uninstall Cluster Observability Operator"
+    echo "  $0 -i otel -n openshift-opentelemetry-operator  # Install OpenTelemetry Operator"
+    echo "  $0 -u otel -n openshift-opentelemetry-operator  # Uninstall OpenTelemetry Operator"
+    echo "  $0 -i tempo -n openshift-tempo-operator  # Install Tempo Operator"
+    echo "  $0 -u tempo -n openshift-tempo-operator  # Uninstall Tempo Operator"
+    echo "  $0 -i tempo -n custom-namespace  # Install Tempo Operator in custom namespace"
+    echo "  $0 -u tempo -n custom-namespace  # Uninstall Tempo Operator in custom namespace"
+    echo "  $0 -i custom-operator -n custom-namespace -f custom.yaml  # Install with custom YAML in custom namespace"
+    echo "  $0 -u custom-operator -n custom-namespace -f custom.yaml  # Uninstall with custom YAML in custom namespace"
     echo ""
     echo "Available operators (simple names):"
     echo "  observability - Cluster Observability Operator"
@@ -66,23 +73,27 @@ parse_args() {
 
     # Initialize variables
     local OPERATOR_NAME=""
+    local OPERATOR_FULL_NAME=""
     local YAML_FILE=""
     local ACTION=""
+    local NAMESPACE=""
 
     # Parse standard arguments using getopts
-    while getopts "c:C:i:I:d:D:f:F:hH" opt; do
+    while getopts "c:C:i:I:u:U:f:F:n:N:hH" opt; do
         case $opt in
             c|C) ACTION="$OPERATOR_ACTION_CHECK"
                  OPERATOR_NAME="$OPTARG"
-                 OPERATOR_NAME=$(get_operator_full_name "$OPERATOR_NAME") || exit 1
+                 OPERATOR_FULL_NAME=$(get_operator_full_name "$OPERATOR_NAME") || exit 1
                  ;;
             i|I) ACTION="$OPERATOR_ACTION_INSTALL"
                  OPERATOR_NAME="$OPTARG"
                  ;;
-            d|D) ACTION="$OPERATOR_ACTION_UNINSTALL"
+            u|U) ACTION="$OPERATOR_ACTION_UNINSTALL"
                  OPERATOR_NAME="$OPTARG"
                  ;;
             f|F) YAML_FILE="$OPTARG"
+                 ;;
+            n|N) NAMESPACE="$OPTARG"
                  ;;
             h|H) usage
                exit 0
@@ -103,8 +114,10 @@ parse_args() {
         exit 1
     fi
 
-    # For install/uninstall actions, determine operator details if YAML file not provided
-    if [ -z "$YAML_FILE" ] && { [ "$ACTION" = "$OPERATOR_ACTION_INSTALL" ] || [ "$ACTION" = "$OPERATOR_ACTION_UNINSTALL" ]; }; then
+
+    # Determine operator details if YAML file not provided
+    if [ -z "$YAML_FILE" ]; then
+        echo -e "${BLUE} **** 📋 Auto-detecting operator and YAML file for: $OPERATOR_NAME${NC}"
         OPERATOR_NAME=$(get_operator_full_name "$OPERATOR_NAME") || exit 1
         YAML_FILE=$(get_operator_yaml "$OPERATOR_NAME") || exit 1
         echo -e "${BLUE}📋 Auto-detected operator: $OPERATOR_NAME${NC}"
@@ -114,6 +127,32 @@ parse_args() {
     # Check if operator is installed
     local is_installed=false
     check_operator "$OPERATOR_NAME" && is_installed=true
+
+    # Function to validate namespace for install/uninstall operations
+    validate_namespace() {
+        local action="$1"
+
+        if [ -z "$NAMESPACE" ]; then
+            echo -e "${RED}❌ Namespace is required for install/uninstall operations${NC}"
+            echo -e "${YELLOW}   Please specify namespace with -n NAMESPACE${NC}"
+            usage
+            exit 1
+        fi
+
+        if [ "$action" = "$OPERATOR_ACTION_INSTALL" ]; then
+            # For install: namespace will be created by the YAML if it doesn't exist
+            echo -e "${BLUE}  📋 Installing in namespace: $NAMESPACE${NC}"
+        elif [ "$action" = "$OPERATOR_ACTION_UNINSTALL" ]; then
+            # For uninstall: namespace must exist
+            if ! oc get namespace "$NAMESPACE" >/dev/null 2>&1; then
+                echo -e "${RED}❌ Namespace '$NAMESPACE' does not exist${NC}"
+                echo -e "${YELLOW}   Cannot uninstall from non-existent namespace${NC}"
+                exit 1
+            else
+                echo -e "${BLUE}  📋 Using namespace: $NAMESPACE${NC}"
+            fi
+        fi
+    }
 
     # Execute check/install/uninstall action based on operator status
     case "$ACTION" in
@@ -126,18 +165,20 @@ parse_args() {
             exit 0
             ;;
         "$OPERATOR_ACTION_INSTALL")
+            validate_namespace "$OPERATOR_ACTION_INSTALL"
             if [ "$is_installed" = true ]; then
                 echo -e "${GREEN}✅ $OPERATOR_NAME already installed${NC}"
                 exit 0
             fi
-            install_operator "$OPERATOR_NAME" "$YAML_FILE"
+            install_operator "$OPERATOR_NAME" "$YAML_FILE" "$NAMESPACE"
             ;;
         "$OPERATOR_ACTION_UNINSTALL")
+            validate_namespace "$OPERATOR_ACTION_UNINSTALL"
             if [ "$is_installed" = false ]; then
                 echo -e "${YELLOW}⚠️  Operator $OPERATOR_NAME is not installed${NC}"
                 exit 0
             fi
-            uninstall_operator "$OPERATOR_NAME" "$YAML_FILE"
+            uninstall_operator "$OPERATOR_NAME" "$YAML_FILE" "$NAMESPACE"
             ;;
     esac
 }
@@ -158,13 +199,13 @@ get_operator_full_name() {
     local operator_name="$1"
 
     case "$operator_name" in
-        "$OPERATOR_OBSERVABILITY"|"$OPERATOR_OBSERVABILITY_ALT")
+        "$OPERATOR_OBSERVABILITY"|"$OPERATOR_OBSERVABILITY_ALT"|"$FULL_NAME_OBSERVABILITY")
             echo "$FULL_NAME_OBSERVABILITY"
             ;;
         "$OPERATOR_OTEL"|"$OPERATOR_OTEL_ALT")
             echo "$FULL_NAME_OTEL"
             ;;
-        "$OPERATOR_TEMPO")
+        "$OPERATOR_TEMPO"|"$FULL_NAME_TEMPO")
             echo "$FULL_NAME_TEMPO"
             ;;
         *)
@@ -180,13 +221,13 @@ get_operator_yaml() {
     local operator_name="$1"
 
     case "$operator_name" in
-        "$OPERATOR_OBSERVABILITY"|"$OPERATOR_OBSERVABILITY_ALT")
+        "$OPERATOR_OBSERVABILITY"|"$OPERATOR_OBSERVABILITY_ALT"|"$FULL_NAME_OBSERVABILITY")
             echo "$YAML_OBSERVABILITY"
             ;;
-        "$OPERATOR_OTEL"|"$OPERATOR_OTEL_ALT")
+        "$OPERATOR_OTEL"|"$OPERATOR_OTEL_ALT"|"$FULL_NAME_OTEL")
             echo "$YAML_OTEL"
             ;;
-        "$OPERATOR_TEMPO")
+        "$OPERATOR_TEMPO"|"$FULL_NAME_TEMPO")
             echo "$YAML_TEMPO"
             ;;
         *)
@@ -210,32 +251,52 @@ get_yaml_path() {
     echo "$yaml_path"
 }
 
+# Function to get CRD patterns for an operator
+get_operator_crds() {
+    local operator_name="$1"
+
+    case "$operator_name" in
+        "$FULL_NAME_OBSERVABILITY")
+            echo "$OBSERVABILITY_CRDS"
+            ;;
+        "$FULL_NAME_OTEL")
+            echo "$OTEL_CRDS"
+            ;;
+        "$FULL_NAME_TEMPO")
+            echo "$TEMPO_CRDS"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
 # Function to delete an operator
 uninstall_operator() {
     local operator_name="$1"
     local yaml_file="$2"
-
-    echo -e "${YELLOW}🗑️  Uninstalling $operator_name...${NC}"
-
+    local namespace="$3"
     local yaml_path=$(get_yaml_path "$yaml_file")
 
-    # Get the subscription name from YAML
+    echo -e "${YELLOW}🗑️  Uninstalling $operator_name (using YAML file: $yaml_path)...${NC}"
+
+    # Namespace validation is already done by validate_namespace function
+
+    # Get the subscription name from YAML to find the specific CSV
     local subscription_name=$(grep -A2 "kind: Subscription" "$yaml_path" | grep "name:" | awk '{print $2}')
-
-    # Get the actual namespace where the operator is installed by querying the subscription
-    local namespace=$(oc get subscription -A -o json | jq -r ".items[] | select(.metadata.name==\"$subscription_name\") | .metadata.namespace")
-
-    if [ -z "$namespace" ]; then
-        echo -e "${RED}❌ Could not determine namespace for operator $operator_name${NC}"
-        return 1
-    fi
-
-    echo -e "${BLUE}  📋 Detected namespace: $namespace${NC}"
+    echo -e "${BLUE}  📋 Found subscription: $subscription_name${NC}"
 
     echo -e "${BLUE}  📋 Step 1: Deleting ClusterServiceVersion (CSV)...${NC}"
-    # Delete all CSVs in the operator namespace
-    # This is critical - without deleting the CSV, the operator will be reinstalled
-    oc delete csv -n "$namespace" --all --ignore-not-found=true
+    # Get the CSV name for this specific subscription
+    local csv_name=$(oc get subscription "$subscription_name" -n "$namespace" -o jsonpath='{.status.installedCSV}' 2>/dev/null)
+    if [ -n "$csv_name" ] && [ "$csv_name" != "null" ]; then
+        echo -e "${BLUE}  📋 Deleting CSV: $csv_name${NC}"
+        oc delete csv "$csv_name" -n "$namespace" --ignore-not-found=true
+    else
+        echo -e "${YELLOW}  ⚠️  No CSV found for subscription $subscription_name, deleting all CSVs in namespace${NC}"
+        echo -e "${BLUE}  📋 You can manually delete the CSV by running: ${NC}"
+        echo -e "${BLUE}     → oc delete csv -n $namespace --all --ignore-not-found=true${NC}"
+    fi
 
     echo -e "${BLUE}  📋 Step 2: Deleting Subscription and OperatorGroup...${NC}"
     # Delete subscription and operatorgroup but NOT the namespace
@@ -246,6 +307,25 @@ uninstall_operator() {
     # Delete the operator resource directly
     oc delete operator "$operator_name" --ignore-not-found=true
 
+    echo -e "${BLUE}  📋 Step 4: Deleting CRDs to prevent operator resurrection...${NC}"
+    # Get CRD patterns for this operator
+    local crd_patterns=$(get_operator_crds "$operator_name")
+    if [ -n "$crd_patterns" ]; then
+        for pattern in $crd_patterns; do
+            echo -e "${BLUE}     → Finding CRDs matching pattern: $pattern${NC}"
+            local crds=$(oc get crd -o name | grep "$pattern" | cut -d'/' -f2)
+            if [ -n "$crds" ]; then
+                echo -e "${BLUE}     → Deleting CRDs: $crds${NC}"
+                echo "$crds" | xargs -r oc delete crd --ignore-not-found=true
+            else
+                echo -e "${YELLOW}     ⚠️  No CRDs found matching pattern: $pattern${NC}"
+            fi
+        done
+    else
+        echo -e "${YELLOW}  ⚠️  No CRD patterns defined for operator $operator_name${NC}"
+        echo -e "${YELLOW}  ⚠️  You may need to manually delete CRDs to fully remove the operator${NC}"
+    fi
+
     echo -e "${GREEN}✅ $operator_name deletion completed!${NC}"
     echo -e "${BLUE}  ℹ️  Note: Namespace '$namespace' was preserved${NC}"
 }
@@ -254,13 +334,16 @@ uninstall_operator() {
 install_operator() {
     local operator_name="$1"
     local yaml_file="$2"
-
+    local namespace="$3"
     echo -e "${BLUE}📦 Installing $operator_name...${NC}"
 
     local yaml_path=$(get_yaml_path "$yaml_file")
 
-    # Apply the subscription
-    oc apply -f "$yaml_path"
+    # Namespace creation is handled by validate_namespace function
+    
+    # Use envsubst to substitute the NAMESPACE variable
+    export NAMESPACE="$namespace"
+    envsubst < "$yaml_path" | oc apply -f -
 
     echo -e "${GREEN}  ✅ $operator_name installation initiated${NC}"
 
