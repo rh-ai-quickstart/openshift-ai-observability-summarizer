@@ -317,11 +317,7 @@ uninstall_operator() {
         echo -e "${BLUE}       oc delete csv -n $namespace --all --ignore-not-found=true${NC}"
     fi
 
-    echo -e "${BLUE}  📋 Step 3: Deleting operator resource: $operator_name${NC}"
-    # Delete the operator resource directly
-    oc delete operator "$operator_name" --ignore-not-found=true
-
-    echo -e "${BLUE}  📋 Step 4: Deleting CRDs to prevent operator resurrection...${NC}"
+    echo -e "${BLUE}  📋 Step 3: Deleting CRDs to prevent operator resurrection...${NC}"
     # Get CRD patterns for this operator
     local crd_patterns=$(get_operator_crds "$operator_name")
     if [ -n "$crd_patterns" ]; then
@@ -338,6 +334,31 @@ uninstall_operator() {
     else
         echo -e "${YELLOW}  ⚠️  No CRD patterns defined for operator $operator_name${NC}"
         echo -e "${YELLOW}  ⚠️  You may need to manually delete CRDs to fully remove the operator${NC}"
+    fi
+
+    echo -e "${BLUE}  📋 Step 4: Deleting operator resource: $operator_name${NC}"
+    # Delete the operator resource directly
+    oc delete operator "$operator_name" --ignore-not-found=true --wait=false
+
+    # Wait for OLM to clean up the operator resource (max 2 minutes)
+    echo -e "${BLUE}     → Waiting for OLM to clean up operator resource...${NC}"
+    local wait_attempts=24  # 2 minutes with 5-second intervals
+    local wait_count=0
+    while [ $wait_count -lt $wait_attempts ]; do
+        if ! oc get operator "$operator_name" >/dev/null 2>&1; then
+            echo -e "${GREEN}     ✅ Operator resource removed${NC}"
+            break
+        fi
+        wait_count=$((wait_count + 1))
+        if [ $wait_count -lt $wait_attempts ]; then
+            sleep 5
+        fi
+    done
+
+    if [ $wait_count -eq $wait_attempts ]; then
+        echo -e "${YELLOW}     ⚠️  Operator resource still exists after 2 minutes${NC}"
+        echo -e "${YELLOW}     ⚠️  OLM will eventually clean it up (can take 30-60 minutes)${NC}"
+        echo -e "${YELLOW}     ⚠️  The operator is functionally removed (no pods/deployments running)${NC}"
     fi
 
     echo -e "${GREEN}✅ $operator_name deletion completed!${NC}"

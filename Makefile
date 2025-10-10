@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server install-observability-stack uninstall-observability-stack clean config test install-operators uninstall-operators check-operators install-cluster-observability-operator install-opentelemetry-operator install-tempo-operator uninstall-cluster-observability-operator uninstall-opentelemetry-operator uninstall-tempo-operator,$(MAKECMDGOALS)))
+ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server clean config test install-operators uninstall-operators check-operators install-cluster-observability-operator install-opentelemetry-operator install-tempo-operator uninstall-cluster-observability-operator uninstall-opentelemetry-operator uninstall-tempo-operator,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif

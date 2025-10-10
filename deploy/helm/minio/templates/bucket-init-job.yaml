@@ -22,14 +22,7 @@ spec:
     spec:
       restartPolicy: Never
       securityContext:
-        runAsUser: 1001160000
-        runAsGroup: 1001160000
-        fsGroup: 1001160000
         runAsNonRoot: true
-        allowPrivilegeEscalation: false
-        capabilities:
-          drop:
-            - ALL
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -55,8 +48,6 @@ spec:
         - name: MC_CONFIG_DIR
           value: /tmp/.mc
         securityContext:
-          runAsUser: 1001160000
-          runAsGroup: 1001160000
           runAsNonRoot: true
           allowPrivilegeEscalation: false
           capabilities:
