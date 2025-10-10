@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 
 # Import structured logger from MCP server utilities
 from common.pylogger import get_python_logger
+from core.response_utils import make_mcp_text_response
 
 # Import MCP exception handling framework
 from mcp_server.exceptions import (
@@ -55,21 +56,6 @@ from mcp_server.exceptions import (
 
 # Configure structured logging
 logger = get_python_logger()
-
-
-def _resp(content: str, is_error: bool = False) -> List[Dict[str, Any]]:
-    """Helper to format MCP tool responses consistently."""
-    # Avoid double-wrapping if content is already a serialized MCP content list
-    try:
-        if isinstance(content, str) and content.startswith("[") and '"type"' in content and '"text"' in content:
-            parsed = json.loads(content)
-            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict) and "text" in parsed[0]:
-                return parsed
-    except Exception:
-        # Fallback to normal behavior on any parsing issue
-        pass
-    return [{"type": "text", "text": content}]
-
 
 def resolve_time_range(
     time_range: Optional[str] = None,
@@ -120,11 +106,11 @@ def list_models() -> List[Dict[str, Any]]:
         models = get_models_helper()
         
         if not models:
-            return _resp("No models are currently available.")
+            return make_mcp_text_response("No models are currently available.")
         
         model_list = [f"• {model}" for model in models]
         response = f"Available AI Models ({len(models)} total):\n\n" + "\n".join(model_list)
-        return _resp(response)
+        return make_mcp_text_response(response)
     except Exception as e:
         error = MCPException(
             message=f"Failed to retrieve models: {str(e)}",
@@ -146,10 +132,10 @@ def list_namespaces() -> List[Dict[str, Any]]:
     try:
         namespaces = get_namespaces_helper()
         if not namespaces:
-            return _resp("No monitored namespaces found.")
+            return make_mcp_text_response("No monitored namespaces found.")
         namespace_list = "\n".join([f"• {ns}" for ns in namespaces])
         response_text = f"Monitored Namespaces ({len(namespaces)} total):\n\n{namespace_list}"
-        return _resp(response_text)
+        return make_mcp_text_response(response_text)
     except Exception as e:
         error = MCPException(
             message=f"Failed to retrieve namespaces: {str(e)}",
@@ -178,7 +164,7 @@ def get_model_config() -> List[Dict[str, Any]]:
         model_config = {}
 
     if not model_config:
-        return _resp("No LLM models configured for summarization.")
+        return make_mcp_text_response("No LLM models configured for summarization.")
 
     response = f"Available Model Config ({len(model_config)} total):\n\n"
     for model_name, config in model_config.items():
@@ -187,7 +173,7 @@ def get_model_config() -> List[Dict[str, Any]]:
             response += f"  - {key}: {value}\n"
         response += "\n"
 
-    return _resp(response.strip())
+    return make_mcp_text_response(response.strip())
 
 
 def get_vllm_metrics_tool() -> List[Dict[str, Any]]:
@@ -204,7 +190,7 @@ def get_vllm_metrics_tool() -> List[Dict[str, Any]]:
         vllm_metrics_dict = get_vllm_metrics()
         
         if not vllm_metrics_dict:
-            return _resp("No vLLM metrics are currently available from Prometheus.")
+            return make_mcp_text_response("No vLLM metrics are currently available from Prometheus.")
 
         # Format the response with categories for better organization
         content = f"Available vLLM Metrics ({len(vllm_metrics_dict)} total):\n\n"
@@ -247,7 +233,7 @@ def get_vllm_metrics_tool() -> List[Dict[str, Any]]:
         content += f"- Other: {len(other_metrics)}\n"
         content += f"- Total: {len(vllm_metrics_dict)}\n"
 
-        return _resp(content)
+        return make_mcp_text_response(content)
 
     except Exception as e:
         error = MCPException(
@@ -383,7 +369,7 @@ def analyze_vllm(
             f"\n\nSTRUCTURED_DATA:\n{json.dumps(structured_response)}"
         )
 
-        return _resp(content)
+        return make_mcp_text_response(content)
         
     except PrometheusError as e:
         return e.to_mcp_response()
@@ -481,7 +467,7 @@ def calculate_metrics(
 
         # Return as JSON string (same format as REST API response)
         result = {"calculated_metrics": calculated_metrics}
-        return _resp(json.dumps(result))
+        return make_mcp_text_response(json.dumps(result))
 
     except Exception as e:
         error = MCPException(
@@ -497,10 +483,10 @@ def list_summarization_models() -> List[Dict[str, Any]]:
     try:
         models = get_summarization_models()
         if not models:
-            return _resp("No summarization models configured.")
+            return make_mcp_text_response("No summarization models configured.")
         content_lines = [f"• {name}" for name in models]
         content = f"Available Summarization Models ({len(models)} total):\n\n" + "\n".join(content_lines)
-        return _resp(content)
+        return make_mcp_text_response(content)
     except Exception as e:
         error = MCPException(
             message=f"Failed to list summarization models: {str(e)}",
@@ -514,7 +500,7 @@ def get_gpu_info() -> List[Dict[str, Any]]:
     """Get GPU information."""
     try:
         info = get_cluster_gpu_info()
-        return _resp(json.dumps(info))
+        return make_mcp_text_response(json.dumps(info))
     except Exception as e:
         error = MCPException(
             message=f"Failed to get GPU info: {str(e)}",
@@ -533,7 +519,7 @@ def get_deployment_info(namespace: str, model: str) -> List[Dict[str, Any]]:
 
     try:
         payload = get_namespace_model_deployment_info(namespace, model)
-        return _resp(json.dumps(payload))
+        return make_mcp_text_response(json.dumps(payload))
     except Exception as e:
         error = MCPException(
             message=f"Failed to get deployment info: {str(e)}",
@@ -604,7 +590,7 @@ def chat_vllm(
         # Clean the response
         cleaned_response = _clean_llm_summary_string(response)
         
-        return _resp(cleaned_response)
+        return make_mcp_text_response(cleaned_response)
         
     except Exception as e:
         logger.exception(f"Error in chat_vllm: {e}")
