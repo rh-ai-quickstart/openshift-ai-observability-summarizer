@@ -115,6 +115,17 @@ class MCPClientHelper:
                 content_list: List[Dict[str, Any]] = []
                 for item in result.content:
                     text = getattr(item, "text", str(item))
+                    # If this text is itself a serialized MCP content list, flatten it
+                    try:
+                        if isinstance(text, str) and text.startswith("[") and '"type"' in text and '"text"' in text:
+                            parsed = json.loads(text)
+                            if isinstance(parsed, list):
+                                for sub in parsed:
+                                    if isinstance(sub, dict) and "text" in sub:
+                                        content_list.append({"type": "text", "text": sub["text"]})
+                                continue
+                    except Exception:
+                        pass
                     content_list.append({"type": "text", "text": text})
                 return content_list
             return []
@@ -197,7 +208,18 @@ def extract_text_from_mcp_result(result: Any) -> Optional[str]:
         if result and isinstance(result, list) and len(result) > 0:
             first_item = result[0]
             if isinstance(first_item, dict) and "text" in first_item:
-                return first_item["text"]
+                base_text = first_item["text"]
+                # If the base_text itself is a serialized MCP content list, unwrap it
+                try:
+                    if isinstance(base_text, str):
+                        parsed = json.loads(base_text)
+                        if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict) and "text" in parsed[0]:
+                            inner_text = parsed[0]["text"]
+                            return inner_text
+                except Exception:
+                    # Fallback to base_text
+                    pass
+                return base_text
             else:
                 return str(first_item)
         return None
@@ -377,7 +399,6 @@ def get_gpu_info_mcp() -> Dict[str, Any]:
             return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
 
         result = mcp_client.call_tool_sync("get_gpu_info")
-
         # Surface structured errors
         err = parse_mcp_error(result)
         if err:
