@@ -42,6 +42,7 @@ usage() {
     echo "  -u/-U OPERATOR_NAME          Uninstall operator (simple names supported)"
     echo "  -f/-F YAML_FILE              YAML file for operator install/uninstall (optional)"
     echo "  -n/-N NAMESPACE              Namespace for operator install/uninstall (REQUIRED)"
+    echo "  -d/-D                        Debug mode"
     echo "  -h, --help                   Show this help message"
     echo ""
     echo "Examples:"
@@ -79,7 +80,7 @@ parse_args() {
     local NAMESPACE=""
 
     # Parse standard arguments using getopts
-    while getopts "c:C:i:I:u:U:f:F:n:N:hH" opt; do
+    while getopts "c:C:i:I:u:U:f:F:n:N:dD:hH" opt; do
         case $opt in
             c|C) ACTION="$OPERATOR_ACTION_CHECK"
                  OPERATOR_NAME="$OPTARG"
@@ -94,6 +95,8 @@ parse_args() {
             f|F) YAML_FILE="$OPTARG"
                  ;;
             n|N) NAMESPACE="$OPTARG"
+                 ;;
+            d|D) DEBUG="true"
                  ;;
             h|H) usage
                exit 0
@@ -117,50 +120,32 @@ parse_args() {
 
     # Determine operator details if YAML file not provided
     if [ -z "$YAML_FILE" ]; then
-        echo -e "${BLUE} **** 📋 Auto-detecting operator and YAML file for: $OPERATOR_NAME${NC}"
+        [[ "$DEBUG" == "true" ]] && echo -e "${BLUE} **** 📋 Auto-detecting operator and YAML file for: $OPERATOR_NAME${NC}"
         OPERATOR_NAME=$(get_operator_full_name "$OPERATOR_NAME") || exit 1
         YAML_FILE=$(get_operator_yaml "$OPERATOR_NAME") || exit 1
-        echo -e "${BLUE}📋 Auto-detected operator: $OPERATOR_NAME${NC}"
-        echo -e "${BLUE}📋 Auto-detected YAML file: $YAML_FILE${NC}"
+        [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}📋 Auto-detected operator: $OPERATOR_NAME${NC}"
+        [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}📋 Auto-detected YAML file: $YAML_FILE${NC}"
     fi
 
     # Check if operator is installed
     local is_installed=false
     check_operator "$OPERATOR_NAME" && is_installed=true
 
-    # Function to validate namespace for install/uninstall operations
-    validate_namespace() {
-        local action="$1"
-
-        if [ -z "$NAMESPACE" ]; then
-            echo -e "${RED}❌ Namespace is required for install/uninstall operations${NC}"
-            echo -e "${YELLOW}   Please specify namespace with -n NAMESPACE${NC}"
-            usage
-            exit 1
-        fi
-
-        if [ "$action" = "$OPERATOR_ACTION_INSTALL" ]; then
-            # For install: namespace will be created by the YAML if it doesn't exist
-            echo -e "${BLUE}  📋 Installing in namespace: $NAMESPACE${NC}"
-        elif [ "$action" = "$OPERATOR_ACTION_UNINSTALL" ]; then
-            # For uninstall: namespace must exist
-            if ! oc get namespace "$NAMESPACE" >/dev/null 2>&1; then
-                echo -e "${RED}❌ Namespace '$NAMESPACE' does not exist${NC}"
-                echo -e "${YELLOW}   Cannot uninstall from non-existent namespace${NC}"
-                exit 1
-            else
-                echo -e "${BLUE}  📋 Using namespace: $NAMESPACE${NC}"
-            fi
-        fi
-    }
-
     # Execute check/install/uninstall action based on operator status
     case "$ACTION" in
         "$OPERATOR_ACTION_CHECK")
             if [ "$is_installed" = true ]; then
+              if [ "$DEBUG" == "true" ]; then
                 echo -e "${GREEN}✅ Operator $OPERATOR_NAME is installed${NC}"
+              else
+                echo -e "${GREEN}✅ Installed${NC}"
+              fi
             else
+              if [ "$DEBUG" == "true" ]; then
                 echo -e "${RED}❌ Operator $OPERATOR_NAME is not installed${NC}"
+              else
+                echo -e "${RED}❌ Not installed${NC}"
+              fi
             fi
             exit 0
             ;;
@@ -183,10 +168,36 @@ parse_args() {
     esac
 }
 
+# Function to validate namespace for install/uninstall operations
+validate_namespace() {
+    local action="$1"
+
+    if [ -z "$NAMESPACE" ]; then
+        echo -e "${RED}❌ Namespace is required for install/uninstall operations${NC}"
+        echo -e "${YELLOW}   Please specify namespace with -n NAMESPACE${NC}"
+        # usage
+        exit 1
+    fi
+
+    if [ "$action" = "$OPERATOR_ACTION_INSTALL" ]; then
+        # For install: namespace will be created by the YAML if it doesn't exist
+        [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}  📋 Installing in namespace: $NAMESPACE${NC}"
+    elif [ "$action" = "$OPERATOR_ACTION_UNINSTALL" ]; then
+        # For uninstall: namespace must exist
+        if ! oc get namespace "$NAMESPACE" >/dev/null 2>&1; then
+            echo -e "${RED}❌ Namespace '$NAMESPACE' does not exist${NC}"
+            echo -e "${YELLOW}   Cannot uninstall from non-existent namespace${NC}"
+            exit 1
+        else
+            [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}  📋 Using namespace: $NAMESPACE${NC}"
+        fi
+    fi
+}
+
 # Function to check if an operator exists
 check_operator() {
     local operator_name="$1"
-    echo -e "${BLUE}📋 Checking operator: $operator_name${NC}"    
+    [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}📋 Checking operator: $operator_name${NC}"    
     if oc get operator "$operator_name" >/dev/null 2>&1; then
         return 0  # Operator exists
     else
@@ -286,22 +297,25 @@ uninstall_operator() {
     local subscription_name=$(grep -A2 "kind: Subscription" "$yaml_path" | grep "name:" | awk '{print $2}')
     echo -e "${BLUE}  📋 Found subscription: $subscription_name${NC}"
 
-    echo -e "${BLUE}  📋 Step 1: Deleting ClusterServiceVersion (CSV)...${NC}"
-    # Get the CSV name for this specific subscription
+    # Get the CSV name from subscription status BEFORE deleting subscription
+    # Example CSVs: cluster-observability-operator.v1.2.2, opentelemetry-operator.v0.135.0-1, tempo-operator.v0.18.0-1
     local csv_name=$(oc get subscription "$subscription_name" -n "$namespace" -o jsonpath='{.status.installedCSV}' 2>/dev/null)
-    if [ -n "$csv_name" ] && [ "$csv_name" != "null" ]; then
-        echo -e "${BLUE}  📋 Deleting CSV: $csv_name${NC}"
-        oc delete csv "$csv_name" -n "$namespace" --ignore-not-found=true
-    else
-        echo -e "${YELLOW}  ⚠️  No CSV found for subscription $subscription_name, deleting all CSVs in namespace${NC}"
-        echo -e "${BLUE}  📋 You can manually delete the CSV by running: ${NC}"
-        echo -e "${BLUE}     → oc delete csv -n $namespace --all --ignore-not-found=true${NC}"
-    fi
 
-    echo -e "${BLUE}  📋 Step 2: Deleting Subscription and OperatorGroup...${NC}"
-    # Delete subscription and operatorgroup but NOT the namespace
+    echo -e "${BLUE}  📋 Step 1: Deleting Subscription and OperatorGroup...${NC}"
+    echo -e "${BLUE}     → This prevents OLM from recreating the operator${NC}"
+    # Delete subscription FIRST to prevent OLM from recreating the operator
     # We use individual resource deletion instead of 'oc delete -f' to preserve the namespace
     oc delete subscription,operatorgroup --all -n "$namespace" --ignore-not-found=true
+
+    echo -e "${BLUE}  📋 Step 2: Deleting ClusterServiceVersion (CSV)...${NC}"
+    if [ -n "$csv_name" ] && [ "$csv_name" != "null" ]; then
+        echo -e "${BLUE}     → Deleting CSV: $csv_name${NC}"
+        oc delete csv "$csv_name" -n "$namespace" --ignore-not-found=true
+    else
+        echo -e "${YELLOW}     ⚠️  No CSV found for subscription $subscription_name${NC}"
+        echo -e "${BLUE}     → You can manually delete CSVs by running:${NC}"
+        echo -e "${BLUE}       oc delete csv -n $namespace --all --ignore-not-found=true${NC}"
+    fi
 
     echo -e "${BLUE}  📋 Step 3: Deleting operator resource: $operator_name${NC}"
     # Delete the operator resource directly
@@ -335,15 +349,18 @@ install_operator() {
     local operator_name="$1"
     local yaml_file="$2"
     local namespace="$3"
-    echo -e "${BLUE}📦 Installing $operator_name...${NC}"
+    echo -e "${BLUE}📦 → Installing $operator_name...${NC}"
 
     local yaml_path=$(get_yaml_path "$yaml_file")
 
     # Namespace creation is handled by validate_namespace function
-    
+
     # Use envsubst to substitute the NAMESPACE variable
+    # Note: We use 'oc create' instead of 'oc apply' because the YAML uses 'generateName' for OperatorGroup
+    # which is only supported by 'create'. We add --save-config to enable future kubectl apply operations.
+    # Suppress "AlreadyExists" errors for namespaces since uninstall preserves them by design.
     export NAMESPACE="$namespace"
-    envsubst < "$yaml_path" | oc apply -f -
+    envsubst < "$yaml_path" | oc create --save-config -f - 2>&1 | grep -v "namespaces.*already exists" || true
 
     echo -e "${GREEN}  ✅ $operator_name installation initiated${NC}"
 
@@ -377,10 +394,14 @@ install_operator() {
 
 # Main execution
 main() {
-    echo -e "${BLUE}🚀 OpenShift Operator Management${NC}"
-    echo "=================================="
+    [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}🚀 OpenShift Operator Management${NC}"
+    [[ "$DEBUG" == "true" ]] && echo "=================================="
     
     check_openshift_prerequisites
+
+    # Check if envsubst is installed (required for variable substitution)
+    check_tool_exists "envsubst"
+
     parse_args "$@"
 }
 

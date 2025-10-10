@@ -9,6 +9,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Debug mode (global variable)
+DEBUG="false"
+
 # Function to check if a tool exists
 check_tool_exists() {
     local tool="$1"
@@ -39,16 +42,13 @@ check_openshift_login() {
 
 # Function to check OpenShift CLI and login status
 check_openshift_prerequisites() {
-    echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
+    [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
     
     # Check if oc CLI is installed
     check_tool_exists "oc"
     
-    # Check if envsubst is installed (required for variable substitution)
-    check_tool_exists "envsubst"
-    
     # Check if logged in to OpenShift cluster
     check_openshift_login
     
-    echo -e "${GREEN}✅ Prerequisites check passed${NC}"
+    [[ "$DEBUG" == "true" ]] && echo -e "${GREEN}✅ Prerequisites check passed${NC}"
 }
