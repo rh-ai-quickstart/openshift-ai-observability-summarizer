@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server clean config test install-operators uninstall-operators check-operators install-cluster-observability-operator install-opentelemetry-operator install-tempo-operator uninstall-cluster-observability-operator uninstall-opentelemetry-operator uninstall-tempo-operator enable-tracing-ui disable-tracing-ui,$(MAKECMDGOALS)))
+ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server clean config test check-observability-drift install-operators uninstall-operators check-operators install-cluster-observability-operator install-opentelemetry-operator install-tempo-operator uninstall-cluster-observability-operator uninstall-opentelemetry-operator uninstall-tempo-operator enable-tracing-ui disable-tracing-ui,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -14,7 +14,7 @@ MAKEFLAGS += --no-print-directory
 REGISTRY ?= quay.io
 ORG ?= ecosystem-appeng
 IMAGE_PREFIX ?= aiobs
-VERSION ?= 0.14.0
+VERSION ?= 0.14.2
 PLATFORM ?= linux/amd64
 
 # Container image names
@@ -170,7 +170,7 @@ help:
 	@echo "  install-ingestion-pipeline - Install extra ingestion pipelines"
 	@echo ""
 	@echo "Observability Stack:"
-	@echo "  install-observability-stack - Install complete observability stack (MinIO + TempoStack + OTEL + tracing)"
+	@echo "  install-observability-stack - Install complete observability stack (MinIO + TempoStack + OTEL + tracing + drift check)"
 	@echo "  uninstall-observability-stack - Uninstall complete observability stack (tracing + TempoStack + OTEL + MinIO)"
 	@echo ""
 	@echo "Operators:"
@@ -187,6 +187,8 @@ help:
 	@echo "Individual Components:"
 	@echo "  install-observability - Install TempoStack and OTEL Collector only"
 	@echo "  uninstall-observability - Uninstall TempoStack and OTEL Collector only"
+	@echo "  upgrade-observability - Force upgrade observability components (even if already installed)"
+	@echo "  check-observability-drift - Check for configuration drift in observability-hub"
 	@echo "  setup-tracing - Enable auto-instrumentation for tracing in target namespace (idempotent)"
 	@echo "  remove-tracing - Disable auto-instrumentation for tracing in target namespace"
 	@echo "  enable-tracing-ui - Enable 'Observe → Traces' menu in OpenShift Console"
@@ -693,7 +695,7 @@ install-observability:
 	fi
 
 .PHONY: install-observability-stack
-install-observability-stack: install-minio setup-tracing install-observability enable-tracing-ui
+install-observability-stack: install-minio setup-tracing install-observability check-observability-drift enable-tracing-ui
 
 .PHONY: setup-tracing
 setup-tracing: namespace
@@ -779,6 +781,27 @@ uninstall-observability-stack:
 		echo "   Or remove components individually:"; \
 		echo "     → make uninstall-observability-stack NAMESPACE=$(NAMESPACE) UNINSTALL_OBSERVABILITY=true"; \
 	fi
+uninstall-observability-stack: remove-tracing uninstall-observability uninstall-minio
+
+.PHONY: upgrade-observability
+upgrade-observability:
+	@echo "→ Force upgrading OpenTelemetry Collector and Tempo in namespace $(OBSERVABILITY_NAMESPACE)"
+	@echo "  This will update the configuration even if already installed"
+	cd deploy/helm && helm upgrade --install tempo ./observability/tempo \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--create-namespace \
+		--set global.namespace=$(OBSERVABILITY_NAMESPACE) \
+		$(helm_tempo_args)
+	cd deploy/helm && helm upgrade --install otel-collector ./observability/otel-collector \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--create-namespace \
+		--set global.namespace=$(OBSERVABILITY_NAMESPACE)
+	@echo "✅ Observability components upgraded successfully"
+
+.PHONY: check-observability-drift
+check-observability-drift:
+	@scripts/check-observability-drift.sh $(OBSERVABILITY_NAMESPACE)
+
 
 .PHONY: install-minio
 install-minio:

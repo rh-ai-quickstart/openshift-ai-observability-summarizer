@@ -399,6 +399,7 @@ def get_gpu_info():
     try:
         return get_gpu_info_mcp()
     except Exception as e:
+        logger.error(f"Error fetching GPU info (MCP): {e}")
         st.sidebar.error(f"Error fetching GPU info (MCP): {e}")
         return {"total_gpus": 0, "vendors": [], "models": [], "temperatures": [], "power_usage": []}
 
@@ -1072,7 +1073,6 @@ if page == "vLLM Metric Summarizer":
                     end_ts=selected_end,
                     api_key=api_key,
                 )
-
                 # Check for client-side error response (dict format)
                 if isinstance(result, dict) and "error" in result:
                     st.error(f"❌ MCP analysis failed: {result.get('error', 'Unknown error')}")
@@ -1568,7 +1568,6 @@ elif page == "OpenShift Metrics":
                     summarize_model_id=multi_model_name,
                     api_key=api_key,
                 )
-
                 # Prefer client-side structured error (dict format) using centralized handler
                 if handle_client_or_mcp_error(result, "OpenShift analysis"):
                     clear_session_state()

@@ -26,6 +26,14 @@ logger = logging.getLogger(__name__)
 
 def _resp(content: str, is_error: bool = False) -> List[Dict[str, Any]]:
     """Helper to format MCP tool responses consistently."""
+    # Avoid double-wrapping if content is already a serialized MCP content list
+    try:
+        if isinstance(content, str) and content.startswith("[") and '"type"' in content and '"text"' in content:
+            parsed = json.loads(content)
+            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict) and "text" in parsed[0]:
+                return parsed
+    except Exception:
+        pass
     return [{"type": "text", "text": content}]
 
 
