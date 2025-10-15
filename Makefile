@@ -801,13 +801,11 @@ install-minio:
 
 .PHONY: uninstall-minio
 uninstall-minio:
-	@echo "COMMENTED OUT -->> NOT Uninstalling $(MINIO_CHART) in namespace $(MINIO_NAMESPACE)"
+	@echo "Uninstalling $(MINIO_CHART) in namespace $(MINIO_NAMESPACE)"
+	@helm -n $(MINIO_NAMESPACE) uninstall $(MINIO_CHART) --ignore-not-found
 
-#	@echo "Uninstalling $(MINIO_CHART) in namespace $(MINIO_NAMESPACE)"
-#	@helm -n $(MINIO_NAMESPACE) uninstall $(MINIO_CHART) --ignore-not-found
-#
-#	@echo "Removing minio PVCs from $(MINIO_NAMESPACE)"
-#	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=$(MINIO_CHART) --timeout=30s ||:
+	@echo "Removing minio PVCs from $(MINIO_NAMESPACE)"
+	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=$(MINIO_CHART) --timeout=30s ||:
 
 # -- Operator Installation targets --
 
