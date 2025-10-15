@@ -781,7 +781,6 @@ uninstall-observability-stack:
 		echo "   Or remove components individually:"; \
 		echo "     → make uninstall-observability-stack NAMESPACE=$(NAMESPACE) UNINSTALL_OBSERVABILITY=true"; \
 	fi
-uninstall-observability-stack: remove-tracing uninstall-observability uninstall-minio
 
 .PHONY: upgrade-observability
 upgrade-observability:
