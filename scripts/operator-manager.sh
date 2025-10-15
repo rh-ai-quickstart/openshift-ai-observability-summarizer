@@ -385,30 +385,99 @@ install_operator() {
 
     echo -e "${GREEN}  ✅ $operator_name installation initiated${NC}"
 
-    # Wait for operator to be installed
-    echo -e "${BLUE}  ⏳ Waiting for operator to be ready...${NC}"
-    
+    # Wait for operator to be installed (operator resource exists)
+    echo -e "${BLUE}  ⏳ Waiting for operator resource to be created...${NC}"
+
     local max_attempts=60  # 10 minutes with 10-second intervals
     local attempt=0
-    
+
     while [ $attempt -lt $max_attempts ]; do
         if check_operator "$operator_name"; then
-            echo -e "${GREEN}  ✅ $operator_name is ready${NC}"
+            echo -e "${GREEN}  ✅ Operator resource created${NC}"
             break
         fi
-        
+
         attempt=$((attempt + 1))
         if [ $attempt -lt $max_attempts ]; then
             echo -e "${BLUE}  ⏳ Attempt $attempt/$max_attempts - waiting 10 seconds...${NC}"
             sleep 10
         fi
     done
-    
+
     if [ $attempt -eq $max_attempts ]; then
-        echo -e "${YELLOW}  ⚠️  $operator_name may still be installing${NC}"
+        echo -e "${RED}  ❌ Operator resource was not created after 10 minutes${NC}"
+        exit 1
     fi
 
-    echo -e "${GREEN}✅ $operator_name installation completed!${NC}"
+    # Get the subscription name to check CSV status
+    local subscription_name=$(grep -A2 "kind: Subscription" "$yaml_path" | grep "name:" | awk '{print $2}')
+
+    # Wait for CSV to reach Succeeded phase
+    echo -e "${BLUE}  ⏳ Waiting for CSV to reach Succeeded phase...${NC}"
+    attempt=0
+    max_attempts=60  # 10 minutes
+
+    while [ $attempt -lt $max_attempts ]; do
+        local csv_phase=$(oc get subscription "$subscription_name" -n "$namespace" -o jsonpath='{.status.installedCSV}' 2>/dev/null)
+        if [ -n "$csv_phase" ] && [ "$csv_phase" != "null" ]; then
+            local phase=$(oc get csv "$csv_phase" -n "$namespace" -o jsonpath='{.status.phase}' 2>/dev/null)
+            if [ "$phase" = "Succeeded" ]; then
+                echo -e "${GREEN}  ✅ CSV $csv_phase is in Succeeded phase${NC}"
+                break
+            fi
+            echo -e "${BLUE}  ⏳ CSV phase: $phase (attempt $attempt/$max_attempts)${NC}"
+        else
+            echo -e "${BLUE}  ⏳ Waiting for CSV to be created (attempt $attempt/$max_attempts)${NC}"
+        fi
+
+        attempt=$((attempt + 1))
+        if [ $attempt -lt $max_attempts ]; then
+            sleep 10
+        fi
+    done
+
+    if [ $attempt -eq $max_attempts ]; then
+        echo -e "${RED}  ❌ CSV did not reach Succeeded phase after 10 minutes${NC}"
+        exit 1
+    fi
+
+    # Wait for CRDs to be created
+    local crd_patterns=$(get_operator_crds "$operator_name")
+    if [ -n "$crd_patterns" ]; then
+        echo -e "${BLUE}  ⏳ Waiting for CRDs to be created...${NC}"
+        attempt=0
+        max_attempts=30  # 5 minutes with 10-second intervals
+
+        local all_crds_created=false
+        while [ $attempt -lt $max_attempts ]; do
+            all_crds_created=true
+            for pattern in $crd_patterns; do
+                local crds=$(oc get crd -o name 2>/dev/null | grep "$pattern" || true)
+                if [ -z "$crds" ]; then
+                    echo -e "${BLUE}  ⏳ Waiting for CRDs matching pattern: $pattern (attempt $attempt/$max_attempts)${NC}"
+                    all_crds_created=false
+                    break
+                fi
+            done
+
+            if [ "$all_crds_created" = true ]; then
+                echo -e "${GREEN}  ✅ All CRDs created successfully${NC}"
+                break
+            fi
+
+            attempt=$((attempt + 1))
+            if [ $attempt -lt $max_attempts ]; then
+                sleep 10
+            fi
+        done
+
+        if [ $attempt -eq $max_attempts ]; then
+            echo -e "${RED}  ❌ CRDs were not created after 5 minutes${NC}"
+            exit 1
+        fi
+    fi
+
+    echo -e "${GREEN}✅ $operator_name installation completed and fully ready!${NC}"
 }
 
 

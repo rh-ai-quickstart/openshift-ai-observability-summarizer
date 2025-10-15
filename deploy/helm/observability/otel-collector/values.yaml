@@ -98,15 +98,13 @@ collector:
       debug:
         verbosity: basic
       otlphttp/dev:
-        # Tempo gateway endpoint - configurable
-        endpoint: "https://tempo-tempostack-gateway.{{ .Values.global.namespace }}.svc.cluster.local:8080/api/traces/v1/dev"
-        headers:
-          X-Scope-OrgID: dev
+        # Tempo distributor endpoint for trace ingestion
+        # Note: The otlphttp exporter automatically appends /v1/traces to the endpoint
+        # Using distributor directly with mTLS (service-to-service)
+        endpoint: "https://tempo-tempostack-distributor.{{ .Values.global.namespace }}.svc.cluster.local:4318"
         tls:
           insecure: false
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
-        auth:
-          authenticator: bearertokenauth
     
     # Receivers configuration
     receivers:
