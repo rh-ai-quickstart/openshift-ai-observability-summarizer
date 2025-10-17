@@ -27,3 +27,11 @@ minio:
   # Bucket configuration - array of bucket names
   # Will be overridden by MINIO_BUCKETS from Makefile
   buckets: ["tempo", "loki"]
+
+  # Security Context - Set to empty to let OpenShift assign automatically
+  # This fixes SCC (Security Context Constraint) issues in OpenShift
+  podSecurityContext: {}
+  containerSecurityContext: {}
+  bucketInit:
+    securityContext: {}
+    podSecurityContext: {}

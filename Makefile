@@ -3,7 +3,7 @@
 
 # NAMESPACE validation for deployment targets
 ifeq ($(NAMESPACE),)
-ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server uninstall-observability-stack clean config test check-observability-drift,$(MAKECMDGOALS)))
+ifeq (,$(filter install-local depend install-ingestion-pipeline list-models% generate-model-config help build build-ui build-alerting build-mcp-server push push-ui push-alerting push-mcp-server clean config test check-observability-drift install-operators uninstall-operators check-operators install-cluster-observability-operator install-opentelemetry-operator install-tempo-operator uninstall-cluster-observability-operator uninstall-opentelemetry-operator uninstall-tempo-operator enable-tracing-ui disable-tracing-ui,$(MAKECMDGOALS)))
 $(error NAMESPACE is not set)
 endif
 endif
@@ -89,6 +89,8 @@ MINIO_NAMESPACE ?= observability-hub
 # LLM URL processing constants
 DEFAULT_LLM_PORT_AND_PATH := :8080/v1
 
+OPERATOR_MANAGER_SCRIPT := scripts/operator-manager.sh
+
 # Helm argument templates
 
 helm_llm_service_args = \
@@ -171,6 +173,17 @@ help:
 	@echo "  install-observability-stack - Install complete observability stack (MinIO + TempoStack + OTEL + tracing + drift check)"
 	@echo "  uninstall-observability-stack - Uninstall complete observability stack (tracing + TempoStack + OTEL + MinIO)"
 	@echo ""
+	@echo "Operators:"
+	@echo "  install-operators - Install all mandatory operators (observability, otel, tempo)"
+	@echo "  install-cluster-observability-operator - Install Cluster Observability Operator (observability)"
+	@echo "  install-opentelemetry-operator - Install OpenTelemetry Operator (otel)"
+	@echo "  install-tempo-operator - Install Tempo Operator (tempo)"
+	@echo "  uninstall-operators - Uninstall all mandatory operators (with confirmation)"
+	@echo "  uninstall-cluster-observability-operator - Uninstall Cluster Observability Operator only"
+	@echo "  uninstall-opentelemetry-operator - Uninstall OpenTelemetry Operator only"
+	@echo "  uninstall-tempo-operator - Uninstall Tempo Operator only"
+	@echo "  check-operators - Check status of all mandatory operators"
+	@echo ""
 	@echo "Individual Components:"
 	@echo "  install-observability - Install TempoStack and OTEL Collector only"
 	@echo "  uninstall-observability - Uninstall TempoStack and OTEL Collector only"
@@ -178,6 +191,8 @@ help:
 	@echo "  check-observability-drift - Check for configuration drift in observability-hub"
 	@echo "  setup-tracing - Enable auto-instrumentation for tracing in target namespace (idempotent)"
 	@echo "  remove-tracing - Disable auto-instrumentation for tracing in target namespace"
+	@echo "  enable-tracing-ui - Enable 'Observe → Traces' menu in OpenShift Console"
+	@echo "  disable-tracing-ui - Disable 'Observe → Traces' menu in OpenShift Console"
 	@echo "  install-minio - Install MinIO observability storage backend only"
 	@echo "  uninstall-minio - Uninstall MinIO observability storage backend only"
 	@echo ""
@@ -213,6 +228,8 @@ help:
 	@echo "  MINIO_USER         - MinIO username for observability storage (default: admin)"
 	@echo "  MINIO_PASSWORD     - MinIO password for observability storage (default: minio123)"
 	@echo "  MINIO_BUCKETS      - Comma-separated list of MinIO buckets to create (default: tempo,loki)"
+	@echo "  UNINSTALL_OBSERVABILITY - Set to 'true' to uninstall observability stack during uninstall"
+	@echo "  UNINSTALL_OPERATORS     - Set to 'true' to uninstall operators during uninstall"
 	@echo ""
 
 .PHONY: build
@@ -345,7 +362,7 @@ install-rag: namespace
 
 
 .PHONY: install
-install: namespace depend validate-llm install-observability-stack install-rag install-metric-ui install-mcp-server delete-jobs
+install: namespace depend validate-llm install-operators install-observability-stack install-rag install-metric-ui install-mcp-server delete-jobs
 	@if [ "$(ALERTS)" = "TRUE" ]; then \
 		echo "ALERTS flag is set to TRUE. Installing alerting..."; \
 		$(MAKE) install-alerts NAMESPACE=$(NAMESPACE); \
@@ -420,18 +437,13 @@ uninstall:
 	@echo "Uninstalling $(MCP_SERVER_RELEASE_NAME) helm chart (if installed)"
 	- @helm -n $(NAMESPACE) uninstall $(MCP_SERVER_RELEASE_NAME) --ignore-not-found
 
-	@if [ "$(UNINSTALL_OBSERVABILITY)" = "true" ]; then \
-		echo "Uninstalling observability stack (includes tracing and MinIO)"; \
-		$(MAKE) uninstall-observability-stack NAMESPACE=$(NAMESPACE) || true; \
-	else \
-		echo "\n❌ WARNING: UNINSTALL_OBSERVABILITY is not set to 'true'"; \
-		echo "   Skipping removal of shared observability infrastructure to protect other teams."; \
-		echo "   This infrastructure (TempoStack, OTel Collector) is shared by multiple applications.\n"; \
-		echo "   To remove observability infrastructure, run:"; \
-		echo "     → make uninstall NAMESPACE=$(NAMESPACE) UNINSTALL_OBSERVABILITY=true\n"; \
-		echo "   Or remove components individually:"; \
-		echo "     → make uninstall-observability-stack NAMESPACE=$(NAMESPACE)  # (includes tracing and MinIO)"; \
-	fi
+	@echo ""
+	@echo "Checking if observability stack should be uninstalled..."
+	@$(MAKE) uninstall-observability-stack NAMESPACE=$(NAMESPACE) || true
+
+	@echo ""
+	@echo "Checking if operators should be uninstalled..."
+	@$(MAKE) uninstall-operators || true
 
 	@echo "\nRemaining resources in namespace $(NAMESPACE):"
 	@echo " → Pods..."
@@ -683,7 +695,7 @@ install-observability:
 	fi
 
 .PHONY: install-observability-stack
-install-observability-stack: install-minio setup-tracing install-observability check-observability-drift
+install-observability-stack: install-minio setup-tracing install-observability check-observability-drift enable-tracing-ui
 
 .PHONY: setup-tracing
 setup-tracing: namespace
@@ -702,6 +714,34 @@ remove-tracing: namespace
 	@oc delete instrumentation python-instrumentation -n $(NAMESPACE)
 	@oc annotate namespace $(NAMESPACE) instrumentation.opentelemetry.io/inject-python- --overwrite
 
+.PHONY: enable-tracing-ui
+enable-tracing-ui:
+	@echo "→ Enabling distributed-tracing console plugin for Observe → Traces menu"
+	@if oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' 2>/dev/null | grep -q "distributed-tracing-console-plugin"; then \
+		echo "  → Console plugin already enabled"; \
+	else \
+		echo "  → Enabling console plugin..."; \
+		oc patch console.operator.openshift.io cluster --type=json -p='[{"op": "add", "path": "/spec/plugins/-", "value": "distributed-tracing-console-plugin"}]' 2>/dev/null && \
+		echo "  → Console plugin enabled. The OpenShift Console will refresh automatically." || \
+		echo "  → Note: Console plugin enablement requires cluster-admin permissions. You may need to run this manually."; \
+	fi
+
+.PHONY: disable-tracing-ui
+disable-tracing-ui:
+	@echo "→ Disabling distributed-tracing console plugin for Observe → Traces menu"
+	@if oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' 2>/dev/null | grep -q "distributed-tracing-console-plugin"; then \
+		PLUGIN_INDEX=$$(oc get console.operator.openshift.io cluster -o json | jq '.spec.plugins | to_entries | .[] | select(.value=="distributed-tracing-console-plugin") | .key'); \
+		if [ -n "$$PLUGIN_INDEX" ]; then \
+			oc patch console.operator.openshift.io cluster --type=json -p="[{\"op\": \"remove\", \"path\": \"/spec/plugins/$$PLUGIN_INDEX\"}]" 2>/dev/null && \
+			echo "  → Console plugin disabled. The OpenShift Console will refresh automatically." || \
+			echo "  → Note: Console plugin disabling requires cluster-admin permissions. You may need to run this manually."; \
+		else \
+			echo "  → Could not find plugin index"; \
+		fi \
+	else \
+		echo "  → Console plugin is not enabled"; \
+	fi
+
 .PHONY: uninstall-observability
 uninstall-observability:
 	@echo "Uninstalling TempoStack and Otel Collector in namespace $(OBSERVABILITY_NAMESPACE)"
@@ -712,7 +752,35 @@ uninstall-observability:
 	- @oc delete pvc -n $(OBSERVABILITY_NAMESPACE) -l app.kubernetes.io/name=tempo --timeout=30s ||:
 
 .PHONY: uninstall-observability-stack
-uninstall-observability-stack: remove-tracing uninstall-observability uninstall-minio
+uninstall-observability-stack:
+	@if [ "$(UNINSTALL_OBSERVABILITY)" = "true" ]; then \
+		echo "🗑️  Uninstalling observability stack (includes tracing and MinIO)"; \
+		echo ""; \
+		echo "⚠️  WARNING: This will remove the following components:"; \
+		echo "  → Auto-instrumentation for tracing in namespace $(NAMESPACE)"; \
+		echo "  → TempoStack and OTEL Collector in namespace $(OBSERVABILITY_NAMESPACE)"; \
+		echo "  → MinIO observability storage in namespace $(MINIO_NAMESPACE)"; \
+		echo "  → Distributed Tracing Console Plugin (Observe → Traces menu)"; \
+		echo ""; \
+		echo "This infrastructure is shared by multiple applications."; \
+		echo ""; \
+		$(MAKE) remove-tracing NAMESPACE=$(NAMESPACE); \
+		$(MAKE) uninstall-observability; \
+		$(MAKE) uninstall-minio; \
+		$(MAKE) disable-tracing-ui; \
+		echo ""; \
+		echo "✅ Observability stack uninstallation completed!"; \
+	else \
+		echo "❌ WARNING: UNINSTALL_OBSERVABILITY is not set to 'true'"; \
+		echo "   Skipping removal of shared observability infrastructure to protect other teams."; \
+		echo "   This infrastructure (TempoStack, OTel Collector) is shared by multiple applications."; \
+		echo ""; \
+		echo "   To remove observability infrastructure, run:"; \
+		echo "     → make uninstall NAMESPACE=$(NAMESPACE) UNINSTALL_OBSERVABILITY=true"; \
+		echo ""; \
+		echo "   Or remove components individually:"; \
+		echo "     → make uninstall-observability-stack NAMESPACE=$(NAMESPACE) UNINSTALL_OBSERVABILITY=true"; \
+	fi
 
 .PHONY: upgrade-observability
 upgrade-observability:
@@ -746,7 +814,6 @@ install-minio:
 		cd deploy/helm && helm -n $(MINIO_NAMESPACE) upgrade --install $(MINIO_CHART) $(MINIO_CHART_PATH) \
 		--atomic --timeout 5m \
 		$(MINIO_ARGS); \
-		oc wait -n $(MINIO_NAMESPACE) --for=condition=Ready --timeout=5m inferenceservice --all ||:; \
 		echo "$(MINIO_CHART) installed successfully"; \
 	fi
 	@echo "→ Cleaning up broken upstream routes (pointing to non-existent 'minio' service)"
@@ -761,3 +828,82 @@ uninstall-minio:
 
 	@echo "Removing minio PVCs from $(MINIO_NAMESPACE)"
 	- @oc delete pvc -n $(MINIO_NAMESPACE) -l app.kubernetes.io/name=$(MINIO_CHART) --timeout=30s ||:
+
+# -- Operator Installation targets --
+
+# Install Cluster Observability Operator
+.PHONY: install-cluster-observability-operator
+install-cluster-observability-operator:
+	@echo ""
+	@$(OPERATOR_MANAGER_SCRIPT) -i observability -n openshift-cluster-observability-operator
+
+# Install OpenTelemetry Operator
+.PHONY: install-opentelemetry-operator
+install-opentelemetry-operator:
+	@echo ""
+	@$(OPERATOR_MANAGER_SCRIPT) -i otel -n openshift-opentelemetry-operator
+
+# Install Tempo Operator
+.PHONY: install-tempo-operator
+install-tempo-operator:
+	@echo ""
+	@$(OPERATOR_MANAGER_SCRIPT) -i tempo -n openshift-tempo-operator
+
+# Install all three mandatory operators for Tempo and OpenTelemetry Collector
+.PHONY: install-operators
+install-operators: install-cluster-observability-operator install-opentelemetry-operator install-tempo-operator
+
+# Uninstall Cluster Observability Operator
+.PHONY: uninstall-cluster-observability-operator
+uninstall-cluster-observability-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -u observability -n openshift-cluster-observability-operator
+
+# Uninstall OpenTelemetry Operator
+.PHONY: uninstall-opentelemetry-operator
+uninstall-opentelemetry-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -u otel -n openshift-opentelemetry-operator
+
+# Uninstall Tempo Operator
+.PHONY: uninstall-tempo-operator
+uninstall-tempo-operator:
+	@$(OPERATOR_MANAGER_SCRIPT) -u tempo -n openshift-tempo-operator
+
+# Uninstall all three operators
+.PHONY: uninstall-operators
+uninstall-operators:
+	@if [ "$(UNINSTALL_OPERATORS)" = "true" ]; then \
+		echo "🗑️  Uninstalling operators for Tempo and OpenTelemetry Collector..."; \
+		echo ""; \
+		echo "⚠️  WARNING: This will remove the following operators:"; \
+		echo "  → Cluster Observability Operator"; \
+		echo "  → Red Hat build of OpenTelemetry Operator"; \
+		echo "  → Tempo Operator"; \
+		echo ""; \
+		echo "This may affect other applications using these operators."; \
+		echo ""; \
+		$(MAKE) uninstall-cluster-observability-operator; \
+		$(MAKE) uninstall-opentelemetry-operator; \
+		$(MAKE) uninstall-tempo-operator; \
+		echo ""; \
+		echo "✅ All operators uninstallation completed!"; \
+	else \
+		echo "❌ WARNING: UNINSTALL_OPERATORS is not set to 'true'"; \
+		echo "   Skipping removal of operators to protect other applications."; \
+		echo "   These operators are cluster-scoped and shared by multiple applications."; \
+		echo ""; \
+		echo "   To remove operators, run:"; \
+		echo "     → make uninstall NAMESPACE=$(NAMESPACE) UNINSTALL_OPERATORS=true"; \
+		echo ""; \
+		echo "   Or remove components individually:"; \
+		echo "     → make uninstall-operators UNINSTALL_OPERATORS=true"; \
+	fi
+
+
+# Check operator status
+.PHONY: check-operators
+check-operators:
+	@echo "📊 Checking operator status for Tempo and OpenTelemetry Collector..."
+	@echo ""
+	@printf "🔍 Cluster Observability Operator: " && $(OPERATOR_MANAGER_SCRIPT) -c observability
+	@printf "🔍 OpenTelemetry Operator: " && $(OPERATOR_MANAGER_SCRIPT) -c otel
+	@printf "🔍 Tempo Operator: " && $(OPERATOR_MANAGER_SCRIPT) -c tempo

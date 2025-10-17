@@ -1,0 +1,29 @@
+---
+# Operator: cluster-observability-operator
+# Full Name: cluster-observability-operator.openshift-cluster-observability
+# CRD Patterns: monitoring.rhobs, perses.dev, observability.openshift.io
+# Note: Uninstalling this operator will delete all CRDs matching the above patterns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NAMESPACE}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  generateName: ${NAMESPACE}-
+  namespace: ${NAMESPACE}
+spec: {}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: cluster-observability-operator
+  namespace: ${NAMESPACE}
+spec:
+  channel: stable
+  name: cluster-observability-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

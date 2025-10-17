@@ -3,17 +3,13 @@
 # OpenShift Service Account Setup Script
 # Sets up GitHub Actions service account with required permissions
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
 
 # Configuration
 SERVICE_ACCOUNT_NAME="github-actions"
 TOKEN_SECRET_NAME="github-actions-token"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo -e "${BLUE}🚀 OpenShift Service Account Setup for GitHub Actions${NC}"
 echo "=================================================================="
@@ -34,34 +30,17 @@ usage() {
     echo "  $0 -S -T -n my-namespace        # Setup and extract token (mixed case)"
 }
 
-function check_dependency() {
-  command -v "$1" > /dev/null 2>&1 || {
-    echo -e "${RED}❌ $2 is not installed${NC}"
-    exit 1
-  }
-}
-
-function check_file() {
-  [ -f "$1" ] || {
-    echo -e "${RED}❌ $2 file not found: $1${NC}"
-    exit 1
-  }
-}
 
 # Function to check prerequisites
 check_prerequisites() {
     echo -e "${BLUE}🔍 Checking prerequisites...${NC}"
     
     # Check dependencies
-    check_dependency "oc" "OpenShift CLI (oc)"
-    check_dependency "envsubst" "envsubst utility"
+    check_tool_exists "oc"
+    check_tool_exists "envsubst"
     
     # Check OpenShift login
-    if ! oc whoami &> /dev/null; then
-        echo -e "${RED}❌ Not logged in to OpenShift cluster${NC}"
-        echo -e "${YELLOW}   Please run: oc login${NC}"
-        exit 1
-    fi
+    check_openshift_login
     
     # Check if required files exist
     check_file "$SCRIPT_DIR/ocp_config/github-actions-rbac.yml" "RBAC"
