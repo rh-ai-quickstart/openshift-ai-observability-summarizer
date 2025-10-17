@@ -6,7 +6,8 @@ import re
 import pandas as pd
 import requests
 
-from .observability_vllm_tools import _resp, resolve_time_range
+from .observability_vllm_tools import resolve_time_range
+from core.response_utils import make_mcp_text_response
 from core.metrics import (
     analyze_openshift_metrics,
     chat_openshift_metrics,
@@ -163,7 +164,7 @@ def analyze_openshift(
         }
 
         content = f"{header}\n\n{summary}\n\nSTRUCTURED_DATA:\n{json.dumps(structured)}".strip()
-        return _resp(content)
+        return make_mcp_text_response(content)
 
     except PrometheusError as e:
         return e.to_mcp_response()
@@ -205,7 +206,7 @@ def list_openshift_metric_groups() -> List[Dict[str, Any]]:
     groups = list(core_metrics.get_openshift_metrics().keys())
     header = "Available OpenShift Metric Groups (cluster-wide):\n\n"
     body = "\n".join([f"• {g}" for g in groups])
-    return _resp(header + body if groups else "No OpenShift metric groups available.")
+    return make_mcp_text_response(header + body if groups else "No OpenShift metric groups available.")
 
 
 def list_openshift_namespace_metric_groups() -> List[Dict[str, Any]]:
@@ -217,7 +218,7 @@ def list_openshift_namespace_metric_groups() -> List[Dict[str, Any]]:
     ]
     header = "Available OpenShift Namespace Metric Groups:\n\n"
     body = "\n".join([f"• {g}" for g in groups])
-    return _resp(header + body)
+    return make_mcp_text_response(header + body)
 
 def chat_openshift(
     metric_category: str,
@@ -307,7 +308,7 @@ def chat_openshift(
             "promql": result.get("promql", ""),
             "summary": result.get("summary", ""),
         }
-        return _resp(json.dumps(payload))
+        return make_mcp_text_response(json.dumps(payload))
     except PrometheusError as e:
         return e.to_mcp_response()
     except requests.exceptions.HTTPError as e:
