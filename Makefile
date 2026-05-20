@@ -117,7 +117,7 @@ LOKI_NAMESPACE ?= openshift-logging
 # LLM URL processing constants
 DEFAULT_LLM_PORT_AND_PATH := :8080/v1
 
-OPERATOR_MANAGER_SCRIPT := scripts/operator-manager.sh
+OPERATOR_MANAGER_SCRIPT := bash scripts/operator-manager.sh
 
 # Auto-detect RHOAI version from the cluster when not already set.
 # RHOAI_VERSION is NOT declared with ?= to avoid corruption by the version-bump workflow.
@@ -1294,7 +1294,7 @@ upgrade-observability:
 
 .PHONY: check-observability-drift
 check-observability-drift:
-	@scripts/check-observability-drift.sh $(OBSERVABILITY_NAMESPACE) $(LOKI_NAMESPACE)
+	@bash scripts/check-observability-drift.sh $(OBSERVABILITY_NAMESPACE) $(LOKI_NAMESPACE)
 
 
 # ---- Alert Example (Python) ----
